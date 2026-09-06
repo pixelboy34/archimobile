@@ -25,6 +25,8 @@ export function ViewBar({
   const skill = useStudio((s) => s.skill);
   const physics = useStudio((s) => s.physics);
   const setPhysics = useStudio((s) => s.setPhysics);
+  const showStructure = useStudio((s) => s.showStructure);
+  const setShowStructure = useStudio((s) => s.setShowStructure);
   const addStory = useStudio((s) => s.addStory);
   const active = storyId ?? project.stories[0]?.id;
   const idx = Math.max(0, project.stories.findIndex((s) => s.id === active));
@@ -118,6 +120,11 @@ export function ViewBar({
               Ortho
             </button>
           </>
+        )}
+        {(view === "3d" || view === "coupe") && (
+          <button type="button" onClick={() => setShowStructure(!showStructure)} className={`hud-chip ${showStructure ? "hud-chip-on" : ""}`}>
+            Structure
+          </button>
         )}
         {view === "visite" && (
           <button type="button" onClick={() => setPhysics(!physics)} className={`hud-chip ${physics ? "hud-chip-on" : ""}`}>

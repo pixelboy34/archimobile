@@ -1,3 +1,4 @@
+import { Eye, EyeOff, Lock, Unlock } from "lucide-react";
 import { ensureSketch } from "@/lib/bim/sketch";
 import { useStudio } from "@/lib/store/project-store";
 import { Button } from "@/components/ui/button";
@@ -10,28 +11,53 @@ export function LayersPanel() {
   const clearSurvey = useStudio((s) => s.clearSurvey);
   if (!project) return null;
   const p = ensureSketch(project);
+  const visible = (p.layers ?? []).filter((l) => l.visible).length;
+  const locked = (p.layers ?? []).filter((l) => l.locked).length;
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-sm text-muted">Calques vectoriels superposés au plan — comme une table lumineuse.</p>
-      {p.layers!.map((l) => (
-        <div key={l.id} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2">
-          <button
-            type="button"
-            onClick={() => toggleLayer(l.id, { visible: !l.visible })}
-            className={`size-3 rounded-full ${l.visible ? "bg-accent" : "bg-elevated"}`}
-            aria-label={l.visible ? "Masquer" : "Afficher"}
-          />
-          <span className="min-w-0 flex-1 truncate text-sm">{l.name}</span>
-          <button
-            type="button"
-            onClick={() => toggleLayer(l.id, { locked: !l.locked })}
-            className="text-[11px] tracking-wide text-muted uppercase"
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-sm text-muted">Calques vectoriels — table lumineuse.</p>
+        <p className="font-mono text-[11px] text-accent tabular">
+          {visible}/{p.layers!.length} · {locked} verrou
+        </p>
+      </div>
+      {p.layers!.map((l) => {
+        const strokes = (p.strokes ?? []).filter((s) => s.layerId === l.id).length;
+        return (
+          <div
+            key={l.id}
+            className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 ${
+              l.visible ? "border-accent/30 bg-accent/5" : "border-border opacity-70"
+            }`}
           >
-            {l.locked ? "Verrouillé" : "Libre"}
-          </button>
-        </div>
-      ))}
+            <button
+              type="button"
+              onClick={() => toggleLayer(l.id, { visible: !l.visible })}
+              className={`flex size-9 items-center justify-center rounded-md ${
+                l.visible ? "text-accent" : "text-muted"
+              }`}
+              aria-label={l.visible ? "Masquer" : "Afficher"}
+            >
+              {l.visible ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+            </button>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">{l.name}</p>
+              <p className="font-mono text-[10px] text-subtle tabular">{strokes} traits</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => toggleLayer(l.id, { locked: !l.locked })}
+              className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] tracking-wide uppercase ${
+                l.locked ? "bg-elevated text-muted" : "text-muted"
+              }`}
+            >
+              {l.locked ? <Lock className="size-3" /> : <Unlock className="size-3" />}
+              {l.locked ? "Verrou" : "Libre"}
+            </button>
+          </div>
+        );
+      })}
       <Button variant="outline" onClick={addLayer}>
         Nouveau calque
       </Button>

@@ -86,6 +86,7 @@ export function StudioHud() {
       <div className="hud-panel ml-auto px-3 py-2 text-right">
         <p className="font-mono text-sm font-semibold tabular text-accent">{formatEuro(bill.totalHT)}</p>
         <p className="hud-label">Métré HT</p>
+        {showStructure && <p className="mt-0.5 text-[10px] tracking-wide text-accent uppercase">Ossature</p>}
       </div>
       )}
     </div>

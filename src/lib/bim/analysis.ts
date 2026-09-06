@@ -12,6 +12,10 @@ export interface RoomStat {
 export interface ProjectAnalysis {
   netArea: number;
   outdoorArea: number;
+  footprint: number;
+  floorArea: number;
+  cesActual: number;
+  cosActual: number;
   rooms: RoomStat[];
   byFunction: { function: RoomFunction; area: number; count: number }[];
   wallLength: number;
@@ -39,6 +43,16 @@ export function analyzeProject(project: Project): ProjectAnalysis {
 
   const netArea = rooms.filter((r) => !OUTDOOR.includes(r.function)).reduce((s, r) => s + r.area, 0);
   const outdoorArea = rooms.filter((r) => OUTDOOR.includes(r.function)).reduce((s, r) => s + r.area, 0);
+  const groundId =
+    project.stories.find((s) => s.elevation >= -0.05 && s.elevation < 0.6)?.id ??
+    project.stories[0]?.id;
+  const footprint = project.rooms
+    .filter((r) => r.storyId === groundId && !OUTDOOR.includes(r.function))
+    .reduce((s, r) => s + polygonArea(r.polygon), 0);
+  const floorArea = netArea;
+  const plot = Math.max(0, project.meta.plotM2 ?? 0);
+  const cesActual = plot > 1 ? footprint / plot : 0;
+  const cosActual = plot > 1 ? floorArea / plot : 0;
 
   const fnMap = new Map<RoomFunction, { area: number; count: number }>();
   for (const r of rooms) {
@@ -91,11 +105,21 @@ export function analyzeProject(project: Project): ProjectAnalysis {
   if (glazingRatio > 0.35) notes.push("Survitrage : risque de surchauffe d'été, prévoir stores.");
   if (project.stories.length > 1 && project.stairs.length === 0)
     notes.push("Plusieurs niveaux sans escalier BIM.");
+  const cesCap = project.meta.ces ?? 0;
+  const cosCap = project.meta.cos ?? 0;
+  if (cesCap > 0 && cesActual > cesCap + 0.01)
+    notes.push(`CES projet ${(cesActual * 100).toFixed(0)} % > plafond ${(cesCap * 100).toFixed(0)} %.`);
+  if (cosCap > 0 && cosActual > cosCap + 0.01)
+    notes.push(`COS projet ${cosActual.toFixed(2)} > plafond ${cosCap.toFixed(2)}.`);
   if (notes.length === 0) notes.push("Programme cohérent. Vérifier orientations et apports solaires.");
 
   return {
     netArea,
     outdoorArea,
+    footprint,
+    floorArea,
+    cesActual,
+    cosActual,
     rooms,
     byFunction,
     wallLength,

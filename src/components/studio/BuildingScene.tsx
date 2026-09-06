@@ -109,6 +109,12 @@ function storyElev(project: Project, storyId: string): number {
   return project.stories.find((s) => s.id === storyId)?.elevation ?? 0;
 }
 
+function glazingLook(glazing: Opening["glazing"]): { color: string; opacity: number; layers: number } {
+  if (glazing === "single") return { color: "#b7dceb", opacity: 0.32, layers: 1 };
+  if (glazing === "triple") return { color: "#5f8fa8", opacity: 0.58, layers: 3 };
+  return { color: "#86b6c8", opacity: 0.45, layers: 2 };
+}
+
 function WallGroup({
   wall,
   openings,
@@ -148,25 +154,69 @@ function WallGroup({
       : pickMat(mats, wall.materialId);
   const base = wall.baseOffset ?? 0;
   const n = wallNormalOffset(wall);
+  const unitN = { x: Math.sin(angle), y: -Math.cos(angle) };
+  const insM = Math.max(0, (wall.insulationMm ?? 0) / 1000);
+  const fire = wall.fireRating && wall.fireRating !== "none";
   return (
     <group>
       {segs.map((seg, i) => {
         const mid = lerp(seg.a, seg.b, 0.5);
+        const cx = mid.x + n.x;
+        const cz = mid.y + n.y;
         return (
-          <mesh
-            key={`${wall.id}-${i}`}
-            geometry={box}
-            material={material}
-            position={[mid.x + n.x, elev + base + wall.height / 2, mid.y + n.y]}
-            rotation={[0, -angle, 0]}
-            scale={[seg.length, wall.height, wall.thickness]}
-            castShadow={shadows}
-            receiveShadow={shadows}
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelect(wall.id);
-            }}
-          />
+          <group key={`${wall.id}-${i}`}>
+            <mesh
+              geometry={box}
+              material={material}
+              position={[cx, elev + base + wall.height / 2, cz]}
+              rotation={[0, -angle, 0]}
+              scale={[seg.length, wall.height, wall.thickness]}
+              castShadow={shadows}
+              receiveShadow={shadows}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect(wall.id);
+              }}
+            />
+            {insM > 0.004 && (
+              <mesh
+                geometry={box}
+                position={[
+                  cx - unitN.x * (wall.thickness / 2 + insM / 2),
+                  elev + base + wall.height / 2,
+                  cz - unitN.y * (wall.thickness / 2 + insM / 2),
+                ]}
+                rotation={[0, -angle, 0]}
+                scale={[seg.length * 0.98, wall.height * 0.96, Math.max(0.02, insM)]}
+                raycast={skipRaycast}
+                castShadow={false}
+              >
+                <meshLambertMaterial color="#d8c48a" transparent opacity={0.55} depthWrite={false} />
+              </mesh>
+            )}
+            {bearing && !structureMode && !selected && (
+              <mesh
+                geometry={box}
+                position={[cx, elev + base + wall.height - 0.05, cz]}
+                rotation={[0, -angle, 0]}
+                scale={[seg.length, 0.09, wall.thickness + 0.03]}
+                raycast={skipRaycast}
+              >
+                <meshLambertMaterial color="#a67c5d" emissive="#3a2218" emissiveIntensity={0.18} />
+              </mesh>
+            )}
+            {fire && (
+              <mesh
+                geometry={box}
+                position={[cx, elev + base + wall.height - 0.02, cz]}
+                rotation={[0, -angle, 0]}
+                scale={[seg.length, 0.035, wall.thickness + 0.05]}
+                raycast={skipRaycast}
+              >
+                <meshLambertMaterial color="#c45c4a" emissive="#4a1810" emissiveIntensity={0.22} />
+              </mesh>
+            )}
+          </group>
         );
       })}
       {openings
@@ -182,6 +232,8 @@ function WallGroup({
           );
           const leaves = o.variant === "double" || o.width > 1.45 ? 2 : 1;
           const win = o.kind === "window" || o.variant === "french";
+          const glaze = glazingLook(o.glazing);
+          const swingDir = o.swing === "right" ? 1 : -1;
           return (
             <group key={o.id} position={[p.x + n.x, 0, p.y + n.y]} rotation={[0, -angle, 0]}>
               <mesh
@@ -192,23 +244,90 @@ function WallGroup({
                 castShadow={shadows}
                 raycast={skipRaycast}
               />
-              {Array.from({ length: leaves }, (_, i) => (
-                <mesh
-                  key={i}
-                  geometry={box}
-                  material={fillMat}
-                  position={[leaves === 1 ? 0 : i === 0 ? -o.width * 0.25 : o.width * 0.25, y, wall.thickness * 0.08]}
-                  scale={[
-                    o.width / leaves - 0.03,
-                    o.height - 0.02,
-                    win ? wall.thickness * 0.22 : wall.thickness * 0.18,
-                  ]}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSelect(o.id);
-                  }}
-                />
-              ))}
+              {win
+                ? Array.from({ length: leaves }, (_, i) => (
+                    <mesh
+                      key={i}
+                      geometry={box}
+                      position={[
+                        leaves === 1 ? 0 : i === 0 ? -o.width * 0.25 : o.width * 0.25,
+                        y,
+                        wall.thickness * 0.08,
+                      ]}
+                      scale={[
+                        o.width / leaves - 0.03,
+                        o.height - 0.02,
+                        wall.thickness * 0.22,
+                      ]}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelect(o.id);
+                      }}
+                    >
+                      <meshLambertMaterial
+                        color={glaze.color}
+                        transparent
+                        opacity={glaze.opacity}
+                        depthWrite={false}
+                      />
+                    </mesh>
+                  ))
+                : Array.from({ length: leaves }, (_, i) => (
+                    <mesh
+                      key={i}
+                      geometry={box}
+                      material={fillMat}
+                      position={[
+                        leaves === 1 ? 0 : i === 0 ? -o.width * 0.25 : o.width * 0.25,
+                        y,
+                        wall.thickness * 0.08,
+                      ]}
+                      scale={[
+                        o.width / leaves - 0.03,
+                        o.height - 0.02,
+                        wall.thickness * 0.18,
+                      ]}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelect(o.id);
+                      }}
+                    />
+                  ))}
+              {win &&
+                Array.from({ length: Math.max(0, glaze.layers - 1) }, (_, li) => (
+                  <mesh
+                    key={`pane-${li}`}
+                    geometry={box}
+                    position={[0, y, wall.thickness * (0.02 + li * 0.05)]}
+                    scale={[o.width * 0.92, o.height * 0.9, 0.012]}
+                    raycast={skipRaycast}
+                  >
+                    <meshLambertMaterial
+                      color={glaze.color}
+                      transparent
+                      opacity={0.18 + li * 0.08}
+                      depthWrite={false}
+                    />
+                  </mesh>
+                ))}
+              {!win && (
+                <group
+                  position={[swingDir * (-o.width / 2), y, wall.thickness * 0.2]}
+                  rotation={[0, swingDir * 0.95, 0]}
+                >
+                  <mesh
+                    geometry={box}
+                    material={fillMat}
+                    position={[swingDir * (o.width / 2 - 0.01), 0, 0]}
+                    scale={[o.width - 0.04, o.height - 0.04, 0.045]}
+                    castShadow={shadows}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelect(o.id);
+                    }}
+                  />
+                </group>
+              )}
               {win && (
                 <>
                 <mesh

@@ -32,6 +32,7 @@ import {
   WALL_PRESETS,
   WINDOW_PRESETS,
 } from "@/lib/bim/catalog";
+import type { ProjectAnalysis } from "@/lib/bim/analysis";
 import { wallLength } from "@/lib/bim/geometry";
 import { formatMeters } from "@/lib/utils";
 import { useStudio } from "@/lib/store/project-store";
@@ -65,6 +66,13 @@ export function PropertiesPanel({
   const setOrtho = useStudio((s) => s.setOrtho);
   const lighting = useStudio((s) => s.lighting);
   const setLighting = useStudio((s) => s.setLighting);
+  const clipY = useStudio((s) => s.clipY);
+  const setClipY = useStudio((s) => s.setClipY);
+  const isolateStory = useStudio((s) => s.isolateStory);
+  const setIsolateStory = useStudio((s) => s.setIsolateStory);
+  const showStructure = useStudio((s) => s.showStructure);
+  const setShowStructure = useStudio((s) => s.setShowStructure);
+  const analysis = useStudio((s) => s.analysis);
   const beginEdit = useStudio((s) => s.beginEdit);
   const patchSelected = useStudio((s) => s.patchSelected);
   const commitSelected = useStudio((s) => s.commitSelected);
@@ -309,8 +317,9 @@ export function PropertiesPanel({
               </Field>
               <Chips label="Climat" value={(project.meta.climate as ClimateZone) || "H2"} options={["H1", "H2", "H3"] as ClimateZone[]} labels={CLIMATE_LABELS} onChange={(c) => patchMeta({ climate: c })} />
               <Chips label="Classe énergie" value={project.meta.energyClass ?? "B"} options={["A", "B", "C", "D", "E", "F"] as EnergyClass[]} labels={ENERGY_LABELS} onChange={(c) => patchMeta({ energyClass: c })} />
-              <Param label="CES" value={project.meta.ces ?? 0.4} min={0.1} max={1} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => patchMeta({ ces: v })} />
-              <Param label="COS" value={project.meta.cos ?? 0.6} min={0.1} max={8} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => patchMeta({ cos: v })} />
+              <Param label="CES max" value={project.meta.ces ?? 0.4} min={0.1} max={1} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => patchMeta({ ces: v })} />
+              <Param label="COS max" value={project.meta.cos ?? 0.6} min={0.1} max={8} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => patchMeta({ cos: v })} />
+              <SiteRatios analysis={analysis()} plot={project.meta.plotM2 ?? 0} cesCap={project.meta.ces ?? 0.4} cosCap={project.meta.cos ?? 0.6} />
               <Chips label="Sismique" value={project.meta.seismic ?? "2"} options={["1", "2", "3", "4", "5"] as SeismicZone[]} labels={SEISMIC_LABELS} onChange={(z) => patchMeta({ seismic: z })} />
               <Chips label="Vent" value={project.meta.wind ?? "2"} options={["1", "2", "3", "4", "5"] as WindRegion[]} labels={WIND_LABELS} onChange={(z) => patchMeta({ wind: z })} />
             </More>
@@ -336,18 +345,38 @@ export function PropertiesPanel({
 
       {!compact && tab === "rendu" && (
         <>
+          <Section title="Affichage">
+            <ToggleRow label="Grille" on={grid} onChange={setGrid} />
+            <ToggleRow label="Accrochage" on={snap} onChange={setSnap} />
+            <ToggleRow label="Ortho" on={ortho} onChange={setOrtho} />
+            <ToggleRow label="Isoler l’étage" on={isolateStory} onChange={setIsolateStory} />
+            <ToggleRow label="Ossature porteuse" on={showStructure} onChange={setShowStructure} />
+            <Param label="Coupe (clip Y)" value={clipY} min={0.15} max={1} step={0.02} unit="" digits={2} onBegin={beginEdit} onChange={setClipY} />
+            <p className="text-[11px] text-subtle">Passez en vue Coupe pour voir le plan sectionné en direct.</p>
+          </Section>
           <Section title="Lumière">
             <div className="flex gap-1.5 overflow-x-auto pb-1">
               {LIGHT_PRESETS.map((p) => (
-                <button key={p.id} type="button" onClick={() => setLighting(p.patch)} className="h-11 shrink-0 bg-elevated px-3.5 text-xs font-medium">
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setLighting(p.patch)}
+                  className={`h-11 shrink-0 px-3.5 text-xs font-medium ring-1 transition-colors ${
+                    Math.abs(lighting.sunHour - (p.patch.sunHour ?? lighting.sunHour)) < 0.01 &&
+                    Math.abs(lighting.sunIntensity - (p.patch.sunIntensity ?? lighting.sunIntensity)) < 0.01
+                      ? "bg-accent/15 text-accent ring-accent/40"
+                      : "bg-elevated text-muted ring-transparent"
+                  }`}
+                >
                   {p.label}
                 </button>
               ))}
             </div>
-            <Param label="Heure" value={lighting.sunHour} min={5} max={22} step={0.25} unit="h" digits={1} onBegin={beginEdit} onChange={(v) => setLighting({ sunHour: v })} />
+            <Param label="Heure solaire" value={lighting.sunHour} min={5} max={22} step={0.25} unit="h" digits={1} onBegin={beginEdit} onChange={(v) => setLighting({ sunHour: v })} />
             <Param label="Soleil" value={lighting.sunIntensity} min={0} max={3} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ sunIntensity: v })} />
             <ToggleRow label="Ombres portées" on={lighting.shadows} onChange={(v) => setLighting({ shadows: v })} />
             <More>
+              <Param label="Mois" value={lighting.month} min={1} max={12} step={1} unit="" digits={0} onBegin={beginEdit} onChange={(v) => setLighting({ month: v })} />
               <Param label="Ciel" value={lighting.hemi} min={0} max={1.5} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ hemi: v })} />
               <Param label="Ambiance" value={lighting.ambient} min={0} max={1.2} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ ambient: v })} />
               <Param label="Fill" value={lighting.fill} min={0} max={1.2} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ fill: v })} />
@@ -449,7 +478,10 @@ export function StoriesPanel() {
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-3">
-      <p className="text-xs font-medium tracking-wide text-muted uppercase">{title}</p>
+      <div className="flex items-center gap-2">
+        <p className="text-[11px] font-semibold tracking-[0.14em] text-muted uppercase">{title}</p>
+        <span className="h-px flex-1 bg-border/80" />
+      </div>
       {children}
     </section>
   );
@@ -457,7 +489,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-3 border border-border px-3 py-3">
+    <div className="flex flex-col gap-3 rounded-lg border border-border/80 bg-elevated/30 px-3 py-3">
       <p className="text-[11px] font-medium tracking-[0.16em] text-subtle uppercase">{title}</p>
       {children}
     </div>
@@ -468,9 +500,14 @@ function More({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="flex flex-col gap-3">
-      <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className="flex h-11 items-center justify-between bg-elevated px-3 text-xs tracking-wide text-muted uppercase">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="flex h-11 items-center justify-between rounded-lg bg-elevated px-3 text-xs tracking-wide text-muted uppercase ring-1 ring-border/60"
+      >
         {open ? "Réduire" : "Avancé"}
-        <span className="font-mono text-[10px]">{open ? "−" : "+"}</span>
+        <span className="font-mono text-[10px] text-accent">{open ? "−" : "+"}</span>
       </button>
       {open ? children : null}
     </div>
@@ -480,7 +517,7 @@ function More({ children }: { children: ReactNode }) {
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-xs tracking-wide text-muted uppercase">{label}</span>
+      <span className="text-[11px] tracking-wide text-muted uppercase">{label}</span>
       {children}
     </label>
   );
@@ -488,9 +525,51 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 function Row({ k, v }: { k: string; v: string }) {
   return (
-    <div className="flex items-baseline justify-between gap-3">
-      <span className="text-xs tracking-wide text-muted uppercase">{k}</span>
-      <span className="font-mono text-sm tabular">{v}</span>
+    <div className="flex items-baseline justify-between gap-3 rounded-md bg-elevated/40 px-2.5 py-2">
+      <span className="text-[11px] tracking-wide text-muted uppercase">{k}</span>
+      <span className="font-mono text-sm tabular text-accent">{v}</span>
+    </div>
+  );
+}
+
+function SiteRatios({
+  analysis: a,
+  plot,
+  cesCap,
+  cosCap,
+}: {
+  analysis: ProjectAnalysis | null;
+  plot: number;
+  cesCap: number;
+  cosCap: number;
+}) {
+  if (!a || plot < 1) {
+    return <p className="text-[11px] text-subtle">Renseignez la parcelle pour le CES / COS live.</p>;
+  }
+  const cesOk = a.cesActual <= cesCap + 0.01;
+  const cosOk = a.cosActual <= cosCap + 0.01;
+  return (
+    <div className="grid grid-cols-2 gap-2 rounded-lg border border-border/70 bg-elevated/25 p-2.5">
+      <div>
+        <p className="text-[10px] tracking-wide text-muted uppercase">Emprise</p>
+        <p className="font-mono text-sm tabular">{a.footprint.toFixed(0)} m²</p>
+      </div>
+      <div>
+        <p className="text-[10px] tracking-wide text-muted uppercase">SDP approx.</p>
+        <p className="font-mono text-sm tabular">{a.floorArea.toFixed(0)} m²</p>
+      </div>
+      <div>
+        <p className="text-[10px] tracking-wide text-muted uppercase">CES réel</p>
+        <p className={`font-mono text-sm tabular ${cesOk ? "text-accent" : "text-danger"}`}>
+          {(a.cesActual * 100).toFixed(0)} %
+        </p>
+      </div>
+      <div>
+        <p className="text-[10px] tracking-wide text-muted uppercase">COS réel</p>
+        <p className={`font-mono text-sm tabular ${cosOk ? "text-accent" : "text-danger"}`}>
+          {a.cosActual.toFixed(2)}
+        </p>
+      </div>
     </div>
   );
 }
@@ -518,14 +597,15 @@ function Param({
 }) {
   const n = Number.isFinite(value) ? value : min;
   const clamped = Math.min(max, Math.max(min, n));
+  const pct = max > min ? ((clamped - min) / (max - min)) * 100 : 0;
   const apply = (raw: number) => {
     if (!Number.isFinite(raw)) return;
     onChange(Math.min(max, Math.max(min, Number(raw.toFixed(4)))));
   };
   return (
-    <label className="flex flex-col gap-1" onPointerDown={(e) => e.stopPropagation()}>
+    <label className="flex flex-col gap-1.5" onPointerDown={(e) => e.stopPropagation()}>
       <span className="flex items-baseline justify-between gap-3">
-        <span className="text-xs tracking-wide text-muted uppercase">{label}</span>
+        <span className="text-[11px] font-medium tracking-wide text-muted uppercase">{label}</span>
         <span className="flex items-center gap-1">
           <input
             type="number"
@@ -537,34 +617,57 @@ function Param({
             aria-label={label}
             onFocus={onBegin}
             onChange={(e) => apply(Number(e.target.value))}
-            className="h-9 w-20 border border-border bg-elevated px-2 text-right font-mono text-sm tabular"
+            className="h-9 w-[4.75rem] rounded-md border border-border bg-elevated px-2 text-right font-mono text-sm tabular focus:border-accent/50 focus:outline-none"
           />
-          {unit ? <span className="text-[11px] text-muted">{unit}</span> : null}
+          {unit ? (
+            <span className="min-w-[1.6rem] rounded bg-accent/10 px-1.5 py-0.5 text-center text-[10px] font-semibold tracking-wide text-accent uppercase">
+              {unit}
+            </span>
+          ) : null}
         </span>
       </span>
       <div className="flex items-center gap-1.5">
-        <button type="button" aria-label="Diminuer" className="flex size-11 shrink-0 items-center justify-center bg-elevated text-lg" onPointerDown={onBegin} onClick={() => apply(n - step)}>
+        <button
+          type="button"
+          aria-label="Diminuer"
+          className="flex size-11 shrink-0 items-center justify-center rounded-md bg-elevated text-lg ring-1 ring-border/50 active:bg-accent/15"
+          onPointerDown={onBegin}
+          onClick={() => apply(n - step)}
+        >
           −
         </button>
-        <input
-          type="range"
-          min={min}
-          max={max}
-          step={step}
-          value={clamped}
-          aria-label={label}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            onBegin();
-            (e.currentTarget as HTMLInputElement).setPointerCapture?.(e.pointerId);
-          }}
-          onInput={(e) => apply(Number((e.currentTarget as HTMLInputElement).value))}
-          onTouchStart={(e) => e.stopPropagation()}
-          onTouchMove={(e) => e.stopPropagation()}
-          onChange={(e) => apply(Number(e.target.value))}
-          className="h-11 min-w-0 flex-1 cursor-pointer accent-accent [touch-action:none]"
-        />
-        <button type="button" aria-label="Augmenter" className="flex size-11 shrink-0 items-center justify-center bg-elevated text-lg" onPointerDown={onBegin} onClick={() => apply(n + step)}>
+        <div className="relative min-w-0 flex-1">
+          <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-border/70" />
+          <div
+            className="pointer-events-none absolute top-1/2 left-0 h-1.5 -translate-y-1/2 rounded-full bg-accent/70"
+            style={{ width: `${pct}%` }}
+          />
+          <input
+            type="range"
+            min={min}
+            max={max}
+            step={step}
+            value={clamped}
+            aria-label={label}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              onBegin();
+              (e.currentTarget as HTMLInputElement).setPointerCapture?.(e.pointerId);
+            }}
+            onInput={(e) => apply(Number((e.currentTarget as HTMLInputElement).value))}
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchMove={(e) => e.stopPropagation()}
+            onChange={(e) => apply(Number(e.target.value))}
+            className="relative h-11 w-full cursor-pointer appearance-none bg-transparent accent-accent [touch-action:none]"
+          />
+        </div>
+        <button
+          type="button"
+          aria-label="Augmenter"
+          className="flex size-11 shrink-0 items-center justify-center rounded-md bg-elevated text-lg ring-1 ring-border/50 active:bg-accent/15"
+          onPointerDown={onBegin}
+          onClick={() => apply(n + step)}
+        >
           +
         </button>
       </div>
@@ -587,14 +690,18 @@ function Chips<T extends string>({
 }) {
   return (
     <div>
-      <p className="mb-2 text-xs tracking-wide text-muted uppercase">{label}</p>
+      <p className="mb-2 text-[11px] font-medium tracking-wide text-muted uppercase">{label}</p>
       <div className="flex flex-wrap gap-1.5">
         {options.map((m) => (
           <button
             key={m}
             type="button"
             onClick={() => onChange(m as T)}
-            className={`px-2.5 py-1.5 text-xs ${value === m ? "bg-primary text-primary-fg" : "bg-elevated text-muted"}`}
+            className={`rounded-md px-2.5 py-1.5 text-xs transition-colors ${
+              value === m
+                ? "bg-primary text-primary-fg ring-2 ring-accent/50"
+                : "bg-elevated text-muted ring-1 ring-border/40 hover:text-fg"
+            }`}
           >
             {labels[m]}
           </button>
@@ -606,9 +713,21 @@ function Chips<T extends string>({
 
 function ToggleRow({ label, on, onChange }: { label: string; on: boolean; onChange: (v: boolean) => void }) {
   return (
-    <button type="button" onClick={() => onChange(!on)} className="flex h-11 w-full items-center justify-between bg-elevated px-3 text-sm">
+    <button
+      type="button"
+      onClick={() => onChange(!on)}
+      className={`flex h-11 w-full items-center justify-between rounded-lg px-3 text-sm ring-1 transition-colors ${
+        on ? "bg-accent/10 ring-accent/35" : "bg-elevated ring-border/50"
+      }`}
+    >
       <span>{label}</span>
-      <span className={`font-mono text-[11px] ${on ? "text-accent" : "text-muted"}`}>{on ? "ON" : "OFF"}</span>
+      <span
+        className={`rounded-full px-2 py-0.5 font-mono text-[10px] font-semibold tracking-wide ${
+          on ? "bg-accent/20 text-accent" : "bg-border/40 text-muted"
+        }`}
+      >
+        {on ? "ON" : "OFF"}
+      </span>
     </button>
   );
 }
