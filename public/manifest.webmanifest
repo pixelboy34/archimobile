@@ -1,0 +1,11 @@
+{
+  "name": "FORMA",
+  "short_name": "FORMA",
+  "description": "Studio BIM / CAD mobile-first",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#04080c",
+  "theme_color": "#04080c",
+  "orientation": "portrait-primary",
+  "lang": "fr"
+}

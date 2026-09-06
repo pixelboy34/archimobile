@@ -1,0 +1,96 @@
+@import "tailwindcss";
+
+@theme {
+  --color-forma-bg: #04080c;
+  --color-forma-accent: #6ed0c3;
+  --color-forma-panel: #0a1218;
+  --color-forma-panel2: #0e1a22;
+  --color-forma-border: #1a2a35;
+  --color-forma-muted: #7a8f9c;
+  --color-forma-text: #e8f0f4;
+  --font-display: "Syne", system-ui, sans-serif;
+  --font-body: "Outfit", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  background: #04080c;
+  color: #e8f0f4;
+  font-family: var(--font-body);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  overflow: hidden;
+}
+
+* { box-sizing: border-box; }
+
+.font-display { font-family: var(--font-display); }
+.font-mono { font-family: var(--font-mono); }
+
+.safe-top { padding-top: env(safe-area-inset-top, 0px); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.safe-x {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+.chip {
+  min-height: 44px;
+  min-width: 44px;
+  border-radius: 999px;
+  border: 1px solid #1a2a35;
+  background: rgba(10, 18, 24, 0.85);
+  color: #e8f0f4;
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 500;
+  backdrop-filter: blur(8px);
+}
+.chip[data-active="true"] {
+  border-color: #6ed0c3;
+  color: #6ed0c3;
+  box-shadow: 0 0 0 1px rgba(110, 208, 195, 0.25);
+}
+
+.btn-accent {
+  background: #6ed0c3;
+  color: #041016;
+  font-weight: 600;
+  border-radius: 12px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: none;
+}
+
+.panel {
+  background: #0a1218;
+  border: 1px solid #1a2a35;
+  border-radius: 16px;
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: #6ed0c3;
+}
+
+.slider-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.slider-row label {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: #7a8f9c;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.slider-row .val {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: #6ed0c3;
+}
