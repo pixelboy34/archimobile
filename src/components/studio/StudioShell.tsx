@@ -15,13 +15,15 @@ import {
   Sun,
   Download,
   Building2,
+  PackageCheck,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Toaster } from "sonner";
+import { toast, Toaster } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { findWallAt } from "@/lib/bim/geometry";
 import { downloadText, exportBimJson, exportQuantitiesCsv } from "@/lib/bim/quantities";
+import { deliverDossier } from "@/lib/bim/dossier";
 import { exportDxf } from "@/lib/cad/dxf";
 import { exportIfc } from "@/lib/cad/ifc";
 import type { Project, ViewMode, WorkspaceMode } from "@/lib/bim/types";
@@ -414,6 +416,20 @@ export function StudioShell({ projectId }: { projectId: string }) {
               <Building2 className="size-5" />
               Bâtiment
             </button>
+            {current.walls.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const r = deliverDossier(current);
+                  toast.success(`Dossier · ${r.planCount} plans · IFC+DXF+CSV`);
+                  setPanel(null);
+                }}
+                className="flex h-12 items-center justify-center gap-2 rounded-xl border border-accent/40 bg-accent/15 text-sm font-semibold text-accent"
+              >
+                <PackageCheck className="size-5" />
+                Livrer le dossier
+              </button>
+            )}
             {[
               {
                 title: "Modèle",
@@ -562,6 +578,19 @@ function QuickExportStrip({ project }: { project: Project }) {
   return (
     <div>
       <p className="mb-2 text-[10px] tracking-[0.16em] text-subtle uppercase">Export rapide</p>
+      {project.walls.length > 0 && (
+        <button
+          type="button"
+          onClick={() => {
+            const r = deliverDossier(project);
+            toast.success(`Dossier · ${r.planCount} plans · IFC+DXF+CSV`);
+          }}
+          className="mb-2 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-accent-fg"
+        >
+          <PackageCheck className="size-4" />
+          Livrer le dossier
+        </button>
+      )}
       <div className="grid grid-cols-2 gap-2">
         {[
           { label: "JSON", run: () => downloadText(`${base}.forma.json`, exportBimJson(project)) },

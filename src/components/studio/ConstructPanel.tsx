@@ -1,4 +1,5 @@
-import { Download, Pause, Play, Printer, Share2 } from "lucide-react";
+import { Download, Pause, Play, Printer, Share2, PackageCheck } from "lucide-react";
+import { toast } from "sonner";
 import { BUILD_PHASES, PHASE_DONE } from "@/lib/bim/construction";
 import {
   computeQuantities,
@@ -6,9 +7,9 @@ import {
   exportBimJson,
   exportQuantitiesCsv,
   formatEuro,
-  printDossier,
   shareProject,
 } from "@/lib/bim/quantities";
+import { deliverDossier } from "@/lib/bim/dossier";
 import { exportDxf } from "@/lib/cad/dxf";
 import { exportIfc } from "@/lib/cad/ifc";
 import { formatArea, formatMeters } from "@/lib/utils";
@@ -103,6 +104,17 @@ export function ConstructPanel() {
 
       <div className="flex flex-col gap-2">
         <Button
+          variant="accent"
+          className="h-12"
+          onClick={() => {
+            const r = deliverDossier(project);
+            toast.success(`Dossier · ${r.planCount} plans · IFC+DXF+CSV`);
+          }}
+        >
+          <PackageCheck className="size-4" />
+          Livrer le dossier
+        </Button>
+        <Button
           variant="outline"
           onClick={() =>
             downloadText(
@@ -153,9 +165,15 @@ export function ConstructPanel() {
           <Download className="size-4" />
           Exporter IFC (murs / dalles / baies)
         </Button>
-        <Button variant="outline" onClick={() => printDossier(project)}>
+        <Button
+          variant="outline"
+          onClick={() => {
+            const r = deliverDossier(project);
+            toast.message(`Dossier · ${r.planCount} plans · IFC+DXF+CSV`);
+          }}
+        >
           <Printer className="size-4" />
-          Imprimer la fiche
+          Imprimer le dossier
         </Button>
         <Button variant="outline" onClick={() => void shareProject(project)}>
           <Share2 className="size-4" />

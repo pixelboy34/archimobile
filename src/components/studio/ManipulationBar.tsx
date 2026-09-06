@@ -15,9 +15,11 @@ import {
   ArrowLeftRight,
   ArrowUpDown,
   CopyPlus,
+  PackageCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { deliverDossier } from "@/lib/bim/dossier";
 import { useStudio } from "@/lib/store/project-store";
 import { dispatchCam } from "./OrbitRig";
 
@@ -142,6 +144,19 @@ export function ManipulationBar({
             <BarBtn label="Cadrer" accent={!multiStory} onClick={() => dispatchCam({ kind: "fit" })}>
               <Focus className="size-4" />
             </BarBtn>
+            {(project?.walls.length ?? 0) > 0 && (
+              <BarBtn
+                label="Dossier"
+                accent
+                onClick={() => {
+                  if (!project) return;
+                  const r = deliverDossier(project);
+                  toast.success(`Dossier · ${r.planCount} plans · IFC+DXF+CSV`);
+                }}
+              >
+                <PackageCheck className="size-4" />
+              </BarBtn>
+            )}
           </>
         )}
       </div>

@@ -123,63 +123,8 @@ export function exportQuantitiesCsv(project: Project): string {
   return rows.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(";")).join("\n");
 }
 
-function escapeHtml(s: string) {
-  const amp = String.fromCharCode(38);
-  return s
-    .replace(/&/g, `${amp}amp;`)
-    .replace(/</g, `${amp}lt;`)
-    .replace(/>/g, `${amp}gt;`)
-    .replace(/"/g, `${amp}quot;`)
-    .replace(/'/g, `${amp}#39;`);
-}
-
 export function printDossier(project: Project) {
-  const a = analyzeProject(project);
-  const bill = computeQuantities(project);
-  const title = escapeHtml(project.name);
-  const loc = escapeHtml(project.meta.location);
-  const client = escapeHtml(project.meta.client || "Maitre d'ouvrage non renseigne");
-  const brief = escapeHtml(project.meta.brief);
-  const rooms = a.rooms
-    .map((r) => `<tr><td>${escapeHtml(r.name)}</td><td>${r.area.toFixed(1)} m2</td></tr>`)
-    .join("");
-  const lines = bill.lines
-    .map(
-      (l) =>
-        `<tr><td>${escapeHtml(l.label)}</td><td>${l.qty.toLocaleString("fr-FR")} ${l.unit}</td><td>${l.total.toLocaleString("fr-FR")} EUR</td></tr>`,
-    )
-    .join("");
-  const html = [
-    "<!doctype html><html lang='fr'><head><meta charset='utf-8'/><title>",
-    title,
-    "</title><style>body{font:14px/1.45 Georgia,serif;color:#1a1916;max-width:720px;margin:32px auto;padding:0 24px}h1{font:600 28px/1.1 sans-serif;margin:0}h2{font:600 14px/1 sans-serif;letter-spacing:.12em;text-transform:uppercase;margin:28px 0 8px;color:#5c5a54}.meta{color:#5c5a54;margin-top:6px}table{width:100%;border-collapse:collapse}td,th{border-bottom:1px solid #ddd8cc;padding:8px 0;text-align:left}td:last-child,th:last-child{text-align:right}.total{font-weight:700;font-size:18px}@media print{body{margin:0}}</style></head><body><h1>",
-    title,
-    "</h1><p class='meta'>",
-    loc,
-    " · ",
-    client,
-    "<br/>",
-    String(Math.round(a.netArea)),
-    " m2 nets · ",
-    String(project.stories.length),
-    " niveau(x) · ",
-    String(project.rooms.length),
-    " pieces</p><p>",
-    brief,
-    "</p><h2>Pieces</h2><table><tbody>",
-    rooms,
-    "</tbody></table><h2>Metre estimatif HT</h2><table><thead><tr><th>Poste</th><th>Qte</th><th>Total</th></tr></thead><tbody>",
-    lines,
-    "<tr class='total'><td>Total HT</td><td></td><td>",
-    bill.totalHT.toLocaleString("fr-FR"),
-    " EUR</td></tr></tbody></table><p class='meta'>FORMA — estimation indicative, hors honoraires et aleas.</p></body></html>",
-  ].join("");
-  const w = window.open("", "_blank", "noopener,noreferrer");
-  if (!w) return;
-  w.document.write(html);
-  w.document.close();
-  w.focus();
-  w.print();
+  void import("./dossier").then(({ deliverDossier }) => deliverDossier(project));
 }
 
 export async function shareProject(project: Project) {
