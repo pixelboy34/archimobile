@@ -11,6 +11,7 @@ import { rectPolygon, wallLength, wallMid } from "../bim/geometry";
 import type { Project, RoofKind, Vec2, Wall } from "../bim/types";
 import { uid } from "../utils";
 import { copyStory, repeatStories, restackStories } from "./ops";
+import { assignMassingRoles, propagateIntoTypicalGroup } from "./typical";
 
 export type CoreSide = "center" | "left" | "right" | "back";
 
@@ -61,6 +62,9 @@ export function insertBasement(p: Project): Project {
     elevation: src.elevation - h,
     height: h,
     finishFloor: src.finishFloor,
+    role: "basement",
+    typicalGroup: undefined,
+    detached: false,
   });
   const wallMap = new Map<string, string>();
   for (const w of p.walls.filter((x) => x.storyId === src.id)) {
@@ -385,6 +389,9 @@ export function generateMassing(project: Project, opts: MassingOpts): Project {
     name: "RDC",
     elevation: 0,
     height: groundH,
+    role: "ground",
+    typicalGroup: undefined,
+    detached: false,
   };
 
   const layout = coreLayout(width, depth, coreSide);
@@ -413,7 +420,7 @@ export function generateMassing(project: Project, opts: MassingOpts): Project {
 
   if (floors === 1) {
     p = addRoofFor(p, base.id, rectPolygon(-0.3, -0.3, width + 0.6, depth + 0.6), roofKind, roofPitch);
-    return nameStories(restackStories(p));
+    return assignMassingRoles(nameStories(restackStories(p)));
   }
 
   // Typical floor — optional setback on street façade
@@ -538,54 +545,12 @@ export function generateMassing(project: Project, opts: MassingOpts): Project {
     typology: floors > 3 ? "collective" : p.meta.typology,
     plotM2: Math.max(p.meta.plotM2 ?? 0, Math.ceil(width * depth * 2.4)),
   };
-  return p;
+  return assignMassingRoles(p);
 }
 
-/** Copie murs / baies / pièces / poteaux / mobilier de l’étage source vers tous les étages au-dessus (hors toiture). */
+/** Copie l’étage source vers le groupe des étages types (hors SS / attique / détachés). */
 export function propagateTypicalFloor(project: Project, fromId: string): Project {
-  let p = cloneProject(project);
-  const src = p.stories.find((s) => s.id === fromId);
-  if (!src) return p;
-  const idx = p.stories.findIndex((s) => s.id === fromId);
-  if (idx < 0 || idx >= p.stories.length - 1) return p;
-
-  const srcWalls = p.walls.filter((w) => w.storyId === fromId);
-  const srcOpenings = p.openings.filter((o) => srcWalls.some((w) => w.id === o.wallId));
-  const srcRooms = p.rooms.filter((r) => r.storyId === fromId);
-  const srcCols = p.columns.filter((c) => c.storyId === fromId);
-  const srcFurn = p.furniture.filter((f) => f.storyId === fromId);
-  const srcStairs = p.stairs.filter((s) => s.storyId === fromId);
-  const srcSlabs = p.slabs.filter((s) => s.storyId === fromId);
-
-  for (let i = idx + 1; i < p.stories.length; i++) {
-    const st = p.stories[i]!;
-    const keepRoof = p.roofs.filter((r) => r.storyId === st.id);
-    p.walls = p.walls.filter((w) => w.storyId !== st.id);
-    p.rooms = p.rooms.filter((r) => r.storyId !== st.id);
-    p.columns = p.columns.filter((c) => c.storyId !== st.id);
-    p.furniture = p.furniture.filter((f) => f.storyId !== st.id);
-    p.stairs = p.stairs.filter((s) => s.storyId !== st.id);
-    p.slabs = p.slabs.filter((s) => s.storyId !== st.id);
-    p.openings = p.openings.filter((o) => p.walls.some((w) => w.id === o.wallId));
-    p.roofs = p.roofs.filter((r) => r.storyId !== st.id).concat(keepRoof);
-
-    const wallMap = new Map<string, string>();
-    for (const w of srcWalls) {
-      const nid = uid("w");
-      wallMap.set(w.id, nid);
-      p.walls.push({ ...w, id: nid, storyId: st.id, height: st.height });
-    }
-    for (const o of srcOpenings) {
-      const wid = wallMap.get(o.wallId);
-      if (wid) p.openings.push({ ...o, id: uid("op"), wallId: wid });
-    }
-    for (const r of srcRooms) p.rooms.push({ ...r, id: uid("rm"), storyId: st.id });
-    for (const c of srcCols) p.columns.push({ ...c, id: uid("col"), storyId: st.id, height: st.height });
-    for (const f of srcFurn) p.furniture.push({ ...f, id: uid("fur"), storyId: st.id });
-    for (const s of srcStairs) p.stairs.push({ ...s, id: uid("stai"), storyId: st.id, rise: st.height });
-    for (const s of srcSlabs) p.slabs.push({ ...s, id: uid("sl"), storyId: st.id });
-  }
-  return restackStories(p);
+  return propagateIntoTypicalGroup(cloneProject(project), fromId);
 }
 
 export function massingFootprintHint(opts: Pick<MassingOpts, "width" | "depth" | "floors">): string {

@@ -4,6 +4,7 @@ import { computeQuantities, formatEuro } from "@/lib/bim/quantities";
 import { BUILD_PHASES } from "@/lib/bim/construction";
 import { formatMeters } from "@/lib/utils";
 import { useStudio } from "@/lib/store/project-store";
+import { linkedTypicalHint } from "@/lib/cad/typical";
 
 const VIEW_LABELS: Record<ViewMode, string> = {
   "3d": "3D",
@@ -26,8 +27,10 @@ export function StudioHud() {
   const setDraft = useStudio((s) => s.setDraft);
   const setTool = useStudio((s) => s.setTool);
   const project = useStudio((s) => s.projects.find((p) => p.id === s.currentId) ?? null);
+  const storyId = useStudio((s) => s.storyId);
   const cursorHint = useStudio((s) => s.draft);
   if (!project) return null;
+  const typicalHint = linkedTypicalHint(project, storyId);
   if (view === "ar") return null;
   if (!showHud) return null;
   const bill = computeQuantities(project);
@@ -91,6 +94,7 @@ export function StudioHud() {
       {tool !== "furniture" && (
         <div className="hud-panel px-3 py-2 text-xs text-muted">
           <p className="mb-0.5 font-mono text-[10px] tracking-wide text-accent uppercase">{modeLine}</p>
+          {typicalHint && <p className="mb-0.5 text-[11px] font-medium text-accent">{typicalHint}</p>}
           <p>{hint}</p>
           {sel && tool === "select" && (
             <span className="ml-0 font-mono text-fg tabular">{sel.dims}</span>

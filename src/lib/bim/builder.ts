@@ -38,7 +38,7 @@ export function emptyProject(name = "Nouveau projet"): Project {
       altitude: 12,
       typology: "house",
     },
-    stories: [{ id: storyId, name: "RDC", elevation: 0, height: 2.8 }],
+    stories: [{ id: storyId, name: "RDC", elevation: 0, height: 2.8, role: "ground" }],
     walls: [],
     openings: [],
     slabs: [],

@@ -30,6 +30,14 @@ import { DEFAULT_LIGHTING, type Lighting } from "@/lib/render/lighting";
 import { DEFAULT_NAV, type NavPrefs } from "@/lib/nav/prefs";
 import { addRectWalls, copyStory as duplicateStoryLevel, healWallEnds, orthoPoint, repeatStories as stackStories, restackStories, splitWallAt as splitWallOp, syncStoryGeometry, translateSelection } from "@/lib/cad/ops";
 import { generateMassing, insertBasement, nameStories, propagateTypicalFloor, type MassingOpts } from "@/lib/cad/massing";
+import {
+  inferStoryRoles,
+  isLiveTypical,
+  markStoryRole as markStoryRoleOp,
+  setStoryDetached as setStoryDetachedOp,
+  syncTypicalFrom,
+  type StoryRole,
+} from "@/lib/cad/typical";
 
 const HISTORY_LIMIT = 40;
 
@@ -110,6 +118,11 @@ interface StudioState {
   addBasement: () => void;
   addMassing: (opts: MassingOpts) => void;
   propagateTypical: () => void;
+  syncTypicalAfterEdit: () => void;
+  detachStory: (id: string) => void;
+  linkStory: (id: string) => void;
+  markStoryAttic: (id: string) => void;
+  markStoryGround: (id: string) => void;
   removeStory: (id: string) => void;
   updateMeta: (patch: Partial<Project["meta"]>) => void;
   patchMeta: (patch: Partial<Project["meta"]>) => void;
@@ -155,13 +168,35 @@ function patchEntities(p: Project, ids: string[], patch: Record<string, unknown>
   return p;
 }
 
+/** When true, commit/patchNow skip live typical sync (used by sync itself). */
+let silentTypicalSync = false;
+
 function applyStoryPatch(
   p: Project,
   id: string,
   patch: Partial<Project["stories"][number]>,
 ): Project {
+  p = inferStoryRoles(p);
   p.stories = p.stories.map((s) => (s.id === id ? { ...s, ...patch } : s));
-  return syncStoryGeometry(p, id);
+  p = syncStoryGeometry(p, id);
+  const st = p.stories.find((s) => s.id === id);
+  if (patch.height !== undefined && isLiveTypical(st)) {
+    p = syncTypicalFrom(p, id, { syncHeight: true });
+  }
+  return p;
+}
+
+function maybeSyncTypical(p: Project, storyId: string | null | undefined): Project {
+  if (silentTypicalSync || !storyId) return p;
+  p = inferStoryRoles(p);
+  const st = p.stories.find((s) => s.id === storyId);
+  if (!isLiveTypical(st)) return p;
+  silentTypicalSync = true;
+  try {
+    return syncTypicalFrom(p, storyId);
+  } finally {
+    silentTypicalSync = false;
+  }
 }
 
 export const useStudio = create<StudioState>()(
@@ -337,7 +372,9 @@ export const useStudio = create<StudioState>()(
       commit: (mutator) => {
         const cur = get().current();
         if (!cur) return;
-        const next = mutator(cloneProject(cur));
+        const storyId = get().storyId;
+        let next = mutator(cloneProject(cur));
+        if (!silentTypicalSync) next = maybeSyncTypical(next, storyId);
         set((s) => withHistory(s, next) as StudioState);
       },
       undo: () => {
@@ -545,7 +582,9 @@ export const useStudio = create<StudioState>()(
       patchNow: (mutator) => {
         const cur = get().current();
         if (!cur) return;
-        const next = mutator(cloneProject(cur));
+        const storyId = get().storyId;
+        let next = mutator(cloneProject(cur));
+        if (!silentTypicalSync) next = maybeSyncTypical(next, storyId);
         set((s) => ({
           projects: s.projects.map((p) => (p.id === next.id ? touch(next) : p)),
         }));
@@ -571,11 +610,15 @@ export const useStudio = create<StudioState>()(
             return duplicateStoryLevel(p, sid, { furniture: false, roof: false });
           }
           const last = p.stories[p.stories.length - 1];
+          const group = p.stories.find((s) => s.typicalGroup)?.typicalGroup ?? "typ_1";
           p.stories.push({
             id: uid("st"),
             name: last ? `R+${p.stories.length}` : "RDC",
             elevation: (last?.elevation ?? 0) + (last?.height ?? 2.8),
             height: last?.height ?? 2.8,
+            role: last ? "typical" : "ground",
+            typicalGroup: last ? group : undefined,
+            detached: false,
           });
           return nameStories(restackStories(p));
         });
@@ -623,8 +666,45 @@ export const useStudio = create<StudioState>()(
       propagateTypical: () => {
         const sid = get().storyId;
         if (!sid) return;
-        get().commit((p) => propagateTypicalFloor(p, sid));
+        silentTypicalSync = true;
+        try {
+          get().commit((p) => propagateTypicalFloor(p, sid));
+        } finally {
+          silentTypicalSync = false;
+        }
         set({ isolateStory: false, selectedIds: [] });
+      },
+      syncTypicalAfterEdit: () => {
+        const sid = get().storyId;
+        if (!sid) return;
+        silentTypicalSync = true;
+        try {
+          get().commit((p) => syncTypicalFrom(inferStoryRoles(p), sid));
+        } finally {
+          silentTypicalSync = false;
+        }
+      },
+      detachStory: (id) => {
+        get().commit((p) => setStoryDetachedOp(p, id, true));
+      },
+      linkStory: (id) => {
+        silentTypicalSync = true;
+        try {
+          get().commit((p) => {
+            let next = setStoryDetachedOp(p, id, false);
+            const st = next.stories.find((s) => s.id === id);
+            if (isLiveTypical(st)) next = syncTypicalFrom(next, id);
+            return next;
+          });
+        } finally {
+          silentTypicalSync = false;
+        }
+      },
+      markStoryAttic: (id) => {
+        get().commit((p) => markStoryRoleOp(p, id, "attic" as StoryRole));
+      },
+      markStoryGround: (id) => {
+        get().commit((p) => markStoryRoleOp(p, id, "ground" as StoryRole));
       },
       removeStory: (id) => {
         const s = get();
@@ -874,7 +954,7 @@ export const useStudio = create<StudioState>()(
       }),
       merge: (persisted, current) => {
         const p = persisted as Partial<StudioState> | undefined;
-        const projects = (p?.projects ?? current.projects).map(ensureSketch);
+        const projects = (p?.projects ?? current.projects).map((proj) => inferStoryRoles(ensureSketch(proj)));
         const have = new Set(projects.map((x) => x.name));
         for (const seed of seedProjects()) {
           if (!have.has(seed.name)) projects.push(seed);

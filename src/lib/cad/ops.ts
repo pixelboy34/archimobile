@@ -127,12 +127,19 @@ export function copyStory(p: Project, fromId: string, opts?: { furniture?: boole
   const id = uid("st");
   const index = p.stories.findIndex((s) => s.id === fromId);
   const n = p.stories.length;
+  const existingGroup = p.stories.find((s) => s.typicalGroup)?.typicalGroup ?? "typ_1";
+  const role = "typical" as const;
+  const typicalGroup =
+    src.role === "typical" && src.typicalGroup ? src.typicalGroup : existingGroup;
   p.stories.push({
     id,
     name: index <= 0 ? `R+${n}` : `R+${n}`,
     elevation: src.elevation + src.height,
     height: src.height,
     finishFloor: src.finishFloor,
+    role,
+    typicalGroup,
+    detached: false,
   });
   const wallMap = new Map<string, string>();
   for (const w of p.walls.filter((x) => x.storyId === fromId)) {

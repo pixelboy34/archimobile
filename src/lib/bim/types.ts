@@ -184,12 +184,20 @@ export type SeismicZone = "1" | "2" | "3" | "4" | "5";
 export type WindRegion = "1" | "2" | "3" | "4" | "5";
 export type ClimateZone = "H1" | "H2" | "H3";
 
+export type StoryRole = "basement" | "ground" | "typical" | "attic";
+
 export interface Story {
   id: string;
   name: string;
   elevation: number;
   height: number;
   finishFloor?: number;
+  /** Structural role in the building stack (SS / RDC / type / attique). */
+  role?: StoryRole;
+  /** Same id = live-linked typical floors (étage type vivant). */
+  typicalGroup?: string;
+  /** User unlinked this floor — exception inside the typical stack. */
+  detached?: boolean;
 }
 
 export interface Wall {

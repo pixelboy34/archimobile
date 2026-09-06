@@ -165,3 +165,48 @@ describe("construction phasing", () => {
     assert.equal(visibleAt(3, 6), false);
   });
 });
+
+
+describe("étage type vivant", () => {
+  it("infers roles and live-syncs typical siblings only", async () => {
+    const { inferStoryRoles, syncTypicalFrom, isLiveTypical, typicalGroupSize, setStoryDetached, markStoryRole } =
+      await import("../cad/typical.ts");
+    const { generateMassing } = await import("../cad/massing.ts");
+    const { emptyProject } = await import("./builder.ts");
+
+    let p = emptyProject("Tour");
+    p = generateMassing(p, { width: 18, depth: 14, floors: 5, floorHeight: 2.8, groundHeight: 3.2 });
+    p = inferStoryRoles(p);
+
+    const roles = p.stories.map((s) => s.role);
+    assert.equal(roles[0], "ground");
+    assert.ok(roles.slice(1).every((r) => r === "typical"));
+    const typ = p.stories[2]!;
+    assert.equal(isLiveTypical(typ), true);
+    assert.ok(typicalGroupSize(p, typ.id) >= 3);
+
+    // Move a window on R+2 (stories[2]) — sync to other typicals, not RDC
+    const typWalls = p.walls.filter((w) => w.storyId === typ.id);
+    const win = p.openings.find((o) => typWalls.some((w) => w.id === o.wallId) && o.kind === "window");
+    assert.ok(win);
+    p.openings = p.openings.map((o) => (o.id === win!.id ? { ...o, t: 0.22 } : o));
+    p = syncTypicalFrom(p, typ.id);
+
+    const rdcId = p.stories[0]!.id;
+    const rdcWalls = new Set(p.walls.filter((w) => w.storyId === rdcId).map((w) => w.id));
+    const rdcWinTs = p.openings.filter((o) => rdcWalls.has(o.wallId) && o.kind === "window").map((o) => o.t);
+    assert.ok(rdcWinTs.every((t) => Math.abs(t - 0.22) > 0.01), "RDC must stay unchanged");
+
+    for (const st of p.stories.filter((s) => s.role === "typical" && !s.detached)) {
+      if (st.id === typ.id) continue;
+      const walls = p.walls.filter((w) => w.storyId === st.id);
+      const synced = p.openings.find((o) => walls.some((w) => w.id === o.wallId) && o.kind === "window" && Math.abs(o.t - 0.22) < 0.001);
+      assert.ok(synced, `typical ${st.name} should receive synced window`);
+    }
+
+    p = setStoryDetached(p, typ.id, true);
+    assert.equal(isLiveTypical(p.stories.find((s) => s.id === typ.id)), false);
+    p = markStoryRole(p, p.stories[p.stories.length - 1]!.id, "attic");
+    assert.equal(p.stories[p.stories.length - 1]!.role, "attic");
+  });
+});

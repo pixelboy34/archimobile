@@ -39,6 +39,7 @@ import { healWallEnds } from "@/lib/cad/ops";
 import { massingFootprintHint } from "@/lib/cad/massing";
 import { formatMeters } from "@/lib/utils";
 import { useStudio } from "@/lib/store/project-store";
+import { isLiveTypical, typicalGroupSize } from "@/lib/cad/typical";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -423,6 +424,10 @@ export function StoriesPanel() {
   const addBasement = useStudio((s) => s.addBasement);
   const addMassing = useStudio((s) => s.addMassing);
   const propagateTypical = useStudio((s) => s.propagateTypical);
+  const detachStory = useStudio((s) => s.detachStory);
+  const linkStory = useStudio((s) => s.linkStory);
+  const markStoryAttic = useStudio((s) => s.markStoryAttic);
+  const markStoryGround = useStudio((s) => s.markStoryGround);
   const commit = useStudio((s) => s.commit);
   const [spanW, setSpanW] = useState(18);
   const [spanD, setSpanD] = useState(16);
@@ -472,6 +477,9 @@ export function StoriesPanel() {
         <p className="text-sm">
           <span className="font-display font-semibold">{project.stories.length}</span>
           <span className="text-muted"> niveaux</span>
+          {typicalGroupSize(project, active) > 1 && isLiveTypical(project.stories.find((s) => s.id === active)) && (
+            <span className="ml-2 text-[11px] font-medium text-accent">{typicalGroupSize(project, active)} types liés</span>
+          )}
         </p>
         <p className="font-mono text-xs text-muted tabular">{tall.toFixed(1)} m hors sol</p>
       </div>
@@ -608,6 +616,82 @@ export function StoriesPanel() {
           <Param label="Hauteur sous plafond" value={st.height} min={2.2} max={12} step={0.05} onBegin={beginEdit} onChange={(v) => patchStory(st.id, { height: v })} />
           {i === 0 && (
             <Param label="Niveau 0" value={st.elevation} min={-12} max={40} step={0.05} onBegin={beginEdit} onChange={(v) => patchStory(st.id, { elevation: v })} />
+          )}
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {st.role === "typical" && !st.detached && (
+              <button
+                type="button"
+                className="h-9 rounded-full bg-accent/15 px-3 text-[11px] font-medium text-accent"
+                title="Délier cet étage du groupe type"
+                onClick={() => {
+                  detachStory(st.id);
+                  toast.message("Étage délié — exception");
+                }}
+              >
+                Lié
+              </button>
+            )}
+            {st.role === "typical" && st.detached && (
+              <button
+                type="button"
+                className="h-9 rounded-full bg-elevated px-3 text-[11px] font-medium text-muted"
+                title="Relier au groupe type"
+                onClick={() => {
+                  linkStory(st.id);
+                  toast.success("Étage relié au type");
+                }}
+              >
+                Relier
+              </button>
+            )}
+            {st.role === "typical" && !st.detached && (
+              <button
+                type="button"
+                className="h-9 rounded-full bg-elevated px-3 text-[11px] font-medium text-muted"
+                onClick={() => {
+                  detachStory(st.id);
+                  toast.message("Étage délié — exception");
+                }}
+              >
+                Délier
+              </button>
+            )}
+            {st.role !== "attic" && (
+              <button
+                type="button"
+                className="h-9 rounded-full bg-elevated px-3 text-[11px] font-medium text-muted"
+                onClick={() => {
+                  markStoryAttic(st.id);
+                  toast.message("Marqué attique");
+                }}
+              >
+                Marquer attique
+              </button>
+            )}
+            {st.role !== "ground" && st.role !== "basement" && (
+              <button
+                type="button"
+                className="h-9 rounded-full bg-elevated px-3 text-[11px] font-medium text-muted"
+                onClick={() => {
+                  markStoryGround(st.id);
+                  toast.message("Marqué RDC");
+                }}
+              >
+                Marquer RDC
+              </button>
+            )}
+            {st.role === "attic" && (
+              <span className="inline-flex h-9 items-center rounded-full bg-elevated px-3 text-[11px] text-muted">Attique</span>
+            )}
+            {st.role === "ground" && (
+              <span className="inline-flex h-9 items-center rounded-full bg-elevated px-3 text-[11px] text-muted">RDC</span>
+            )}
+            {st.role === "basement" && (
+              <span className="inline-flex h-9 items-center rounded-full bg-elevated px-3 text-[11px] text-muted">SS</span>
+            )}
+          </div>
+          {isLiveTypical(st) && typicalGroupSize(project, st.id) > 1 && st.id === active && (
+            <p className="mt-2 text-[11px] text-accent">Édition → {typicalGroupSize(project, st.id)} étages types</p>
           )}
           {project.stories.length > 1 && (
             <Button variant="ghost" size="sm" className="mt-2 text-danger" onClick={() => removeStory(st.id)}>

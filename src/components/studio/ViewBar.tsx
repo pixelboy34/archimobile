@@ -2,6 +2,7 @@ import { ChevronLeft, ChevronRight, CopyPlus, Layers, Plus } from "lucide-react"
 import { toast } from "sonner";
 import type { Project, ViewMode } from "@/lib/bim/types";
 import { useStudio } from "@/lib/store/project-store";
+import { isLiveTypical, typicalGroupSize } from "@/lib/cad/typical";
 
 export function ViewBar({
   project,
@@ -26,6 +27,8 @@ export function ViewBar({
   const propagateTypical = useStudio((s) => s.propagateTypical);
   const active = storyId ?? project.stories[0]?.id;
   const idx = Math.max(0, project.stories.findIndex((s) => s.id === active));
+  const linkedN = typicalGroupSize(project, active);
+  const activeStory = project.stories.find((s) => s.id === active);
   const simple = skill === "simple";
   if (workspace !== "modele" && view !== "ar") return null;
 
@@ -92,6 +95,7 @@ export function ViewBar({
               className={`hud-chip ${st.id === active ? "hud-chip-on" : ""}`}
             >
               {st.name}
+              {isLiveTypical(st) && typicalGroupSize(project, st.id) > 1 ? "↔" : ""}
             </button>
           ))
         )}
@@ -104,10 +108,15 @@ export function ViewBar({
             {isolateStory ? "Seul" : "Tous"}
           </button>
         )}
+        {linkedN > 1 && isLiveTypical(activeStory) && (
+          <span className="hud-chip hud-chip-on gap-1" title="Étages types liés en direct">
+            {linkedN} types liés
+          </span>
+        )}
         {project.stories.length > 1 && (
           <button
             type="button"
-            title="Propager cet étage"
+            title="Propager cet étage vers les types (hors SS / attique)"
             onClick={() => {
               propagateTypical();
               toast.success("Étage type propagé");
