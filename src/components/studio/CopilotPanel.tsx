@@ -1,12 +1,20 @@
-import { useState } from "react";
-import { Sparkles } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Sparkles, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { askArchitect, generateBuilding } from "@/lib/ai/copilot";
+import {
+  AGENT_CHIPS,
+  parseAgentIntent,
+  projectHasWalls,
+  type AgentId,
+  type AgentOpts,
+} from "@/lib/ai/agents";
 import { fallbackDraftFromPrompt, projectFromAiDraft } from "@/lib/bim/seed";
 import { analyzeProject } from "@/lib/bim/analysis";
 import { useStudio } from "@/lib/store/project-store";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
 const PRESETS = [
   "Maison 120 m², 3 chambres, séjour sud, cuisine ouverte, toit plat.",
@@ -18,9 +26,44 @@ const PRESETS = [
 export function CopilotPanel({ onApplied }: { onApplied?: () => void }) {
   const addProject = useStudio((s) => s.addProject);
   const current = useStudio((s) => s.current());
+  const storyId = useStudio((s) => s.storyId);
+  const runAgent = useStudio((s) => s.runAgent);
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
   const [answer, setAnswer] = useState<string | null>(null);
+
+  const hasWalls = useMemo(
+    () => projectHasWalls(current, storyId),
+    [current, storyId],
+  );
+
+  const executeAgent = (id: AgentId, opts?: AgentOpts) => {
+    if (!current) {
+      toast.error("Ouvrez un projet d’abord");
+      return;
+    }
+    const chip = AGENT_CHIPS.find((c) => c.id === id);
+    if (chip?.needsWalls && !hasWalls) {
+      toast.error("Cet agent nécessite des murs sur l’étage actif");
+      return;
+    }
+    setBusy(true);
+    setAnswer(null);
+    try {
+      const report = runAgent(id, { ...opts, storyId });
+      if (!report) {
+        toast.error("Agent impossible");
+        return;
+      }
+      setAnswer(report.summary);
+      toast.success(report.summary);
+      onApplied?.();
+    } catch {
+      toast.error("Échec de l’agent");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const generate = async () => {
     const text = prompt.trim();
@@ -75,16 +118,66 @@ export function CopilotPanel({ onApplied }: { onApplied?: () => void }) {
     }
   };
 
+  const submitPrompt = async () => {
+    const text = prompt.trim();
+    if (!text || busy) return;
+    const intent = parseAgentIntent(text);
+    if (intent.kind === "agent") {
+      if (!current) {
+        toast.error("Ouvrez un projet pour lancer un agent");
+        return;
+      }
+      executeAgent(intent.id, intent.opts);
+      return;
+    }
+    if (intent.kind === "analyze") {
+      await ask();
+      return;
+    }
+    // generate or unknown → massing if no project walls preference: prefer agent path already handled;
+    // Prefer editing current when agent matched (done). Else generate massing.
+    await generate();
+  };
+
   return (
     <div className="flex flex-col gap-4">
+      <div>
+        <p className="font-display text-sm font-semibold text-fg">Agents</p>
+        <p className="mt-0.5 text-xs text-muted">
+          Un tap — mutation locale du projet ouvert (hors ligne). L’IA reste optionnelle.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {AGENT_CHIPS.map((chip) => {
+            const disabled =
+              busy || !current || (chip.needsWalls && !hasWalls);
+            return (
+              <button
+                key={chip.id + chip.label}
+                type="button"
+                disabled={disabled}
+                onClick={() => executeAgent(chip.id, chip.opts)}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                  disabled
+                    ? "cursor-not-allowed border-border/60 bg-elevated/40 text-muted/60"
+                    : "border-accent/40 bg-accent/10 text-accent hover:bg-accent/20 hover:text-fg",
+                )}
+              >
+                {chip.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <p className="text-sm text-muted">
-        Décrivez un programme : l'IA assemble un massing BIM éditable, ou commente le projet ouvert.
+        Phrase libre : l’agent correspondant mute le projet courant ; sinon génération / analyse.
       </p>
       <Textarea
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
-        placeholder="Ex. maison 4 chambres, séjour sud, 160 m², toit terrasse…"
-        rows={4}
+        placeholder="Ex. baies 1,35 m · attique retrait 1,2 · pack T2 · baies sud…"
+        rows={3}
       />
       <div className="flex flex-wrap gap-2">
         {PRESETS.map((p) => (
@@ -99,16 +192,27 @@ export function CopilotPanel({ onApplied }: { onApplied?: () => void }) {
         ))}
       </div>
       <div className="flex gap-2">
-        <Button className="flex-1" onClick={generate} disabled={busy || !prompt.trim()}>
+        <Button className="flex-1" onClick={submitPrompt} disabled={busy || !prompt.trim()}>
+          <Wand2 className="size-4" />
+          {busy ? "Exécution…" : "Lancer"}
+        </Button>
+        <Button
+          variant="outline"
+          onClick={generate}
+          disabled={busy || !prompt.trim()}
+          title="Toujours générer un nouveau massing"
+        >
           <Sparkles className="size-4" />
-          {busy ? "Génération…" : "Générer le massing"}
+          Générer
         </Button>
         <Button variant="outline" onClick={ask} disabled={busy || !current || !prompt.trim()}>
           Analyser
         </Button>
       </div>
       {answer && (
-        <div className="rounded-lg bg-elevated p-3 text-sm leading-relaxed text-fg">{answer}</div>
+        <div className="rounded-lg border border-accent/25 bg-accent/10 p-3 text-sm leading-relaxed text-fg">
+          {answer}
+        </div>
       )}
     </div>
   );

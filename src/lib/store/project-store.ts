@@ -38,6 +38,12 @@ import {
   syncTypicalFrom,
   type StoryRole,
 } from "@/lib/cad/typical";
+import {
+  runAgentTransform,
+  type AgentId,
+  type AgentOpts,
+  type AgentResult,
+} from "@/lib/ai/agents";
 
 const HISTORY_LIMIT = 40;
 
@@ -123,6 +129,7 @@ interface StudioState {
   linkStory: (id: string) => void;
   markStoryAttic: (id: string) => void;
   markStoryGround: (id: string) => void;
+  runAgent: (id: AgentId, opts?: AgentOpts) => AgentResult | null;
   removeStory: (id: string) => void;
   updateMeta: (patch: Partial<Project["meta"]>) => void;
   patchMeta: (patch: Partial<Project["meta"]>) => void;
@@ -705,6 +712,18 @@ export const useStudio = create<StudioState>()(
       },
       markStoryGround: (id) => {
         get().commit((p) => markStoryRoleOp(p, id, "ground" as StoryRole));
+      },
+      runAgent: (id, opts) => {
+        const cur = get().current();
+        const storyId = opts?.storyId ?? get().storyId;
+        if (!cur) return null;
+        let report: AgentResult | null = null;
+        get().commit((p) => {
+          const r = runAgentTransform(id, p, { ...opts, storyId });
+          report = r;
+          return r.project;
+        });
+        return report;
       },
       removeStory: (id) => {
         const s = get();

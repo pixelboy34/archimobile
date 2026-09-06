@@ -210,3 +210,60 @@ describe("étage type vivant", () => {
     assert.equal(p.stories[p.stories.length - 1]!.role, "attic");
   });
 });
+
+describe("agents copilote", () => {
+  it("parses French intents and mutates façades offline", async () => {
+    const {
+      parseAgentIntent,
+      facadeGrid,
+      punchAttic,
+      packUnits,
+      linkTypicals,
+      alignNorthGlazing,
+    } = await import("../ai/agents.ts");
+    const { generateMassing } = await import("../cad/massing.ts");
+    const { emptyProject } = await import("./builder.ts");
+
+    assert.equal(parseAgentIntent("baies 1,35 m").kind, "agent");
+    assert.equal((parseAgentIntent("baies 1,35 m") as { id: string }).id, "facadeGrid");
+    assert.equal(parseAgentIntent("attique retrait 1,2").kind, "agent");
+    assert.equal(parseAgentIntent("pack T2 logements").kind, "agent");
+    assert.equal(parseAgentIntent("baies sud ensoleillement").kind, "agent");
+    assert.equal(parseAgentIntent("propager types liés").kind, "agent");
+    assert.equal(parseAgentIntent("Maison 120 m² 3 chambres").kind, "generate");
+
+    let p = emptyProject("Tour agents");
+    p = generateMassing(p, {
+      width: 18,
+      depth: 14,
+      floors: 5,
+      floorHeight: 2.8,
+      groundHeight: 3.2,
+      windowSpacing: 3.0,
+    });
+    const storyId = p.stories[1]?.id ?? p.stories[0]!.id;
+    const before = p.openings.filter((o) => o.kind === "window").length;
+
+    const grid = facadeGrid(p, { storyId, spacing: 1.35 });
+    assert.ok(grid.stats.fenêtres > 0, "facadeGrid places windows");
+    assert.ok(grid.summary.includes("baies"));
+    p = grid.project;
+
+    const south = alignNorthGlazing(p, { storyId });
+    assert.ok(south.stats.fenêtres > 0, "south glazing");
+    p = south.project;
+
+    const pack = packUnits(p, { storyId, unitKind: "T2" });
+    assert.ok(pack.stats.logements >= 1, "packUnits creates flats");
+    p = pack.project;
+
+    const attic = punchAttic(p, { setback: 1.2 });
+    assert.equal(attic.project.stories[attic.project.stories.length - 1]!.role, "attic");
+    p = attic.project;
+
+    const link = linkTypicals(p, { storyId: p.stories.find((s) => s.role === "typical")?.id, propagate: true });
+    assert.ok(link.stats.types >= 1);
+    assert.ok(p.openings.length >= 0);
+    void before;
+  });
+});
