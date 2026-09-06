@@ -3,12 +3,13 @@
  * Emits ISO-10303-21 STEP text for:
  *   IfcProject, IfcSite, IfcBuilding, IfcBuildingStorey,
  *   IfcWallStandardCase, IfcOpeningElement (optional),
- *   IfcSlab, IfcBuildingElementProxy (furniture).
+ *   IfcSlab, IfcRoof, IfcColumn, IfcStair (or proxy),
+ *   IfcBuildingElementProxy (furniture).
  * Coordinates in meters. Stories map to storeys.
  * Subset only — not a full ArchiCAD / Revit round-trip.
  */
 
-import type { Project, Wall, Opening, Slab, Furniture, Story } from './types'
+import type { Project, Wall, Opening, Slab, Furniture, Story, Roof, Column, Stair } from './types'
 import { wallLength, wallAngle, wallCenter } from './types'
 import { FURNITURE_PRESETS } from './catalog'
 
@@ -198,6 +199,70 @@ function writeFurniture(
   )
 }
 
+
+function writeRoof(
+  w: Writer,
+  roof: Roof,
+  story: Story,
+  ownerId: number,
+  storeyEntityId: number,
+  storeyPlaceId: number,
+  ctxId: number,
+): void {
+  const b = polygonBBox(roof.polygon)
+  const z = story.height // relative to storey: on top of story
+  const place = localPlacement(w, storeyPlaceId, b.cx, b.cy, z, 0)
+  const body = extrudedBox(w, ctxId, b.width, b.depth, Math.max(0.15, roof.ridgeHeight))
+  const roofId = w.push(
+    `IFCROOF('${ifcGuid()}',#${ownerId},'${esc(roof.id)}',$,$,#${place},#${body},$,.NOTDEFINED.)`,
+  )
+  w.push(
+    `IFCRELCONTAINEDINSPATIALSTRUCTURE('${ifcGuid()}',#${ownerId},$,$,(#${roofId}),#${storeyEntityId})`,
+  )
+}
+
+function writeColumn(
+  w: Writer,
+  col: Column,
+  ownerId: number,
+  storeyEntityId: number,
+  storeyPlaceId: number,
+  ctxId: number,
+): void {
+  const place = localPlacement(w, storeyPlaceId, col.position.x, col.position.y, 0, 0)
+  const body = extrudedBox(w, ctxId, col.width, col.depth, Math.max(0.1, col.height))
+  const colId = w.push(
+    `IFCCOLUMN('${ifcGuid()}',#${ownerId},'${esc(col.id)}',$,$,#${place},#${body},$)`,
+  )
+  w.push(
+    `IFCRELCONTAINEDINSPATIALSTRUCTURE('${ifcGuid()}',#${ownerId},$,$,(#${colId}),#${storeyEntityId})`,
+  )
+}
+
+function writeStair(
+  w: Writer,
+  stair: Stair,
+  ownerId: number,
+  storeyEntityId: number,
+  storeyPlaceId: number,
+  ctxId: number,
+): void {
+  const mx = (stair.a.x + stair.b.x) / 2
+  const my = (stair.a.y + stair.b.y) / 2
+  const len = Math.max(0.5, Math.hypot(stair.b.x - stair.a.x, stair.b.y - stair.a.y))
+  const ang = Math.atan2(stair.b.y - stair.a.y, stair.b.x - stair.a.x)
+  const height = Math.max(0.3, stair.rises * 0.18)
+  const place = localPlacement(w, storeyPlaceId, mx, my, 0, ang)
+  const body = extrudedBox(w, ctxId, len, Math.max(0.6, stair.width), height)
+  // Prefer IfcStair; some viewers expect IfcStairFlight — use IfcStair with body
+  const stairId = w.push(
+    `IFCSTAIR('${ifcGuid()}',#${ownerId},'${esc(stair.id)}',$,$,#${place},#${body},$,.STRAIGHT_RUN_STAIR.)`,
+  )
+  w.push(
+    `IFCRELCONTAINEDINSPATIALSTRUCTURE('${ifcGuid()}',#${ownerId},$,$,(#${stairId}),#${storeyEntityId})`,
+  )
+}
+
 /** Generate IFC4 STEP text for a FORMA project (subset). */
 export function exportIfc4(project: Project): string {
   const w = createWriter()
@@ -279,6 +344,25 @@ export function exportIfc4(project: Project): string {
     if (!entry) continue
     writeFurniture(w, item, owner, entry.entityId, entry.placeId, subCtx)
   }
+
+  for (const roof of project.roofs) {
+    const entry = storyMap.get(roof.storyId)
+    if (!entry) continue
+    writeRoof(w, roof, entry.story, owner, entry.entityId, entry.placeId, subCtx)
+  }
+
+  for (const col of project.columns) {
+    const entry = storyMap.get(col.storyId)
+    if (!entry) continue
+    writeColumn(w, col, owner, entry.entityId, entry.placeId, subCtx)
+  }
+
+  for (const stair of project.stairs) {
+    const entry = storyMap.get(stair.storyId)
+    if (!entry) continue
+    writeStair(w, stair, owner, entry.entityId, entry.placeId, subCtx)
+  }
+
 
   const header = [
     'ISO-10303-21;',
