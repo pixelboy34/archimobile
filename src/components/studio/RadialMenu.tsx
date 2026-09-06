@@ -107,7 +107,7 @@ export function RadialMenu({
   const outer = pro ? STRUCT : STRUCT.filter((i) => ["column", "stair", "slab"].includes(i.tool));
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-30 flex items-end justify-center pb-[5.5rem]">
+    <div className="pointer-events-none absolute inset-0 z-30 flex items-end justify-center pb-[7.5rem]">
       <button
         type="button"
         aria-label="Fermer"

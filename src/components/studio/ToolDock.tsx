@@ -55,7 +55,6 @@ export function ToolDock({
   onTool: (t: Tool) => void;
 }) {
   const skill = useStudio((s) => s.skill);
-  // Amateur: hide esquisse avancée + toiture, but keep slab/stair/column reachable
   const groups =
     skill === "simple"
       ? GROUPS.filter((g) => g.id === "edit" || g.id === "draw" || g.id === "struct" || g.id === "obj").map((g) =>
@@ -68,7 +67,7 @@ export function ToolDock({
   return (
     <div className="pointer-events-auto flex max-w-full flex-col items-center gap-1.5">
       {sub.length > 1 && (
-        <div className="flex gap-1 overflow-x-auto bg-surface/95 p-1 shadow-border backdrop-blur-md">
+        <div className="flex gap-1 overflow-x-auto rounded-xl border border-border/70 bg-surface/95 p-1 shadow-border backdrop-blur-md">
           {sub.map((id) => {
             const Icon = ICONS[id] ?? MousePointer2;
             return (
@@ -78,8 +77,8 @@ export function ToolDock({
                 title={TOOL_LABELS[id]}
                 onClick={() => onTool(id)}
                 className={cn(
-                  "flex h-10 min-w-10 items-center justify-center px-3 text-muted transition-colors duration-150",
-                  tool === id ? "bg-primary text-primary-fg" : "hover:text-fg",
+                  "flex h-11 min-w-11 items-center justify-center rounded-lg px-3 text-muted transition-colors duration-150",
+                  tool === id ? "bg-accent text-accent-fg shadow-[0_0_0_1px_rgba(110,208,195,0.45)]" : "hover:bg-elevated hover:text-fg",
                 )}
               >
                 <Icon className="size-4" />
@@ -89,7 +88,7 @@ export function ToolDock({
           })}
         </div>
       )}
-      <div className="flex gap-1 overflow-x-auto bg-surface/95 p-1.5 shadow-border backdrop-blur-md">
+      <div className="flex gap-1 overflow-x-auto rounded-xl border border-border/70 bg-surface/95 p-1.5 shadow-border backdrop-blur-md">
         {groups.map((g) => {
           const Icon = g.icon;
           const on = g.id === active.id;
@@ -102,8 +101,8 @@ export function ToolDock({
                 if (!g.tools.includes(tool)) onTool(g.tools[0]!);
               }}
               className={cn(
-                "flex h-10 min-w-10 flex-col items-center justify-center px-2 text-[10px] tracking-wide text-muted uppercase transition-colors duration-150",
-                on ? "bg-elevated text-accent" : "hover:bg-elevated/70 hover:text-fg",
+                "flex h-11 min-w-11 flex-col items-center justify-center rounded-lg px-2 text-[10px] tracking-wide text-muted uppercase transition-colors duration-150",
+                on ? "bg-elevated text-accent ring-1 ring-accent/40" : "hover:bg-elevated/70 hover:text-fg",
               )}
             >
               <Icon className="size-4" />

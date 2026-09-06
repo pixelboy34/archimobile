@@ -98,7 +98,7 @@ export function Plan2D({
   const drag = useRef<{ x: number; y: number; camX: number; camY: number } | null>(null);
   const hover = useRef<Vec2 | null>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
-  const pinch = useRef<{ dist: number; scale: number } | null>(null);
+  const pinch = useRef<{ dist: number; scale: number; midX: number; midY: number; camX: number; camY: number } | null>(null);
   const draft = useStudio((s) => s.draft);
   const measure = useStudio((s) => s.measure);
   const ortho = useStudio((s) => s.ortho);
@@ -572,6 +572,10 @@ export function Plan2D({
           pinch.current = {
             dist: Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y),
             scale: cam.current.scale,
+            midX: (pts[0]!.x + pts[1]!.x) / 2,
+            midY: (pts[0]!.y + pts[1]!.y) / 2,
+            camX: cam.current.x,
+            camY: cam.current.y,
           };
           return;
         }
@@ -582,7 +586,7 @@ export function Plan2D({
           ink.current = [wp];
           return;
         }
-        if (currentTool === "select" || e.button === 1 || e.altKey) {
+        if (currentTool === "select" || e.button === 1 || e.button === 2 || e.altKey || e.shiftKey) {
           const id = hit(p);
           const now = performance.now();
           if (id && currentTool === "select" && now - lastTap.current < 320) {
@@ -626,6 +630,10 @@ export function Plan2D({
             110,
             Math.max(2.4, pinch.current.scale * (d / pinch.current.dist)),
           );
+          const midX = (pts[0]!.x + pts[1]!.x) / 2;
+          const midY = (pts[0]!.y + pts[1]!.y) / 2;
+          cam.current.x = pinch.current.camX - (midX - pinch.current.midX) / cam.current.scale;
+          cam.current.y = pinch.current.camY + (midY - pinch.current.midY) / cam.current.scale;
           return;
         }
         if (drag.current) {

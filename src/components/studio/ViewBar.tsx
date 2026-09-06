@@ -16,12 +16,6 @@ export function ViewBar({
   const setStory = useStudio((s) => s.setStory);
   const isolateStory = useStudio((s) => s.isolateStory);
   const setIsolateStory = useStudio((s) => s.setIsolateStory);
-  const snap = useStudio((s) => s.snap);
-  const grid = useStudio((s) => s.grid);
-  const ortho = useStudio((s) => s.ortho);
-  const setSnap = useStudio((s) => s.setSnap);
-  const setGrid = useStudio((s) => s.setGrid);
-  const setOrtho = useStudio((s) => s.setOrtho);
   const skill = useStudio((s) => s.skill);
   const physics = useStudio((s) => s.physics);
   const setPhysics = useStudio((s) => s.setPhysics);
@@ -107,19 +101,6 @@ export function ViewBar({
             <Layers className="size-3.5" />
             {isolateStory ? "Seul" : "Tous"}
           </button>
-        )}
-        {view === "plan" && (
-          <>
-            <button type="button" onClick={() => setSnap(!snap)} className={`hud-chip ${snap ? "hud-chip-on" : ""}`}>
-              Aimant
-            </button>
-            <button type="button" onClick={() => setGrid(!grid)} className={`hud-chip ${grid ? "hud-chip-on" : ""}`}>
-              Grille
-            </button>
-            <button type="button" onClick={() => setOrtho(!ortho)} className={`hud-chip ${ortho ? "hud-chip-on" : ""}`}>
-              Ortho
-            </button>
-          </>
         )}
         {(view === "3d" || view === "coupe") && (
           <button type="button" onClick={() => setShowStructure(!showStructure)} className={`hud-chip ${showStructure ? "hud-chip-on" : ""}`}>

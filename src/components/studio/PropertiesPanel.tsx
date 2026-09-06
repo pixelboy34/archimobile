@@ -421,14 +421,48 @@ export function StoriesPanel() {
   const setIsolateStory = useStudio((s) => s.setIsolateStory);
   const addBasement = useStudio((s) => s.addBasement);
   const addMassing = useStudio((s) => s.addMassing);
+  const propagateTypical = useStudio((s) => s.propagateTypical);
   const commit = useStudio((s) => s.commit);
   const [spanW, setSpanW] = useState(18);
   const [spanD, setSpanD] = useState(16);
   const [floors, setFloors] = useState(8);
   const [hsp, setHsp] = useState(2.8);
+  const [groundH, setGroundH] = useState(3.2);
+  const [winSpacing, setWinSpacing] = useState(3.0);
+  const [winSill, setWinSill] = useState(0.9);
+  const [winW, setWinW] = useState(1.4);
+  const [winH, setWinH] = useState(1.4);
+  const [columns, setColumns] = useState(true);
+  const [colSpan, setColSpan] = useState(5.5);
+  const [roofKind, setRoofKind] = useState<"flat" | "shed" | "gable">("flat");
+  const [coreSide, setCoreSide] = useState<"center" | "left" | "right" | "back">("center");
+  const [balconyDepth, setBalconyDepth] = useState(1.1);
+  const [setback, setSetback] = useState(0);
   if (!project) return null;
   const active = storyId ?? project.stories[0]?.id;
   const tall = project.stories.reduce((h, st) => h + st.height, 0);
+  const rLabel = floors <= 1 ? "RDC" : `R+${floors - 1}`;
+
+  const runMassing = () => {
+    addMassing({
+      width: spanW,
+      depth: spanD,
+      floors,
+      floorHeight: hsp,
+      groundHeight: groundH,
+      windowSpacing: winSpacing,
+      windowSill: winSill,
+      windowWidth: winW,
+      windowHeight: winH,
+      columns,
+      columnSpacing: colSpan,
+      roofKind,
+      coreSide,
+      balconyDepth,
+      setback,
+    });
+    toast.success(`${rLabel} généré`);
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -439,13 +473,67 @@ export function StoriesPanel() {
         </p>
         <p className="font-mono text-xs text-muted tabular">{tall.toFixed(1)} m hors sol</p>
       </div>
-      <Section title="Volume immeuble">
-        <p className="text-xs text-muted">Emprise, noyau, étages types — jusqu’à R+80.</p>
+      <Section title="Nouvel immeuble">
+        <p className="text-xs text-muted">Volume A→Z — façades, poteaux, toiture, noyau. Jusqu’à R+80.</p>
         <Param label="Largeur" value={spanW} min={8} max={60} step={0.5} onBegin={beginEdit} onChange={setSpanW} />
         <Param label="Profondeur" value={spanD} min={8} max={50} step={0.5} onBegin={beginEdit} onChange={setSpanD} />
         <Param label="Étages" value={floors} min={1} max={80} step={1} unit="" digits={0} onBegin={beginEdit} onChange={setFloors} />
+        <Param label="HSP RDC" value={groundH} min={2.4} max={6} step={0.05} onBegin={beginEdit} onChange={setGroundH} />
         <Param label="HSP courant" value={hsp} min={2.4} max={5} step={0.05} onBegin={beginEdit} onChange={setHsp} />
-        <Button onClick={() => addMassing({ width: spanW, depth: spanD, floors, floorHeight: hsp })}>Générer le volume</Button>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[11px] tracking-wide text-muted uppercase">Noyau</span>
+          <div className="grid grid-cols-4 gap-1">
+            {([
+              ["center", "Centre"],
+              ["left", "Gauche"],
+              ["right", "Droite"],
+              ["back", "Fond"],
+            ] as const).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setCoreSide(id)}
+                className={`h-11 text-[11px] font-medium ${coreSide === id ? "bg-accent text-accent-fg" : "bg-elevated text-muted"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[11px] tracking-wide text-muted uppercase">Toiture</span>
+          <div className="grid grid-cols-3 gap-1">
+            {([
+              ["flat", "Plate"],
+              ["shed", "1 pente"],
+              ["gable", "2 pentes"],
+            ] as const).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setRoofKind(id)}
+                className={`h-11 text-[11px] font-medium ${roofKind === id ? "bg-accent text-accent-fg" : "bg-elevated text-muted"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <More>
+          <Param label="Module fenêtres" value={winSpacing} min={1.6} max={6} step={0.1} onBegin={beginEdit} onChange={setWinSpacing} />
+          <Param label="Allège" value={winSill} min={0.2} max={1.4} step={0.05} onBegin={beginEdit} onChange={setWinSill} />
+          <Param label="L fenêtre" value={winW} min={0.8} max={2.8} step={0.05} onBegin={beginEdit} onChange={setWinW} />
+          <Param label="H fenêtre" value={winH} min={0.8} max={2.6} step={0.05} onBegin={beginEdit} onChange={setWinH} />
+          <Param label="Balcon" value={balconyDepth} min={0} max={2.4} step={0.1} onBegin={beginEdit} onChange={setBalconyDepth} />
+          <Param label="Retrait façade" value={setback} min={0} max={6} step={0.25} onBegin={beginEdit} onChange={setSetback} />
+          <ToggleRow label="Poteaux structure" on={columns} onChange={setColumns} />
+          {columns && (
+            <Param label="Trame poteaux" value={colSpan} min={3.5} max={8} step={0.25} onBegin={beginEdit} onChange={setColSpan} />
+          )}
+        </More>
+        <Button variant="accent" onClick={runMassing}>
+          Générer {rLabel}
+        </Button>
       </Section>
       <div className="grid grid-cols-2 gap-2">
         <Button variant="outline" onClick={() => addStory()}>+ Étage</Button>
@@ -476,6 +564,15 @@ export function StoriesPanel() {
           Soigner jonctions
         </Button>
       </div>
+      <Button
+        variant="outline"
+        onClick={() => {
+          propagateTypical();
+          toast.success("Étage type propagé vers le haut");
+        }}
+      >
+        Appliquer l’étage actif aux étages types
+      </Button>
       <div>
         <p className="mb-2 text-xs tracking-wide text-muted uppercase">Empiler l’étage actif</p>
         <div className="flex flex-wrap gap-1.5">

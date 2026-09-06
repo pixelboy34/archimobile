@@ -14,6 +14,7 @@ import {
   Hammer,
   Sun,
   Download,
+  Building2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Toaster } from "sonner";
@@ -30,7 +31,6 @@ import { ConstructPanel } from "./ConstructPanel";
 import { CopilotPanel } from "./CopilotPanel";
 import { HelpPanel } from "./HelpPanel";
 import { Joystick } from "./Joystick";
-import { InspectorPeek } from "./InspectorPeek";
 import { LibraryStrip } from "./LibraryStrip";
 import { LayersPanel } from "./LayersPanel";
 import { MaterialsPanel } from "./MaterialsPanel";
@@ -48,6 +48,7 @@ import { StudioHud } from "./StudioHud";
 import { ToolDock } from "./ToolDock";
 import { ViewBar } from "./ViewBar";
 import { Viewfinder } from "./Viewfinder";
+import { ManipulationBar } from "./ManipulationBar";
 
 const WORKSPACES: { id: WorkspaceMode; label: string }[] = [
   { id: "esquisse", label: "Esq" },
@@ -67,10 +68,6 @@ export function StudioShell({ projectId }: { projectId: string }) {
   const selectedIds = useStudio((s) => s.selectedIds);
   const snap = useStudio((s) => s.snap);
   const grid = useStudio((s) => s.grid);
-  const setSnap = useStudio((s) => s.setSnap);
-  const setGrid = useStudio((s) => s.setGrid);
-  const showStructure = useStudio((s) => s.showStructure);
-  const setShowStructure = useStudio((s) => s.setShowStructure);
   const sunHour = useStudio((s) => s.sunHour);
   const clipY = useStudio((s) => s.clipY);
   const setTool = useStudio((s) => s.setTool);
@@ -90,6 +87,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
   const playing = useStudio((s) => s.playing);
   const duplicateSelected = useStudio((s) => s.duplicateSelected);
   const rotateSelected = useStudio((s) => s.rotateSelected);
+  const moveSelected = useStudio((s) => s.moveSelected);
   const setDraft = useStudio((s) => s.setDraft);
   const setMeasure = useStudio((s) => s.setMeasure);
   const isolateStory = useStudio((s) => s.isolateStory);
@@ -177,11 +175,24 @@ export function StudioShell({ projectId }: { projectId: string }) {
       } else if (e.key === "o" || e.key === "O") {
         const s = useStudio.getState();
         s.setOrtho(!s.ortho);
+      } else if (
+        e.key === "ArrowLeft" ||
+        e.key === "ArrowRight" ||
+        e.key === "ArrowUp" ||
+        e.key === "ArrowDown"
+      ) {
+        const s = useStudio.getState();
+        if (!s.selectedIds.length) return;
+        const step = e.shiftKey ? 0.5 : 0.1;
+        e.preventDefault();
+        const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+        const dy = e.key === "ArrowUp" ? step : e.key === "ArrowDown" ? -step : 0;
+        moveSelected(dx, dy);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [deleteSelected, undo, redo, duplicateSelected, rotateSelected, setDraft, setMeasure, setTool]);
+  }, [deleteSelected, undo, redo, duplicateSelected, rotateSelected, moveSelected, setDraft, setMeasure, setTool]);
 
   if (!hydrated) {
     return (
@@ -257,18 +268,31 @@ export function StudioShell({ projectId }: { projectId: string }) {
 
         {current.walls.length === 0 && tool === "select" && (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6">
-            <div className="max-w-sm rounded-xl border border-border bg-surface/90 px-5 py-4 text-center">
+            <div className="pointer-events-auto max-w-sm rounded-xl border border-accent/35 bg-surface/95 px-5 py-5 text-center shadow-border">
               <p className="font-display text-base font-semibold">Esquisse vide</p>
               <p className="mt-2 text-sm text-muted">
-                Choisissez Mur et tapez deux points, ou laissez l’IA générer un massing.
+                Tracez un mur, ou générez un immeuble complet (façades, poteaux, toiture).
               </p>
+              <button
+                type="button"
+                onClick={() => setInspector("niveaux")}
+                className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-accent text-sm font-semibold text-accent-fg"
+              >
+                <Building2 className="size-4" />
+                Nouvel immeuble
+              </button>
+              <button
+                type="button"
+                onClick={() => setTool("wall")}
+                className="mt-2 h-11 w-full rounded-lg bg-elevated text-sm text-muted"
+              >
+                Tracer un mur
+              </button>
             </div>
           </div>
         )}
 
-        {selectedIds.length > 0 && tool === "select" && !inspector && (
-          <InspectorPeek onOpen={() => setInspector("ouvrage")} />
-        )}
+        {/* ManipulationBar remplace InspectorPeek pour les actions de sélection */}
 
         {view === "coupe" && (
           <div className="pointer-events-auto absolute top-[calc(env(safe-area-inset-top)+7.5rem)] right-3 left-3 rounded-lg border border-border bg-surface/90 px-3 py-2">
@@ -339,17 +363,23 @@ export function StudioShell({ projectId }: { projectId: string }) {
 
         {!inspector && (
         <div className="pointer-events-none absolute right-0 bottom-0 left-0 z-20">
-          <div className="pointer-events-auto flex items-end justify-center gap-2 bg-gradient-to-t from-bg/80 via-bg/25 to-transparent px-3 pt-6 pb-[max(0.4rem,env(safe-area-inset-bottom))]">
-            <ToolDock tool={tool} onTool={setTool} />
-            <button
-              type="button"
-              aria-label="Studio"
-              onClick={() => setRadial((v) => !v)}
-              className="flex size-12 shrink-0 flex-col items-center justify-center bg-surface/95 text-fg shadow-border"
-            >
-              <LayoutGrid className="size-4" />
-              <span className="text-[9px] tracking-wide text-muted uppercase">Studio</span>
-            </button>
+          <div className="pointer-events-auto flex flex-col items-center gap-2 bg-gradient-to-t from-bg/80 via-bg/25 to-transparent px-3 pt-6 pb-[max(0.4rem,env(safe-area-inset-bottom))]">
+            <ManipulationBar
+              onParams={() => setInspector(selectedIds.length ? "ouvrage" : "niveaux")}
+              onMaterial={() => setPanel("mats")}
+            />
+            <div className="flex items-end justify-center gap-2">
+              <ToolDock tool={tool} onTool={setTool} />
+              <button
+                type="button"
+                aria-label="Studio"
+                onClick={() => setRadial((v) => !v)}
+                className="flex size-12 shrink-0 flex-col items-center justify-center rounded-xl border border-border/70 bg-surface/95 text-fg shadow-border"
+              >
+                <LayoutGrid className="size-4" />
+                <span className="text-[9px] tracking-wide text-muted uppercase">Studio</span>
+              </button>
+            </div>
           </div>
         </div>
         )}
@@ -362,6 +392,17 @@ export function StudioShell({ projectId }: { projectId: string }) {
       <Sheet open={panel === "studio"} onOpenChange={(o) => !o && setPanel(null)}>
         <SheetContent title="Studio">
           <div className="flex flex-col gap-4">
+            <button
+              type="button"
+              onClick={() => {
+                setPanel(null);
+                setInspector("niveaux");
+              }}
+              className="flex h-14 items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-accent-fg"
+            >
+              <Building2 className="size-5" />
+              Nouvel immeuble / Volume
+            </button>
             {[
               {
                 title: "Modèle",

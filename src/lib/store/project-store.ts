@@ -29,7 +29,7 @@ import { uid } from "@/lib/utils";
 import { DEFAULT_LIGHTING, type Lighting } from "@/lib/render/lighting";
 import { DEFAULT_NAV, type NavPrefs } from "@/lib/nav/prefs";
 import { addRectWalls, copyStory as duplicateStoryLevel, healWallEnds, orthoPoint, repeatStories as stackStories, restackStories, splitWallAt as splitWallOp, syncStoryGeometry, translateSelection } from "@/lib/cad/ops";
-import { generateMassing, insertBasement, nameStories, type MassingOpts } from "@/lib/cad/massing";
+import { generateMassing, insertBasement, nameStories, propagateTypicalFloor, type MassingOpts } from "@/lib/cad/massing";
 
 const HISTORY_LIMIT = 40;
 
@@ -109,6 +109,7 @@ interface StudioState {
   repeatStories: (count: number) => void;
   addBasement: () => void;
   addMassing: (opts: MassingOpts) => void;
+  propagateTypical: () => void;
   removeStory: (id: string) => void;
   updateMeta: (patch: Partial<Project["meta"]>) => void;
   patchMeta: (patch: Partial<Project["meta"]>) => void;
@@ -607,8 +608,23 @@ export const useStudio = create<StudioState>()(
       addMassing: (opts) => {
         get().commit((p) => generateMassing(p, opts));
         const cur = get().current();
-        const last = cur?.stories[cur.stories.length - 1];
-        if (last) set({ storyId: last.id, isolateStory: false });
+        const first = cur?.stories[0];
+        const floors = cur?.stories.length ?? 1;
+        set({
+          storyId: first?.id ?? get().storyId,
+          isolateStory: false,
+          selectedIds: [],
+          view: "3d",
+          workspace: "modele",
+          tool: "select",
+        });
+        void floors;
+      },
+      propagateTypical: () => {
+        const sid = get().storyId;
+        if (!sid) return;
+        get().commit((p) => propagateTypicalFloor(p, sid));
+        set({ isolateStory: false, selectedIds: [] });
       },
       removeStory: (id) => {
         const s = get();
@@ -829,6 +845,9 @@ export const useStudio = create<StudioState>()(
           );
           p.stairs = p.stairs.map((st) =>
             ids.includes(st.id) ? { ...st, direction: st.direction + delta } : st,
+          );
+          p.columns = p.columns.map((c) =>
+            ids.includes(c.id) ? { ...c, rotation: (c.rotation ?? 0) + delta } : c,
           );
           return p;
         });
