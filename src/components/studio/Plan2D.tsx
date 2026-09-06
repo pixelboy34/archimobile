@@ -4,6 +4,7 @@ import { OBJECT_MESH } from "@/lib/bim/catalog";
 import {
   dist,
   distToSegment,
+  findWallAt,
   pointInPolygon,
   polygonCentroid,
   projectBounds,
@@ -385,6 +386,35 @@ export function Plan2D({
         ctx.strokeStyle = snap.kind === "none" ? "#5c5a54" : "#7a9e96";
         ctx.lineWidth = 1.5;
         ctx.stroke();
+      }
+      if (hover.current && (model.current.tool === "window" || model.current.tool === "door")) {
+        const hit = findWallAt(proj, sid, hover.current, 0.6);
+        if (hit) {
+          const wall = hit.wall;
+          const off = wallNormalOffset(wall);
+          const px = wall.a.x + (wall.b.x - wall.a.x) * hit.t + off.x;
+          const py = wall.a.y + (wall.b.y - wall.a.y) * hit.t + off.y;
+          const ang = wallAngle(wall);
+          const sc = cam.current.scale;
+          const ow = model.current.tool === "door" ? 0.9 : 1.4;
+          const s = toS({ x: px, y: py });
+          ctx.save();
+          ctx.translate(s.x, s.y);
+          ctx.rotate(-ang);
+          ctx.globalAlpha = 0.55;
+          ctx.strokeStyle = "#6ed0c3";
+          ctx.fillStyle = "rgba(110, 208, 195, 0.18)";
+          ctx.lineWidth = 2;
+          ctx.fillRect((-ow * sc) / 2, -5, ow * sc, 10);
+          ctx.strokeRect((-ow * sc) / 2, -5, ow * sc, 10);
+          ctx.restore();
+          ctx.globalAlpha = 1;
+          // façade snap hint
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, 4, 0, Math.PI * 2);
+          ctx.fillStyle = "#6ed0c3";
+          ctx.fill();
+        }
       }
       if (meas) {
         const a = toS(meas.a);

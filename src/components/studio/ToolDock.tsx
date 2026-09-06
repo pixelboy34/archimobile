@@ -47,6 +47,25 @@ const ICONS: Partial<Record<Tool, LucideIcon>> = {
   furniture: Sofa,
 };
 
+/** Short visible labels under icons (Expert). */
+const TOOL_SHORT: Record<Tool, string> = {
+  select: "Sél.",
+  measure: "Cote",
+  delete: "Effacer",
+  pen: "Trait",
+  survey: "Relevé",
+  wall: "Mur",
+  rect: "Rect.",
+  door: "Porte",
+  window: "Fen.",
+  room: "Pièce",
+  column: "Poteau",
+  stair: "Esc.",
+  slab: "Dalle",
+  roof: "Toit",
+  furniture: "Objet",
+};
+
 export function ToolDock({
   tool,
   onTool,
@@ -55,6 +74,7 @@ export function ToolDock({
   onTool: (t: Tool) => void;
 }) {
   const skill = useStudio((s) => s.skill);
+  const expert = skill === "pro";
   const groups =
     skill === "simple"
       ? GROUPS.filter((g) => g.id === "edit" || g.id === "draw" || g.id === "struct" || g.id === "obj").map((g) =>
@@ -77,12 +97,19 @@ export function ToolDock({
                 title={TOOL_LABELS[id]}
                 onClick={() => onTool(id)}
                 className={cn(
-                  "flex h-11 min-w-11 items-center justify-center rounded-lg px-3 text-muted transition-colors duration-150",
+                  "flex min-w-11 items-center justify-center rounded-lg px-2 text-muted transition-colors duration-150",
+                  expert ? "h-12 flex-col gap-0.5 py-1" : "h-11",
                   tool === id ? "bg-accent text-accent-fg shadow-[0_0_0_1px_rgba(110,208,195,0.45)]" : "hover:bg-elevated hover:text-fg",
                 )}
               >
                 <Icon className="size-4" />
-                <span className="sr-only">{TOOL_LABELS[id]}</span>
+                {expert ? (
+                  <span className="max-w-[3.2rem] truncate text-[9px] font-medium leading-none tracking-wide">
+                    {TOOL_SHORT[id]}
+                  </span>
+                ) : (
+                  <span className="sr-only">{TOOL_LABELS[id]}</span>
+                )}
               </button>
             );
           })}

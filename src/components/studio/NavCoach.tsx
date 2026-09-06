@@ -1,22 +1,37 @@
 import { useEffect, useState } from "react";
+import { canShowNavCoach, markNavCoached } from "@/lib/nav/overlays";
 
-const KEY = "forma-nav-coached-v3";
-
-export function NavCoach() {
+export function NavCoach({
+  helpOpen = false,
+  installVisible = false,
+  massingCta = false,
+}: {
+  helpOpen?: boolean;
+  installVisible?: boolean;
+  massingCta?: boolean;
+}) {
   const [open, setOpen] = useState(false);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (window.localStorage.getItem(KEY)) return;
-    const id = window.setTimeout(() => setOpen(true), 400);
+    if (!canShowNavCoach({ helpOpen, installVisible, massingCta })) {
+      setOpen(false);
+      return;
+    }
+    // Less aggressive: wait ~8s after settle
+    const id = window.setTimeout(() => {
+      if (canShowNavCoach({ helpOpen, installVisible, massingCta })) setOpen(true);
+    }, 8000);
     return () => window.clearTimeout(id);
-  }, []);
+  }, [helpOpen, installVisible, massingCta]);
+
   if (!open) return null;
   return (
     <button
       type="button"
       className="pointer-events-auto absolute inset-x-4 top-1/2 z-20 -translate-y-1/2 rounded-2xl border border-accent/40 bg-surface/95 p-4 text-left shadow-border backdrop-blur-md"
       onClick={() => {
-        window.localStorage.setItem(KEY, "1");
+        markNavCoached();
         setOpen(false);
       }}
     >

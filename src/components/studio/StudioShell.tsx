@@ -49,6 +49,12 @@ import { ToolDock } from "./ToolDock";
 import { ViewBar } from "./ViewBar";
 import { Viewfinder } from "./Viewfinder";
 import { ManipulationBar } from "./ManipulationBar";
+import { BuildingAssistant } from "./BuildingAssistant";
+import {
+  deferHelpForMassingCta,
+  markHelpDismissed,
+  shouldAutoOpenHelp,
+} from "@/lib/nav/overlays";
 
 const WORKSPACES: { id: WorkspaceMode; label: string }[] = [
   { id: "esquisse", label: "Esq" },
@@ -94,7 +100,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
   const setIsolateStory = useStudio((s) => s.setIsolateStory);
 
   const [panel, setPanel] = useState<
-    null | "ai" | "mats" | "chantier" | "help" | "studio" | "ouvrages" | "struct" | "layers" | "analyse"
+    null | "ai" | "mats" | "chantier" | "help" | "studio" | "ouvrages" | "struct" | "layers" | "analyse" | "building"
   >(null);
   const [inspector, setInspector] = useState<ParamsTab | null>(null);
   const [radial, setRadial] = useState(false);
@@ -116,14 +122,12 @@ export function StudioShell({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     if (!hydrated || !current) return;
-    if (current.walls.length > 0) return;
-    try {
-      if (sessionStorage.getItem("forma-help") === "1") return;
-      sessionStorage.setItem("forma-help", "1");
-    } catch {
+    // Don't auto-open Guide when massing CTA is visible
+    if (current.walls.length === 0) {
+      deferHelpForMassingCta();
       return;
     }
-    setPanel("help");
+    if (shouldAutoOpenHelp(current.walls.length)) setPanel("help");
   }, [hydrated, current]);
 
   useEffect(() => {
@@ -262,11 +266,17 @@ export function StudioShell({ projectId }: { projectId: string }) {
         {view !== "ar" && <Viewfinder />}
         {view === "visite" && <Joystick />}
         {(view === "3d" || view === "coupe") && workspace === "modele" && <NavPad />}
-        {view === "3d" && workspace === "modele" && <NavCoach />}
+        {view === "3d" && workspace === "modele" && (
+          <NavCoach
+            helpOpen={panel === "help" || panel === "building"}
+            installVisible={false}
+            massingCta={current.walls.length === 0 && tool === "select"}
+          />
+        )}
         {view !== "ar" && <ViewBar project={current} onStories={() => setInspector("niveaux")} />}
         <StudioHud />
 
-        {current.walls.length === 0 && tool === "select" && (
+        {current.walls.length === 0 && tool === "select" && panel === null && !inspector && (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6">
             <div className="pointer-events-auto max-w-sm rounded-xl border border-accent/35 bg-surface/95 px-5 py-5 text-center shadow-border">
               <p className="font-display text-base font-semibold">Esquisse vide</p>
@@ -275,11 +285,11 @@ export function StudioShell({ projectId }: { projectId: string }) {
               </p>
               <button
                 type="button"
-                onClick={() => setInspector("niveaux")}
+                onClick={() => setPanel("building")}
                 className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-accent text-sm font-semibold text-accent-fg"
               >
                 <Building2 className="size-4" />
-                Nouvel immeuble
+                Bâtiment
               </button>
               <button
                 type="button"
@@ -296,8 +306,11 @@ export function StudioShell({ projectId }: { projectId: string }) {
 
         {view === "coupe" && (
           <div className="pointer-events-auto absolute top-[calc(env(safe-area-inset-top)+7.5rem)] right-3 left-3 rounded-lg border border-border bg-surface/90 px-3 py-2">
-            <label className="flex items-center gap-3 text-xs text-muted">
-              Plan de coupe
+            <label className="flex flex-col gap-1.5 text-xs text-muted">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium tracking-wide text-fg uppercase">Hauteur coupe</span>
+                <span className="font-mono text-[11px] tabular text-accent">{Math.round(clipY * 100)} %</span>
+              </div>
               <input
                 type="range"
                 min={0.15}
@@ -305,7 +318,8 @@ export function StudioShell({ projectId }: { projectId: string }) {
                 step={0.02}
                 value={clipY}
                 onChange={(e) => setClipY(Number(e.target.value))}
-                className="flex-1 accent-accent"
+                className="w-full accent-accent"
+                aria-label="Hauteur coupe"
               />
             </label>
           </div>
@@ -387,21 +401,18 @@ export function StudioShell({ projectId }: { projectId: string }) {
           <InspectorDock tab={inspector} onTab={setInspector} onClose={() => setInspector(null)} />
         )}
       </div>
-      <InstallBanner compact />
+      <InstallBanner compact blocked={panel === "help" || panel === "building" || (current.walls.length === 0 && tool === "select")} />
 
       <Sheet open={panel === "studio"} onOpenChange={(o) => !o && setPanel(null)}>
         <SheetContent title="Studio">
           <div className="flex flex-col gap-4">
             <button
               type="button"
-              onClick={() => {
-                setPanel(null);
-                setInspector("niveaux");
-              }}
+              onClick={() => setPanel("building")}
               className="flex h-14 items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-accent-fg"
             >
               <Building2 className="size-5" />
-              Nouvel immeuble / Volume
+              Bâtiment
             </button>
             {[
               {
@@ -487,9 +498,22 @@ export function StudioShell({ projectId }: { projectId: string }) {
           <AnalysisPanel />
         </SheetContent>
       </Sheet>
-      <Sheet open={panel === "help"} onOpenChange={(o) => !o && setPanel(null)}>
+      <Sheet
+        open={panel === "help"}
+        onOpenChange={(o) => {
+          if (!o) {
+            markHelpDismissed();
+            setPanel(null);
+          }
+        }}
+      >
         <SheetContent title="Guide">
           <HelpPanel />
+        </SheetContent>
+      </Sheet>
+      <Sheet open={panel === "building"} onOpenChange={(o) => !o && setPanel(null)}>
+        <SheetContent title="Bâtiment" tall>
+          <BuildingAssistant onDone={() => setPanel(null)} />
         </SheetContent>
       </Sheet>
       <Sheet open={panel === "ai"} onOpenChange={(o) => !o && setPanel(null)}>

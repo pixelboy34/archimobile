@@ -7,7 +7,7 @@ import { OrbitRig } from "./OrbitRig";
 import { WalkController } from "./WalkController";
 import { PhysicsRig } from "./PhysicsRig";
 import { PLAYER_HALF, PLAYER_RADIUS } from "@/lib/physics/rapier-world";
-import { dist, projectBounds, polygonArea, polygonCentroid } from "@/lib/bim/geometry";
+import { dist, findWallAt, projectBounds, polygonArea, polygonCentroid, wallAngle } from "@/lib/bim/geometry";
 import { detectQuality, type RenderQuality } from "@/lib/render/quality";
 import {
   interiorOn,
@@ -196,7 +196,17 @@ function Placement({
   );
 }
 
-function DraftGhost({ elev, height }: { elev: number; height: number }) {
+function DraftGhost({
+  elev,
+  height,
+  project,
+  storyId,
+}: {
+  elev: number;
+  height: number;
+  project: Project;
+  storyId: string;
+}) {
   const draft = useStudio((s) => s.draft);
   const tool = useStudio((s) => s.tool);
   const measure = useStudio((s) => s.measure);
@@ -207,7 +217,7 @@ function DraftGhost({ elev, height }: { elev: number; height: number }) {
   useEffect(() => {
     const el = gl.domElement;
     const move = (e: PointerEvent) => {
-      if (!draft && tool !== "measure") return;
+      if (!draft && tool !== "measure" && tool !== "window" && tool !== "door") return;
       const r = el.getBoundingClientRect();
       const ndcX = ((e.clientX - r.left) / r.width) * 2 - 1;
       const ndcY = -(((e.clientY - r.top) / r.height) * 2 - 1);
@@ -254,6 +264,27 @@ function DraftGhost({ elev, height }: { elev: number; height: number }) {
           <meshBasicMaterial color="#e8e4d9" />
         </mesh>
       )}
+      {b && (tool === "window" || tool === "door") && (() => {
+        const hit = findWallAt(project, storyId, b, 0.6);
+        if (!hit) return null;
+        const wall = hit.wall;
+        const px = wall.a.x + (wall.b.x - wall.a.x) * hit.t;
+        const pz = wall.a.y + (wall.b.y - wall.a.y) * hit.t;
+        const ow = tool === "door" ? 0.9 : 1.4;
+        const oh = tool === "door" ? 2.1 : 1.35;
+        const sill = tool === "door" ? 0 : 0.9;
+        const ang = wallAngle(wall);
+        return (
+          <mesh
+            position={[px, elev + sill + oh / 2, pz]}
+            rotation={[0, -ang, 0]}
+            raycast={noopRaycast}
+          >
+            <boxGeometry args={[ow, oh, Math.max(0.12, wall.thickness + 0.04)]} />
+            <meshLambertMaterial color="#6ed0c3" transparent opacity={0.4} depthWrite={false} />
+          </mesh>
+        );
+      })()}
     </group>
   );
 }
@@ -458,7 +489,7 @@ export function Viewport3D({
           span={span}
         />
       )}
-      <DraftGhost elev={elev} height={storyH} />
+      <DraftGhost elev={elev} height={storyH} project={project} storyId={story?.id ?? project.stories[0]!.id} />
     </Canvas>
   );
 }

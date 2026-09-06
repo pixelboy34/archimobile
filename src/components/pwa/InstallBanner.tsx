@@ -1,7 +1,6 @@
 import { Share, Smartphone, X } from "lucide-react";
 import { useEffect, useState } from "react";
-
-const KEY = "forma-install-dismissed";
+import { canShowInstallBanner, INSTALL_KEY } from "@/lib/nav/overlays";
 
 function isStandalone() {
   if (typeof window === "undefined") return true;
@@ -16,26 +15,45 @@ function isIos() {
   return /iphone|ipad|ipod/i.test(navigator.userAgent);
 }
 
-export function InstallBanner({ compact = false }: { compact?: boolean }) {
+export function InstallBanner({
+  compact = false,
+  blocked = false,
+}: {
+  compact?: boolean;
+  /** Parent says another overlay is active — hide. */
+  blocked?: boolean;
+}) {
   const [show, setShow] = useState(false);
   const [sheet, setSheet] = useState(false);
   const [ios, setIos] = useState(false);
   const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
 
   useEffect(() => {
-    if (isStandalone() || window.localStorage.getItem(KEY)) return;
+    if (isStandalone()) return;
     setIos(isIos());
-    setShow(true);
+    let id = 0;
+    const tryShow = () => {
+      if (!canShowInstallBanner()) return;
+      setShow(true);
+      if (id) window.clearInterval(id);
+    };
+    // Poll briefly until help has been dismissed / deferred
+    id = window.setInterval(tryShow, 800);
+    const boot = window.setTimeout(tryShow, 1400);
     const onPrompt = (e: Event) => {
       e.preventDefault();
       setDeferred(e as BeforeInstallPromptEvent);
     };
     window.addEventListener("beforeinstallprompt", onPrompt);
-    return () => window.removeEventListener("beforeinstallprompt", onPrompt);
+    return () => {
+      window.clearInterval(id);
+      window.clearTimeout(boot);
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+    };
   }, []);
 
   const dismiss = () => {
-    window.localStorage.setItem(KEY, "1");
+    window.localStorage.setItem(INSTALL_KEY, "1");
     setShow(false);
     setSheet(false);
   };
@@ -50,6 +68,7 @@ export function InstallBanner({ compact = false }: { compact?: boolean }) {
     setSheet(true);
   };
 
+  if (blocked) return null;
   if (!show && !sheet) return null;
 
   return (

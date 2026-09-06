@@ -36,6 +36,7 @@ import type { ProjectAnalysis } from "@/lib/bim/analysis";
 import { wallLength } from "@/lib/bim/geometry";
 import { mergeDetectedRooms } from "@/lib/bim/rooms";
 import { healWallEnds } from "@/lib/cad/ops";
+import { massingFootprintHint } from "@/lib/cad/massing";
 import { formatMeters } from "@/lib/utils";
 import { useStudio } from "@/lib/store/project-store";
 import { Button } from "@/components/ui/button";
@@ -441,7 +442,8 @@ export function StoriesPanel() {
   if (!project) return null;
   const active = storyId ?? project.stories[0]?.id;
   const tall = project.stories.reduce((h, st) => h + st.height, 0);
-  const rLabel = floors <= 1 ? "RDC" : `R+${floors - 1}`;
+  const rLabel = massingFootprintHint({ width: spanW, depth: spanD, floors });
+  const tallMass = floors <= 1 ? groundH : groundH + Math.max(0, floors - 1) * hsp;
 
   const runMassing = () => {
     addMassing({
@@ -531,9 +533,17 @@ export function StoriesPanel() {
             <Param label="Trame poteaux" value={colSpan} min={3.5} max={8} step={0.25} onBegin={beginEdit} onChange={setColSpan} />
           )}
         </More>
-        <Button variant="accent" onClick={runMassing}>
-          Générer {rLabel}
-        </Button>
+        <div className="flex flex-col gap-1">
+          <Button variant="accent" onClick={runMassing} className="h-12 flex-col gap-0.5 py-2">
+            <span className="text-sm font-semibold">
+              Générer · {rLabel} ({tallMass.toFixed(1)} m)
+            </span>
+            <span className="text-[10px] font-normal opacity-80">
+              {floors} × HSP · RDC {groundH.toFixed(2)} m
+              {floors > 1 ? ` · courant ${hsp.toFixed(2)} m` : ""}
+            </span>
+          </Button>
+        </div>
       </Section>
       <div className="grid grid-cols-2 gap-2">
         <Button variant="outline" onClick={() => addStory()}>+ Étage</Button>
@@ -568,10 +578,10 @@ export function StoriesPanel() {
         variant="outline"
         onClick={() => {
           propagateTypical();
-          toast.success("Étage type propagé vers le haut");
+          toast.success("Étage type propagé");
         }}
       >
-        Appliquer l’étage actif aux étages types
+        Propager cet étage
       </Button>
       <div>
         <p className="mb-2 text-xs tracking-wide text-muted uppercase">Empiler l’étage actif</p>

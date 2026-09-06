@@ -61,6 +61,8 @@ export function StudioHud() {
           : "Tapez le premier point"
       : tool === "pen"
         ? "Glissez pour esquisser — stylet ou doigt"
+        : tool === "window" || tool === "door"
+          ? "Accroche façade — passez sur un mur pour l’aperçu, tapez pour poser"
         : tool === "furniture"
           ? "Choisissez un objet — tapez pour poser, aligné au mur proche · R pivote"
         : tool === "survey"

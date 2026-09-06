@@ -1,4 +1,5 @@
-import { ChevronLeft, ChevronRight, Layers, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, CopyPlus, Layers, Plus } from "lucide-react";
+import { toast } from "sonner";
 import type { Project, ViewMode } from "@/lib/bim/types";
 import { useStudio } from "@/lib/store/project-store";
 
@@ -22,6 +23,7 @@ export function ViewBar({
   const showStructure = useStudio((s) => s.showStructure);
   const setShowStructure = useStudio((s) => s.setShowStructure);
   const addStory = useStudio((s) => s.addStory);
+  const propagateTypical = useStudio((s) => s.propagateTypical);
   const active = storyId ?? project.stories[0]?.id;
   const idx = Math.max(0, project.stories.findIndex((s) => s.id === active));
   const simple = skill === "simple";
@@ -100,6 +102,20 @@ export function ViewBar({
           <button type="button" onClick={() => setIsolateStory(!isolateStory)} className={`hud-chip gap-1 ${isolateStory ? "hud-chip-on" : ""}`}>
             <Layers className="size-3.5" />
             {isolateStory ? "Seul" : "Tous"}
+          </button>
+        )}
+        {project.stories.length > 1 && (
+          <button
+            type="button"
+            title="Propager cet étage"
+            onClick={() => {
+              propagateTypical();
+              toast.success("Étage type propagé");
+            }}
+            className="hud-chip gap-1"
+          >
+            <CopyPlus className="size-3.5" />
+            Propager
           </button>
         )}
         {(view === "3d" || view === "coupe") && (
