@@ -10,6 +10,7 @@ import {
   shareProject,
 } from "@/lib/bim/quantities";
 import { exportDxf } from "@/lib/cad/dxf";
+import { exportIfc } from "@/lib/cad/ifc";
 import { formatArea, formatMeters } from "@/lib/utils";
 import { useStudio } from "@/lib/store/project-store";
 import { Button } from "@/components/ui/button";
@@ -138,6 +139,19 @@ export function ConstructPanel() {
         >
           <Download className="size-4" />
           Métré CSV
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() =>
+            downloadText(
+              `${project.name.replace(/\s+/g, "-").toLowerCase()}.ifc`,
+              exportIfc(project),
+              "application/x-step",
+            )
+          }
+        >
+          <Download className="size-4" />
+          Exporter IFC (murs / dalles / baies)
         </Button>
         <Button variant="outline" onClick={() => printDossier(project)}>
           <Printer className="size-4" />

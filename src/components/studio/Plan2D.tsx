@@ -38,6 +38,28 @@ function worldFromEvent(
   };
 }
 
+
+function roleTintHex(hex: string, role?: string): string {
+  if (!role || role === "interior") return hex;
+  const n = hex.replace("#", "");
+  if (n.length !== 6) return hex;
+  let r = parseInt(n.slice(0, 2), 16);
+  let g = parseInt(n.slice(2, 4), 16);
+  let b = parseInt(n.slice(4, 6), 16);
+  if (role === "exterior") {
+    // cooler / cyan lean
+    r = Math.max(0, Math.min(255, Math.round(r * 0.88)));
+    g = Math.max(0, Math.min(255, Math.round(g * 1.02 + 8)));
+    b = Math.max(0, Math.min(255, Math.round(b * 1.12 + 14)));
+  } else if (role === "party") {
+    // warmer
+    r = Math.max(0, Math.min(255, Math.round(r * 1.1 + 12)));
+    g = Math.max(0, Math.min(255, Math.round(g * 0.95)));
+    b = Math.max(0, Math.min(255, Math.round(b * 0.82)));
+  }
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
+
 export function Plan2D({
   project,
   storyId,
@@ -199,7 +221,7 @@ export function Plan2D({
           ? "#c8f0e6"
           : bearing
             ? "#8d6750"
-            : resolveMaterial(wall.materialId, proj.materials).color;
+            : roleTintHex(resolveMaterial(wall.materialId, proj.materials).color, wall.role);
         ctx.lineWidth = Math.max(bearing ? 4 : 3, wall.thickness * cam.current.scale);
         ctx.lineCap = "square";
         ctx.stroke();

@@ -1,7 +1,10 @@
 import { analyzeStructure, markLoadBearing } from "@/lib/bim/structure";
+import { mergeDetectedRooms } from "@/lib/bim/rooms";
+import { healWallEnds } from "@/lib/cad/ops";
 import { formatMeters } from "@/lib/utils";
 import { useStudio } from "@/lib/store/project-store";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 const SYSTEM: Record<string, string> = {
   murs: "Murs porteurs",
@@ -16,6 +19,7 @@ export function StructurePanel() {
   const select = useStudio((s) => s.select);
   const setView = useStudio((s) => s.setView);
   const commit = useStudio((s) => s.commit);
+  const storyId = useStudio((s) => s.storyId);
   if (!project) return <p className="text-sm text-muted">Aucun projet ouvert.</p>;
   const r = analyzeStructure(project);
 
@@ -45,6 +49,35 @@ export function StructurePanel() {
         <Kpi k="Planchers" v={`${r.slabM2.toFixed(0)} m²`} />
         <Kpi k="Portée max" v={formatMeters(r.maxSpan)} />
         <Kpi k="Charge max" v={`${r.maxLineLoad.toFixed(0)} kN/ml`} />
+      </div>
+
+
+      <div className="flex flex-col gap-2">
+        <Button
+          variant="accent"
+          onClick={() => {
+            const sid = storyId ?? project.stories[0]?.id;
+            if (!sid) return;
+            commit((p) => {
+              p.rooms = mergeDetectedRooms(p, sid);
+              return p;
+            });
+            toast.success("Pièces détectées sur le niveau actif");
+          }}
+        >
+          Détecter pièces
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => {
+            const sid = storyId ?? project.stories[0]?.id;
+            if (!sid) return;
+            commit((p) => healWallEnds(p, sid));
+            toast.success("Jonctions de murs soignées");
+          }}
+        >
+          Soigner jonctions
+        </Button>
       </div>
 
       <Button

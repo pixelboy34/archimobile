@@ -188,7 +188,7 @@ export const useStudio = create<StudioState>()(
       isolateStory: false,
       showStructure: false,
       physics: true,
-      skill: "simple",
+      skill: "pro",
       nav: { ...DEFAULT_NAV },
       history: [],
       future: [],

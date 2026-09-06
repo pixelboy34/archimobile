@@ -34,11 +34,14 @@ import {
 } from "@/lib/bim/catalog";
 import type { ProjectAnalysis } from "@/lib/bim/analysis";
 import { wallLength } from "@/lib/bim/geometry";
+import { mergeDetectedRooms } from "@/lib/bim/rooms";
+import { healWallEnds } from "@/lib/cad/ops";
 import { formatMeters } from "@/lib/utils";
 import { useStudio } from "@/lib/store/project-store";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
-import { LIGHT_PRESETS } from "@/lib/render/lighting";
+import { LIGHT_PRESETS, MONTH_LABELS } from "@/lib/render/lighting";
 import { MaterialSwatches } from "./MaterialsPanel";
 import { NavOptions } from "./NavOptions";
 
@@ -373,10 +376,21 @@ export function PropertiesPanel({
               ))}
             </div>
             <Param label="Heure solaire" value={lighting.sunHour} min={5} max={22} step={0.25} unit="h" digits={1} onBegin={beginEdit} onChange={(v) => setLighting({ sunHour: v })} />
+            <Param
+              label={`Saison · ${MONTH_LABELS[Math.min(11, Math.max(0, Math.round(lighting.month) - 1))]}`}
+              value={lighting.month}
+              min={1}
+              max={12}
+              step={1}
+              unit=""
+              digits={0}
+              onBegin={beginEdit}
+              onChange={(v) => setLighting({ month: Math.round(v) })}
+            />
             <Param label="Soleil" value={lighting.sunIntensity} min={0} max={3} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ sunIntensity: v })} />
             <ToggleRow label="Ombres portées" on={lighting.shadows} onChange={(v) => setLighting({ shadows: v })} />
+            <Param label="Douceur ombres" value={lighting.shadowSoftness} min={0} max={1} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ shadowSoftness: v })} />
             <More>
-              <Param label="Mois" value={lighting.month} min={1} max={12} step={1} unit="" digits={0} onBegin={beginEdit} onChange={(v) => setLighting({ month: v })} />
               <Param label="Ciel" value={lighting.hemi} min={0} max={1.5} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ hemi: v })} />
               <Param label="Ambiance" value={lighting.ambient} min={0} max={1.2} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ ambient: v })} />
               <Param label="Fill" value={lighting.fill} min={0} max={1.2} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ fill: v })} />
@@ -407,6 +421,7 @@ export function StoriesPanel() {
   const setIsolateStory = useStudio((s) => s.setIsolateStory);
   const addBasement = useStudio((s) => s.addBasement);
   const addMassing = useStudio((s) => s.addMassing);
+  const commit = useStudio((s) => s.commit);
   const [spanW, setSpanW] = useState(18);
   const [spanD, setSpanD] = useState(16);
   const [floors, setFloors] = useState(8);
@@ -437,6 +452,29 @@ export function StoriesPanel() {
         <Button variant="outline" onClick={() => copyStory()}>Dupliquer tout</Button>
         <Button variant="outline" onClick={() => addBasement()}>+ Sous-sol</Button>
         <Button variant="outline" onClick={() => repeatStories(1)}>+ Type</Button>
+        <Button
+          variant="accent"
+          onClick={() => {
+            if (!active) return;
+            commit((p) => {
+              p.rooms = mergeDetectedRooms(p, active);
+              return p;
+            });
+            toast.success("Pièces détectées");
+          }}
+        >
+          Détecter pièces
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => {
+            if (!active) return;
+            commit((p) => healWallEnds(p, active));
+            toast.success("Jonctions soignées");
+          }}
+        >
+          Soigner jonctions
+        </Button>
       </div>
       <div>
         <p className="mb-2 text-xs tracking-wide text-muted uppercase">Empiler l’étage actif</p>

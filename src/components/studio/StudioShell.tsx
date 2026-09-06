@@ -12,14 +12,20 @@ import {
   Sparkles,
   Undo2,
   Hammer,
+  Sun,
+  Download,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Toaster } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { findWallAt } from "@/lib/bim/geometry";
+import { downloadText, exportBimJson, exportQuantitiesCsv } from "@/lib/bim/quantities";
+import { exportDxf } from "@/lib/cad/dxf";
+import { exportIfc } from "@/lib/cad/ifc";
 import type { Project, ViewMode, WorkspaceMode } from "@/lib/bim/types";
 import { useStudio } from "@/lib/store/project-store";
+import { AnalysisPanel } from "./AnalysisPanel";
 import { ConstructPanel } from "./ConstructPanel";
 import { CopilotPanel } from "./CopilotPanel";
 import { HelpPanel } from "./HelpPanel";
@@ -90,7 +96,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
   const setIsolateStory = useStudio((s) => s.setIsolateStory);
 
   const [panel, setPanel] = useState<
-    null | "ai" | "mats" | "chantier" | "help" | "studio" | "ouvrages" | "struct" | "layers"
+    null | "ai" | "mats" | "chantier" | "help" | "studio" | "ouvrages" | "struct" | "layers" | "analyse"
   >(null);
   const [inspector, setInspector] = useState<ParamsTab | null>(null);
   const [radial, setRadial] = useState(false);
@@ -367,6 +373,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
               {
                 title: "Analyse",
                 items: [
+                  { id: "analyse" as const, label: "Lumière & chiffres", icon: Sun },
                   { id: "struct" as const, label: "Structure", icon: Columns3 },
                   { id: "ai" as const, label: "Copilote IA", icon: Sparkles },
                 ],
@@ -404,6 +411,8 @@ export function StudioShell({ projectId }: { projectId: string }) {
                 </div>
               );
             })}
+            <StudioSkillToggle />
+            <QuickExportStrip project={current} />
           </div>
         </SheetContent>
       </Sheet>
@@ -432,6 +441,11 @@ export function StudioShell({ projectId }: { projectId: string }) {
           <ConstructPanel />
         </SheetContent>
       </Sheet>
+      <Sheet open={panel === "analyse"} onOpenChange={(o) => !o && setPanel(null)}>
+        <SheetContent title="Lumière & chiffres" tall>
+          <AnalysisPanel />
+        </SheetContent>
+      </Sheet>
       <Sheet open={panel === "help"} onOpenChange={(o) => !o && setPanel(null)}>
         <SheetContent title="Guide">
           <HelpPanel />
@@ -442,6 +456,65 @@ export function StudioShell({ projectId }: { projectId: string }) {
           <CopilotPanel onApplied={() => setPanel(null)} />
         </SheetContent>
       </Sheet>
+    </div>
+  );
+}
+
+
+function StudioSkillToggle() {
+  const skill = useStudio((s) => s.skill);
+  const setSkill = useStudio((s) => s.setSkill);
+  return (
+    <div>
+      <p className="mb-2 text-[10px] tracking-[0.16em] text-subtle uppercase">Niveau</p>
+      <div className="flex bg-elevated p-0.5">
+        <button
+          type="button"
+          onClick={() => setSkill("simple")}
+          className={`h-10 flex-1 text-xs font-medium ${skill === "simple" ? "bg-primary text-primary-fg" : "text-muted"}`}
+        >
+          Amateur
+        </button>
+        <button
+          type="button"
+          onClick={() => setSkill("pro")}
+          className={`h-10 flex-1 text-xs font-medium ${skill === "pro" ? "bg-primary text-primary-fg" : "text-muted"}`}
+        >
+          Expert
+        </button>
+      </div>
+      <p className="mt-2 text-[11px] text-subtle">
+        {skill === "simple"
+          ? "Outils essentiels + dalle / escalier / poteau. Coupe et AR masqués."
+          : "Tous les outils, coupe, AR, esquisse et ouvrage."}
+      </p>
+    </div>
+  );
+}
+
+function QuickExportStrip({ project }: { project: Project }) {
+  const base = project.name.replace(/\s+/g, "-").toLowerCase();
+  return (
+    <div>
+      <p className="mb-2 text-[10px] tracking-[0.16em] text-subtle uppercase">Export rapide</p>
+      <div className="grid grid-cols-2 gap-2">
+        {[
+          { label: "JSON", run: () => downloadText(`${base}.forma.json`, exportBimJson(project)) },
+          { label: "DXF", run: () => downloadText(`${base}.dxf`, exportDxf(project), "application/dxf") },
+          { label: "CSV", run: () => downloadText(`${base}-metre.csv`, exportQuantitiesCsv(project), "text/csv") },
+          { label: "IFC", run: () => downloadText(`${base}.ifc`, exportIfc(project), "application/x-step") },
+        ].map((b) => (
+          <button
+            key={b.label}
+            type="button"
+            onClick={b.run}
+            className="flex h-11 items-center justify-center gap-1.5 bg-elevated text-xs font-medium"
+          >
+            <Download className="size-3.5 text-accent" />
+            {b.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

@@ -55,7 +55,13 @@ export function ToolDock({
   onTool: (t: Tool) => void;
 }) {
   const skill = useStudio((s) => s.skill);
-  const groups = skill === "simple" ? GROUPS.filter((g) => g.id === "edit" || g.id === "draw" || g.id === "obj") : GROUPS;
+  // Amateur: hide esquisse avancée + toiture, but keep slab/stair/column reachable
+  const groups =
+    skill === "simple"
+      ? GROUPS.filter((g) => g.id === "edit" || g.id === "draw" || g.id === "struct" || g.id === "obj").map((g) =>
+          g.id === "struct" ? { ...g, tools: (["column", "stair", "slab"] as Tool[]) } : g,
+        )
+      : GROUPS;
   const active = groups.find((g) => g.tools.includes(tool)) ?? groups[0]!;
   const sub = active.tools;
 

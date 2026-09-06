@@ -146,6 +146,11 @@ export function MaterialsPanel() {
           />
         )}
         <div className="flex flex-col gap-2">
+          {!selectedIds.length && (
+            <p className="rounded-lg border border-dashed border-border px-3 py-2.5 text-[12px] text-muted">
+              Aucune sélection — touchez un mur dans la vue, ou appliquez directement à tous les murs.
+            </p>
+          )}
           <Button
             variant="accent"
             disabled={!selectedIds.length}

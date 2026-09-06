@@ -2,7 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { FIRE_LABELS, FURNITURE_LABELS, MATERIAL_LABELS, ROLE_LABELS, ROOM_LABELS, type Project } from "@/lib/bim/types";
 import { polygonArea, wallLength } from "@/lib/bim/geometry";
 import { formatMeters } from "@/lib/utils";
+import { mergeDetectedRooms } from "@/lib/bim/rooms";
+import { healWallEnds } from "@/lib/cad/ops";
 import { useStudio } from "@/lib/store/project-store";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import { PropertiesPanel } from "./PropertiesPanel";
 
 type Family = "walls" | "openings" | "rooms" | "slabs" | "roofs" | "columns" | "stairs" | "furniture";
@@ -37,6 +41,7 @@ export function OuvrageExplorer() {
   const storyId = useStudio((s) => s.storyId);
   const isolateStory = useStudio((s) => s.isolateStory);
   const select = useStudio((s) => s.select);
+  const commit = useStudio((s) => s.commit);
   const [family, setFamily] = useState<Family>("walls");
   const [levelOnly, setLevelOnly] = useState(true);
 
@@ -197,8 +202,42 @@ export function OuvrageExplorer() {
 
       <ul className={`flex flex-col gap-1 overflow-y-auto ${selected ? "max-h-40" : "max-h-52"}`}>
         {rows.length === 0 ? (
-          <li className="rounded-lg border border-border px-3 py-6 text-center text-sm text-muted">
-            Aucun ouvrage dans cette famille.
+          <li className="rounded-lg border border-border px-3 py-5 text-center text-sm text-muted">
+            <p>Aucun ouvrage dans cette famille.</p>
+            {(family === "rooms" || family === "walls") && (
+              <div className="mt-3 flex flex-col gap-2">
+                <Button
+                  variant="accent"
+                  className="w-full"
+                  onClick={() => {
+                    const sid = activeStory;
+                    if (!sid) return;
+                    commit((p) => {
+                      p.rooms = mergeDetectedRooms(p, sid);
+                      return p;
+                    });
+                    setFamily("rooms");
+                    toast.success("Pièces détectées");
+                  }}
+                >
+                  Détecter pièces
+                </Button>
+                {family === "walls" && (
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      const sid = activeStory;
+                      if (!sid) return;
+                      commit((p) => healWallEnds(p, sid));
+                      toast.success("Jonctions soignées");
+                    }}
+                  >
+                    Soigner jonctions
+                  </Button>
+                )}
+              </div>
+            )}
           </li>
         ) : (
           rows.map((row) => (

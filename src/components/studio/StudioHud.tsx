@@ -1,5 +1,5 @@
-import { TOOL_LABELS } from "@/lib/bim/types";
-import { dist } from "@/lib/bim/geometry";
+import { TOOL_LABELS, ROLE_LABELS, type Project } from "@/lib/bim/types";
+import { dist, polygonArea, wallLength } from "@/lib/bim/geometry";
 import { computeQuantities, formatEuro } from "@/lib/bim/quantities";
 import { BUILD_PHASES } from "@/lib/bim/construction";
 import { formatMeters } from "@/lib/utils";
@@ -14,6 +14,7 @@ export function StudioHud() {
   const showStructure = useStudio((s) => s.showStructure);
   const physicsOn = useStudio((s) => s.physics);
   const showHud = useStudio((s) => s.nav.showHud);
+  const selectedIds = useStudio((s) => s.selectedIds);
   const setDraft = useStudio((s) => s.setDraft);
   const setTool = useStudio((s) => s.setTool);
   const project = useStudio((s) => s.projects.find((p) => p.id === s.currentId) ?? null);
@@ -21,6 +22,7 @@ export function StudioHud() {
   if (view === "ar") return null;
   if (!showHud) return null;
   const bill = computeQuantities(project);
+  const sel = selectedIds[0] ? selectionHud(project, selectedIds[0]) : null;
   const hint =
     view === "visite"
       ? physicsOn
@@ -29,7 +31,9 @@ export function StudioHud() {
       : view === "3d" && tool === "select"
         ? showStructure
           ? "Ossature · maquette sous le doigt · cube N-E-S-O"
-          : "Maquette · 1 doigt tourne · 2 doigts déplace · Q/E 90°"
+          : sel
+            ? sel.line
+            : "Maquette · 1 doigt tourne · 2 doigts déplace · Q/E 90°"
         : tool === "rect"
           ? draft
             ? "2e coin du rectangle — ortho au nord/est"
@@ -53,7 +57,9 @@ export function StudioHud() {
           : tool === "select"
           ? showStructure
             ? "Structure porteuse"
-            : BUILD_PHASES[buildPhase]?.label ?? "Livré"
+            : sel
+              ? sel.line
+              : BUILD_PHASES[buildPhase]?.label ?? "Livré"
           : `${TOOL_LABELS[tool]} — tapez dans le 3D ou le plan`;
 
   return (
@@ -65,6 +71,9 @@ export function StudioHud() {
       {tool !== "furniture" && (
         <div className="hud-panel px-3 py-2 text-xs text-muted">
           {hint}
+          {sel && tool === "select" && (
+            <span className="ml-2 font-mono text-fg tabular">{sel.dims}</span>
+          )}
           {measure && (
             <span className="ml-2 font-mono text-fg tabular">{formatMeters(dist(measure.a, measure.b))}</span>
           )}
@@ -84,11 +93,88 @@ export function StudioHud() {
       )}
       {tool === "select" && (
       <div className="hud-panel ml-auto px-3 py-2 text-right">
-        <p className="font-mono text-sm font-semibold tabular text-accent">{formatEuro(bill.totalHT)}</p>
-        <p className="hud-label">Métré HT</p>
+        {sel ? (
+          <>
+            <p className="font-mono text-sm font-semibold tabular text-accent">{sel.dims}</p>
+            <p className="hud-label">{sel.label}</p>
+          </>
+        ) : (
+          <>
+            <p className="font-mono text-sm font-semibold tabular text-accent">{formatEuro(bill.totalHT)}</p>
+            <p className="hud-label">Métré HT</p>
+          </>
+        )}
         {showStructure && <p className="mt-0.5 text-[10px] tracking-wide text-accent uppercase">Ossature</p>}
       </div>
       )}
     </div>
   );
+}
+
+function selectionHud(project: Project, id: string) {
+  const wall = project.walls.find((w) => w.id === id);
+  if (wall) {
+    return {
+      label: wall.loadBearing ? "Mur porteur" : "Mur",
+      line: `${ROLE_LABELS[wall.role ?? "interior"]} · L×H×ép`,
+      dims: `${formatMeters(wallLength(wall))} × ${formatMeters(wall.height)} × ${wall.thickness.toFixed(2)} m`,
+    };
+  }
+  const opening = project.openings.find((o) => o.id === id);
+  if (opening) {
+    return {
+      label: opening.kind === "door" ? "Porte" : "Fenêtre",
+      line: "Baie · L×H",
+      dims: `${formatMeters(opening.width)} × ${formatMeters(opening.height)}`,
+    };
+  }
+  const room = project.rooms.find((r) => r.id === id);
+  if (room) {
+    return {
+      label: room.name,
+      line: "Pièce",
+      dims: `${polygonArea(room.polygon).toFixed(1)} m²`,
+    };
+  }
+  const column = project.columns.find((c) => c.id === id);
+  if (column) {
+    return {
+      label: "Poteau",
+      line: "L×P×H",
+      dims: `${column.width.toFixed(2)} × ${column.depth.toFixed(2)} × ${column.height.toFixed(2)} m`,
+    };
+  }
+  const stair = project.stairs.find((s) => s.id === id);
+  if (stair) {
+    return {
+      label: "Escalier",
+      line: "Course × largeur",
+      dims: `${stair.run.toFixed(2)} × ${stair.width.toFixed(2)} m`,
+    };
+  }
+  const slab = project.slabs.find((s) => s.id === id);
+  if (slab) {
+    return {
+      label: "Dalle",
+      line: "Surface · épaisseur",
+      dims: `${polygonArea(slab.polygon).toFixed(1)} m² · é ${slab.thickness.toFixed(2)} m`,
+    };
+  }
+  const roof = project.roofs.find((r) => r.id === id);
+  if (roof) {
+    return {
+      label: "Toiture",
+      line: "Pente · débord",
+      dims: `${roof.pitch}° · ${roof.overhang.toFixed(2)} m`,
+    };
+  }
+  const furn = project.furniture.find((f) => f.id === id);
+  if (furn) {
+    return {
+      label: "Objet",
+      line: "L×P×H",
+      dims: `${furn.w.toFixed(2)} × ${furn.d.toFixed(2)} × ${furn.h.toFixed(2)} m`,
+    };
+  }
+  return null;
 }

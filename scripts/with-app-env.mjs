@@ -20,9 +20,9 @@
  * `process.env`, which is why the merge has to happen before Vite starts.
  */
 import { spawn } from "node:child_process";
-import { readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { constants as osConstants } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const APP_ENV_REL_PATH = ".grok/app-env.json";
@@ -110,11 +110,26 @@ function main(argv) {
     console.error("usage: node scripts/with-app-env.mjs <command> [args…]");
     process.exit(2);
   }
-  const env = mergeAppEnv(readAppEnv(projectRoot()), process.env);
-  const child = spawn(command, args, {
+  const root = projectRoot();
+  const env = mergeAppEnv(readAppEnv(root), process.env);
+  const pathKey = process.platform === "win32" ? "Path" : "PATH";
+  const prevPath = env[pathKey] ?? env.PATH ?? process.env.PATH ?? "";
+  env[pathKey] = [join(root, "node_modules", ".bin"), prevPath].filter(Boolean).join(delimiter);
+  let cmd = command;
+  let useShell = false;
+  if (process.platform === "win32") {
+    const cmdShim = join(root, "node_modules", ".bin", `${command}.cmd`);
+    if (existsSync(cmdShim)) {
+      cmd = cmdShim;
+      useShell = true;
+    } else {
+      useShell = true;
+    }
+  }
+  const child = spawn(cmd, args, {
     stdio: "inherit",
     env,
-    shell: process.platform === "win32",
+    shell: useShell,
   });
   // The dev server is long-running and is stopped by signalling this wrapper.
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {

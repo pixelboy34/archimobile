@@ -194,6 +194,28 @@ function WallGroup({
                 <meshLambertMaterial color="#d8c48a" transparent opacity={0.55} depthWrite={false} />
               </mesh>
             )}
+            {(wall.role === "exterior" || wall.role === "party") && !structureMode && !selected && (
+              <mesh
+                geometry={box}
+                position={[
+                  cx + unitN.x * (wall.thickness / 2 + 0.012),
+                  elev + base + wall.height / 2,
+                  cz + unitN.y * (wall.thickness / 2 + 0.012),
+                ]}
+                rotation={[0, -angle, 0]}
+                scale={[seg.length * 0.995, wall.height * 0.98, 0.024]}
+                raycast={skipRaycast}
+                castShadow={false}
+              >
+                <meshLambertMaterial
+                  color={wall.role === "exterior" ? "#6ed0c3" : "#c4a06a"}
+                  transparent
+                  opacity={wall.role === "exterior" ? 0.28 : 0.22}
+                  depthWrite={false}
+                />
+              </mesh>
+            )}
+
             {bearing && !structureMode && !selected && (
               <mesh
                 geometry={box}
