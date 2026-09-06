@@ -1,7 +1,8 @@
 import { useEffect } from 'react'
 import { useProjectStore } from '../../lib/store/project-store'
-import type { ToolMode, SkillLevel, StairMode } from '../../lib/bim/types'
+import type { ToolMode, SkillLevel, StairMode, RoofMode } from '../../lib/bim/types'
 import { labelForStairMode } from '../../lib/cad/stairs'
+import { labelForRoofMode } from '../../lib/cad/roofs'
 import { FURNITURE_FAMILIES, FURNITURE_PRESETS } from '../../lib/bim/catalog'
 
 type ToolDef = { id: ToolMode; label: string; group: 'trace' | 'ouvrage' | 'cad'; amateur?: boolean }
@@ -15,6 +16,7 @@ const ALL_TOOLS: ToolDef[] = [
   { id: 'slab', label: 'Dalle', group: 'ouvrage' },
   { id: 'column', label: 'Pilier', group: 'ouvrage' },
   { id: 'stair', label: 'Escalier', group: 'ouvrage' },
+  { id: 'railing', label: 'Garde-corps', group: 'ouvrage' },
   { id: 'roof', label: 'Toiture', group: 'ouvrage' },
   { id: 'trim', label: 'Couper', group: 'cad' },
   { id: 'extend', label: 'Prolonger', group: 'cad' },
@@ -31,8 +33,9 @@ const HINTS: Partial<Record<ToolMode, string>> = {
   window: 'Fenetre : cliquez un mur (plan ou 3D) pour creer une ouverture',
   slab: 'Dalle : polygone (clics + Terminer / Entree) ou mode Rectangle ; Maj = rectangle',
   column: 'Pilier : cliquez pour placer un poteau sur l etage actif',
-  stair: 'Escalier : choisissez Droit / Quart / Demi puis cliquez le parcours (depart → angles → arrivee)',
-  roof: 'Toiture : polygone (clics + Terminer) ou mode Rectangle',
+  stair: 'Escalier : choisissez Droit / Quart / Demi puis cliquez le parcours (depart → angles → arrivee) ; garde-corps auto',
+  railing: 'Garde-corps : cliquez une polyligne le long d un bord (double-clic ou Terminer)',
+  roof: 'Toiture : Terrasse / 2 pentes / Croupe — polygone ou rectangle ; pente dans Ouvrage',
   trim: 'Couper : selectionnez un mur, puis cliquez le point de coupe',
   extend: 'Prolonger : selectionnez un mur, puis cliquez le mur cible',
 }
@@ -51,6 +54,8 @@ export default function ToolDock() {
   const clearCadNote = useProjectStore((s) => s.clearCadNote)
   const stairMode = useProjectStore((s) => s.stairMode)
   const setStairMode = useProjectStore((s) => s.setStairMode)
+  const roofMode = useProjectStore((s) => s.roofMode)
+  const setRoofMode = useProjectStore((s) => s.setRoofMode)
   const polyDrawMode = useProjectStore((s) => s.polyDrawMode)
   const setPolyDrawMode = useProjectStore((s) => s.setPolyDrawMode)
 
@@ -116,6 +121,22 @@ export default function ToolDock() {
               onClick={() => setStairMode(m)}
             >
               {labelForStairMode(m)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {tool === 'roof' && (
+        <div className="pointer-events-auto flex gap-1 p-1 rounded-2xl bg-[#0a1218]/95 border border-[#1a2a35]">
+          {(['terrasse', '2pentes', 'croupe'] as RoofMode[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              className="chip"
+              data-active={roofMode === m}
+              onClick={() => setRoofMode(m)}
+            >
+              {labelForRoofMode(m)}
             </button>
           ))}
         </div>

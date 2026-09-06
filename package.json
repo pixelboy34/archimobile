@@ -1,14 +1,14 @@
 {
   "name": "forma",
   "private": true,
-  "version": "0.9.0",
+  "version": "0.9.1",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 8080",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "build": "tsc -p tsconfig.app.json --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0 --port 8080",
-    "test:cad": "esbuild src/lib/cad/geom.test.ts src/lib/cad/place.test.ts src/lib/cad/stairs.test.ts --bundle --platform=node --format=esm --outdir=/tmp/forma-tests && node --test /tmp/forma-tests/geom.test.js /tmp/forma-tests/place.test.js /tmp/forma-tests/stairs.test.js"
+    "test:cad": "esbuild src/lib/cad/geom.test.ts src/lib/cad/place.test.ts src/lib/cad/stairs.test.ts src/lib/cad/roofs.test.ts src/lib/cad/railings.test.ts --bundle --platform=node --format=esm --outdir=/tmp/forma-tests && node --test /tmp/forma-tests/geom.test.js /tmp/forma-tests/place.test.js /tmp/forma-tests/stairs.test.js /tmp/forma-tests/roofs.test.js /tmp/forma-tests/railings.test.js"
   },
   "dependencies": {
     "@react-three/drei": "^10.0.0",

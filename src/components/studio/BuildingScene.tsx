@@ -1,11 +1,19 @@
 import { useMemo, useEffect } from 'react'
 import * as THREE from 'three'
-import type { Project, Wall, Slab, Furniture, Column, Roof, Opening, Stair } from '../../lib/bim/types'
+import type { Project, Wall, Slab, Furniture, Column, Roof, Opening, Stair, Railing } from '../../lib/bim/types'
 import { wallLength, wallAngle, wallCenter } from '../../lib/bim/types'
 import { MATERIALS, FURNITURE_PRESETS } from '../../lib/bim/catalog'
 import { detectQuality } from '../../lib/render/quality'
 import { wallSolidBoxes, openingsLocal } from '../../lib/bim/wall-openings'
 import { buildStairGeometry, normalizeStair } from '../../lib/cad/stairs'
+import {
+  buildStairRailingRuns,
+  buildPathRailingRun,
+  RAILING_POST_SIZE,
+  RAILING_RAIL_SIZE,
+  type RailingRun,
+} from '../../lib/cad/railings'
+import { buildRoofGeometry, normalizeRoof, pitchedRidgeHeight } from '../../lib/cad/roofs'
 
 const EMPTY_OPENINGS: Opening[] = []
 const boxGeo = new THREE.BoxGeometry(1, 1, 1)
@@ -242,28 +250,98 @@ function SlabMesh({ slab }: { slab: Slab }) {
   )
 }
 
+function facesToGeometry(faces: { verts: { x: number; y: number; z: number }[] }[]) {
+  const positions: number[] = []
+  const normals: number[] = []
+  const pushTri = (
+    a: { x: number; y: number; z: number },
+    b: { x: number; y: number; z: number },
+    c: { x: number; y: number; z: number },
+  ) => {
+    const abx = b.x - a.x
+    const aby = b.y - a.y
+    const abz = b.z - a.z
+    const acx = c.x - a.x
+    const acy = c.y - a.y
+    const acz = c.z - a.z
+    let nx = aby * acz - abz * acy
+    let ny = abz * acx - abx * acz
+    let nz = abx * acy - aby * acx
+    const nl = Math.hypot(nx, ny, nz) || 1
+    nx /= nl
+    ny /= nl
+    nz /= nl
+    for (const v of [a, b, c]) {
+      positions.push(v.x, v.y, v.z)
+      normals.push(nx, ny, nz)
+    }
+  }
+  for (const f of faces) {
+    const v = f.verts
+    if (v.length === 3) pushTri(v[0]!, v[1]!, v[2]!)
+    else if (v.length >= 4) {
+      pushTri(v[0]!, v[1]!, v[2]!)
+      pushTri(v[0]!, v[2]!, v[3]!)
+    }
+  }
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
+  return g
+}
+
 function RoofMesh({ roof, elevation }: { roof: Roof; elevation: number }) {
   const m = matFor('tuile')
-  const h = Math.max(0.2, roof.ridgeHeight)
-  const geo = usePolygonExtrude(roof.polygon, h)
-  if (!geo) {
-    const b = bbox(roof.polygon)
-    if (b.w < 0.05 || b.d < 0.05) return null
+  const nr = normalizeRoof(roof)
+  const polyKey = nr.polygon.map((p) => `${p.x},${p.y}`).join(';')
+  const geom = useMemo(
+    () => buildRoofGeometry(nr),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [nr.mode, nr.pitchDeg, nr.ridgeHeight, polyKey],
+  )
+
+  // Flat terrace: extruded prism
+  const flatH = Math.max(0.15, pitchedRidgeHeight(nr))
+  const flatPoly = nr.mode === 'terrasse' ? nr.polygon : nr.polygon.slice(0, 0)
+  const flatGeo = usePolygonExtrude(flatPoly, flatH)
+
+  const pitchedGeo = useMemo(() => {
+    if (nr.mode === 'terrasse' || geom.faces.length === 0) return null
+    return facesToGeometry(geom.faces)
+  }, [geom, nr.mode])
+
+  useEffect(() => {
+    return () => {
+      pitchedGeo?.dispose()
+    }
+  }, [pitchedGeo])
+
+  if (nr.mode === 'terrasse') {
+    if (!flatGeo) {
+      const b = bbox(nr.polygon)
+      if (b.w < 0.05 || b.d < 0.05) return null
+      return (
+        <mesh
+          geometry={boxGeo}
+          position={[b.cx, elevation + flatH / 2, b.cz]}
+          scale={[b.w, flatH, b.d]}
+          castShadow
+          receiveShadow
+        >
+          <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} />
+        </mesh>
+      )
+    }
     return (
-      <mesh
-        geometry={boxGeo}
-        position={[b.cx, elevation + h / 2, b.cz]}
-        scale={[b.w, h, b.d]}
-        castShadow
-        receiveShadow
-      >
-        <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} />
+      <mesh geometry={flatGeo} position={[0, elevation + flatH, 0]} castShadow receiveShadow>
+        <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} side={THREE.DoubleSide} />
       </mesh>
     )
   }
-  // Roof geo extends downward from elevation+h
+
+  if (!pitchedGeo) return null
   return (
-    <mesh geometry={geo} position={[0, elevation + h, 0]} castShadow receiveShadow>
+    <mesh geometry={pitchedGeo} position={[0, elevation, 0]} castShadow receiveShadow>
       <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} side={THREE.DoubleSide} />
     </mesh>
   )
@@ -334,22 +412,6 @@ function FlightMesh({
       rotation={[0, -angle, 0]}
     >
       {steps}
-      <mesh
-        geometry={boxGeo}
-        position={[0, startElev + totalH / 2, width / 2 + 0.03]}
-        scale={[len, Math.max(0.08, totalH * 0.12), 0.06]}
-        castShadow
-      >
-        <meshStandardMaterial color="#7a848c" roughness={0.7} metalness={0.15} />
-      </mesh>
-      <mesh
-        geometry={boxGeo}
-        position={[0, startElev + totalH / 2, -width / 2 - 0.03]}
-        scale={[len, Math.max(0.08, totalH * 0.12), 0.06]}
-        castShadow
-      >
-        <meshStandardMaterial color="#7a848c" roughness={0.7} metalness={0.15} />
-      </mesh>
     </group>
   )
 }
@@ -389,6 +451,83 @@ function LandingMesh({
   )
 }
 
+function RailingRunMesh({
+  run,
+  baseElevation,
+  materialId = 'acier',
+}: {
+  run: RailingRun
+  baseElevation: number
+  materialId?: string
+}) {
+  const m = matFor(materialId, 'acier')
+  const samples = run.samples
+  if (samples.length < 2) return null
+  const posts = []
+  const rails = []
+  for (let i = 0; i < samples.length; i++) {
+    const s = samples[i]!
+    const y0 = baseElevation + s.elev
+    posts.push(
+      <mesh
+        key={`p-${i}`}
+        geometry={boxGeo}
+        position={[s.x, y0 + run.height / 2, s.y]}
+        scale={[RAILING_POST_SIZE, run.height, RAILING_POST_SIZE]}
+        castShadow
+      >
+        <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} />
+      </mesh>,
+    )
+    if (i < samples.length - 1) {
+      const n = samples[i + 1]!
+      const dx = n.x - s.x
+      const dz = n.y - s.y
+      const L = Math.hypot(dx, dz)
+      if (L < 1e-4) continue
+      const angle = Math.atan2(dz, dx)
+      const midX = (s.x + n.x) / 2
+      const midZ = (s.y + n.y) / 2
+      const elevA = s.elev
+      const elevB = n.elev
+      const midElev = (elevA + elevB) / 2
+      const pitch = Math.atan2(elevB - elevA, L)
+      // top rail
+      rails.push(
+        <mesh
+          key={`rt-${i}`}
+          geometry={boxGeo}
+          position={[midX, baseElevation + midElev + run.height, midZ]}
+          rotation={[0, -angle, pitch]}
+          scale={[L, RAILING_RAIL_SIZE, RAILING_RAIL_SIZE]}
+          castShadow
+        >
+          <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} />
+        </mesh>,
+      )
+      // mid rail
+      rails.push(
+        <mesh
+          key={`rm-${i}`}
+          geometry={boxGeo}
+          position={[midX, baseElevation + midElev + run.height * 0.5, midZ]}
+          rotation={[0, -angle, pitch]}
+          scale={[L, RAILING_RAIL_SIZE * 0.85, RAILING_RAIL_SIZE * 0.85]}
+          castShadow
+        >
+          <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} />
+        </mesh>,
+      )
+    }
+  }
+  return (
+    <group>
+      {posts}
+      {rails}
+    </group>
+  )
+}
+
 function StairMesh({ stair, elevation, storyHeight }: { stair: Stair; elevation: number; storyHeight: number }) {
   const s = normalizeStair(stair)
   const pathKey = s.path.map((p) => `${p.x},${p.y}`).join(';')
@@ -396,6 +535,11 @@ function StairMesh({ stair, elevation, storyHeight }: { stair: Stair; elevation:
     () => buildStairGeometry(s, storyHeight),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [pathKey, s.width, s.rises, s.rise, s.mode, storyHeight],
+  )
+  const railRuns = useMemo(
+    () => buildStairRailingRuns(stair, storyHeight),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pathKey, s.width, s.rises, s.rise, stair.railings, stair.railingHeight, storyHeight],
   )
   if (geom.flights.length === 0) return null
   return (
@@ -421,7 +565,22 @@ function StairMesh({ stair, elevation, storyHeight }: { stair: Stair; elevation:
           baseElevation={elevation}
         />
       ))}
+      {railRuns.map((run, i) => (
+        <RailingRunMesh key={`rail-${i}`} run={run} baseElevation={elevation} materialId="acier" />
+      ))}
     </group>
+  )
+}
+
+function StandaloneRailingMesh({ railing, elevation }: { railing: Railing; elevation: number }) {
+  const run = useMemo(() => buildPathRailingRun(railing), [railing])
+  if (!run) return null
+  return (
+    <RailingRunMesh
+      run={run}
+      baseElevation={elevation}
+      materialId={railing.materialId ?? 'acier'}
+    />
   )
 }
 
@@ -592,6 +751,12 @@ export default function BuildingScene({ project, activeStoryId, visiting = false
         const st = storyMap.get(r.storyId)
         if (!st) return null
         return <RoofMesh key={r.id} roof={r} elevation={st.elevation + st.height} />
+      })}
+
+      {(project.railings ?? []).map((r) => {
+        const st = storyMap.get(r.storyId)
+        if (!st) return null
+        return <StandaloneRailingMesh key={r.id} railing={r} elevation={st.elevation} />
       })}
     </group>
   )

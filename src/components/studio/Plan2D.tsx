@@ -10,7 +10,9 @@ import {
   stairHitDist,
   stairPlanOutlines,
 } from '../../lib/cad/stairs'
-import type { StairMode } from '../../lib/bim/types'
+import { stairRailingPlanPaths, railingHitDist } from '../../lib/cad/railings'
+import { normalizeRoof, roofPlanLines, labelForRoofMode } from '../../lib/cad/roofs'
+import type { StairMode, RoofMode } from '../../lib/bim/types'
 
 type Props = {
   project: Project
@@ -38,8 +40,11 @@ export default function Plan2D({ project, storyId }: Props) {
   const addStairPath = useProjectStore((s) => s.addStairPath)
   const addRoof = useProjectStore((s) => s.addRoof)
   const addRoofPolygon = useProjectStore((s) => s.addRoofPolygon)
+  const addRailingPath = useProjectStore((s) => s.addRailingPath)
   const stairMode = useProjectStore((s) => s.stairMode)
   const setStairMode = useProjectStore((s) => s.setStairMode)
+  const roofMode = useProjectStore((s) => s.roofMode)
+  const setRoofMode = useProjectStore((s) => s.setRoofMode)
   const polyDrawMode = useProjectStore((s) => s.polyDrawMode)
   const setPolyDrawMode = useProjectStore((s) => s.setPolyDrawMode)
 
@@ -59,6 +64,7 @@ export default function Plan2D({ project, storyId }: Props) {
   const slabs = project.slabs.filter((s) => s.storyId === story?.id)
   const stairs = project.stairs.filter((s) => s.storyId === story?.id)
   const roofs = project.roofs.filter((r) => r.storyId === story?.id)
+  const railings = (project.railings ?? []).filter((r) => r.storyId === story?.id)
   const wallIds = new Set(walls.map((w) => w.id))
   const openings = project.openings.filter((o) => wallIds.has(o.wallId))
 
@@ -66,7 +72,7 @@ export default function Plan2D({ project, storyId }: Props) {
     setDraft(null)
     setPolyDraft([])
     setCadWallId(null)
-  }, [tool, stairMode, polyDrawMode])
+  }, [tool, stairMode, roofMode, polyDrawMode])
 
   const finishPolygon = useCallback(() => {
     if (polyDraft.length < 3) return
@@ -81,6 +87,12 @@ export default function Plan2D({ project, storyId }: Props) {
     addStairPath(polyDraft, stairMode)
     setPolyDraft([])
   }, [polyDraft, stairMode, addStairPath])
+
+  const finishRailingPath = useCallback(() => {
+    if (polyDraft.length < 2) return
+    addRailingPath(polyDraft)
+    setPolyDraft([])
+  }, [polyDraft, addRailingPath])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -100,11 +112,15 @@ export default function Plan2D({ project, storyId }: Props) {
           e.preventDefault()
           finishStairPath()
         }
+        if (tool === 'railing' && polyDraft.length >= 2) {
+          e.preventDefault()
+          finishRailingPath()
+        }
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [tool, polyDrawMode, polyDraft, stairMode, finishPolygon, finishStairPath])
+  }, [tool, polyDrawMode, polyDraft, stairMode, finishPolygon, finishStairPath, finishRailingPath])
 
   const bounds = useMemo(() => {
     let minX = -15,
@@ -235,6 +251,20 @@ export default function Plan2D({ project, storyId }: Props) {
       return
     }
 
+    if (tool === 'railing') {
+      const now = Date.now()
+      const isDouble = now - lastClickAt.current < 320 && polyDraft.length >= 1
+      lastClickAt.current = now
+      if (isDouble) {
+        const next = [...polyDraft, p]
+        addRailingPath(next.length >= 2 ? next : polyDraft)
+        setPolyDraft([])
+        return
+      }
+      setPolyDraft((prev) => [...prev, p])
+      return
+    }
+
     if (tool === 'trim') {
       if (!cadWallId) {
         const id = hitWall(p) ?? (selection?.kind === 'wall' ? selection.id : null)
@@ -272,6 +302,13 @@ export default function Plan2D({ project, storyId }: Props) {
       )
       if (col) {
         select({ kind: 'column', id: col.id })
+        setInspectorOpen(true)
+        setInspectorTab('ouvrage')
+        return
+      }
+      const railHit = railings.find((r) => railingHitDist(r, p) < 0.35)
+      if (railHit) {
+        select({ kind: 'railing', id: railHit.id })
         setInspectorOpen(true)
         setInspectorTab('ouvrage')
         return
@@ -386,6 +423,18 @@ export default function Plan2D({ project, storyId }: Props) {
               {labelForStairMode(m)}
             </button>
           ))}
+        {tool === 'roof' &&
+          (['terrasse', '2pentes', 'croupe'] as RoofMode[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              className="chip"
+              data-active={roofMode === m}
+              onClick={() => setRoofMode(m)}
+            >
+              {labelForRoofMode(m)}
+            </button>
+          ))}
         {(tool === 'slab' || tool === 'roof') && (
           <>
             <button
@@ -428,6 +477,11 @@ export default function Plan2D({ project, storyId }: Props) {
           polyDraft.length >= (stairMode === 'droit' ? 2 : 3) &&
           polyDraft.length < pointsNeededForMode(stairMode) && (
           <button type="button" className="chip" onClick={() => finishStairPath()}>
+            Terminer
+          </button>
+        )}
+        {tool === 'railing' && polyDraft.length >= 2 && (
+          <button type="button" className="chip" onClick={() => finishRailingPath()}>
             Terminer
           </button>
         )}
@@ -490,23 +544,39 @@ export default function Plan2D({ project, storyId }: Props) {
         })}
 
         {roofs.map((r) => {
-          const pts = r.polygon.map((pt) => `${pt.x},${pt.y}`).join(' ')
+          const nr = normalizeRoof(r)
+          const pts = nr.polygon.map((pt) => `${pt.x},${pt.y}`).join(' ')
           const active = selection?.kind === 'roof' && selection.id === r.id
+          const lines = roofPlanLines(nr)
           return (
-            <polygon
+            <g
               key={r.id}
-              points={pts}
-              fill="none"
-              stroke={active ? '#c4784a' : '#8b5a3c'}
-              strokeWidth={0.05}
-              strokeDasharray="0.2 0.12"
               onPointerDown={(e) => {
                 e.stopPropagation()
                 select({ kind: 'roof', id: r.id })
                 setInspectorOpen(true)
                 setInspectorTab('ouvrage')
               }}
-            />
+            >
+              <polygon
+                points={pts}
+                fill={active ? 'rgba(139,69,19,0.12)' : 'rgba(139,69,19,0.05)'}
+                stroke={active ? '#c4784a' : '#8b5a3c'}
+                strokeWidth={0.05}
+                strokeDasharray="0.2 0.12"
+              />
+              {lines.map((ln, i) => (
+                <line
+                  key={`ridge-${i}`}
+                  x1={ln.a.x}
+                  y1={ln.a.y}
+                  x2={ln.b.x}
+                  y2={ln.b.y}
+                  stroke={active ? '#e8a06a' : '#a86b45'}
+                  strokeWidth={0.04}
+                />
+              ))}
+            </g>
           )
         })}
 
@@ -613,6 +683,51 @@ export default function Plan2D({ project, storyId }: Props) {
                     strokeWidth={0.03}
                     opacity={0.4}
                     strokeDasharray="0.1 0.08"
+                  />
+                ) : null,
+              )}
+              {stairRailingPlanPaths(raw).map((path, ri) =>
+                path.map((pt, i) =>
+                  i < path.length - 1 ? (
+                    <line
+                      key={`sr-${ri}-${i}`}
+                      x1={pt.x}
+                      y1={pt.y}
+                      x2={path[i + 1]!.x}
+                      y2={path[i + 1]!.y}
+                      stroke={active ? '#9ad9d0' : '#6a8a90'}
+                      strokeWidth={0.025}
+                      opacity={0.85}
+                    />
+                  ) : null,
+                ),
+              )}
+            </g>
+          )
+        })}
+
+        {railings.map((r) => {
+          const active = selection?.kind === 'railing' && selection.id === r.id
+          return (
+            <g
+              key={r.id}
+              onPointerDown={(e) => {
+                e.stopPropagation()
+                select({ kind: 'railing', id: r.id })
+                setInspectorOpen(true)
+                setInspectorTab('ouvrage')
+              }}
+            >
+              {r.path.map((pt, i) =>
+                i < r.path.length - 1 ? (
+                  <line
+                    key={i}
+                    x1={pt.x}
+                    y1={pt.y}
+                    x2={r.path[i + 1]!.x}
+                    y2={r.path[i + 1]!.y}
+                    stroke={active ? '#6ed0c3' : '#8aa0ae'}
+                    strokeWidth={0.03}
                   />
                 ) : null,
               )}
@@ -775,7 +890,7 @@ export default function Plan2D({ project, storyId }: Props) {
           />
         )}
         {/* Polygon / stair path preview */}
-        {polyDraft.length > 0 && (tool === 'slab' || tool === 'roof' || tool === 'stair') && (
+        {polyDraft.length > 0 && (tool === 'slab' || tool === 'roof' || tool === 'stair' || tool === 'railing') && (
           <g>
             {polyDraft.length >= 2 && (
               <polyline

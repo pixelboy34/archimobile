@@ -1,6 +1,6 @@
-import type { Project, Story, Wall, Slab, Opening, Room, Column, Furniture, Stair, StairMode, Roof, Vec2 } from '../bim/types'
+import type { Project, Story, Wall, Slab, Opening, Room, Column, Furniture, Stair, StairMode, Roof, RoofMode, Railing, Vec2 } from '../bim/types'
 import { uid } from '../bim/types'
-import { FURNITURE_PRESETS, OPENING_DEFAULTS, COLUMN_DEFAULT_SIZE, SLAB_DEFAULT_THICKNESS, STAIR_DEFAULT_WIDTH, ROOF_DEFAULT_RIDGE } from '../bim/catalog'
+import { FURNITURE_PRESETS, OPENING_DEFAULTS, COLUMN_DEFAULT_SIZE, SLAB_DEFAULT_THICKNESS, STAIR_DEFAULT_WIDTH, ROOF_DEFAULT_RIDGE, ROOF_DEFAULT_PITCH, RAILING_DEFAULT_HEIGHT } from '../bim/catalog'
 import { rectPolygon } from '../bim/builder'
 import { dist, lineIntersection, projectOnSegment, segmentIntersection, snapNearWall } from './geom'
 import { defaultRisesForHeight, normalizeStair, pointsNeededForMode } from './stairs'
@@ -55,6 +55,10 @@ export function copyStory(project: Project, storyId: string): Project {
     .filter((s) => s.storyId === storyId)
     .map((s) => ({ ...s, id: uid('stair'), storyId: newStoryId }))
 
+  const railings: Railing[] = (project.railings ?? [])
+    .filter((r) => r.storyId === storyId)
+    .map((r) => ({ ...r, id: uid('rail'), storyId: newStoryId }))
+
   const roofs: Roof[] = []
 
   return {
@@ -67,6 +71,7 @@ export function copyStory(project: Project, storyId: string): Project {
     columns: [...project.columns, ...columns],
     furniture: [...project.furniture, ...furniture],
     stairs: [...project.stairs, ...stairs],
+    railings: [...(project.railings ?? []), ...railings],
     roofs: [...project.roofs, ...roofs],
     updatedAt: Date.now(),
   }
@@ -641,6 +646,8 @@ export function placeStairPath(
     rises,
     mode,
     rise: totalRise,
+    railings: true,
+    railingHeight: RAILING_DEFAULT_HEIGHT,
   })
   return {
     project: { ...project, stairs: [...project.stairs, stair], updatedAt: Date.now() },
@@ -708,6 +715,8 @@ export function placeRoofPolygon(
     polygon: expanded,
     ridgeHeight: ROOF_DEFAULT_RIDGE,
     overhang,
+    mode: '2pentes',
+    pitchDeg: ROOF_DEFAULT_PITCH,
   }
   return {
     project: { ...project, roofs: [...project.roofs, roof], updatedAt: Date.now() },
@@ -735,9 +744,42 @@ export function placeRoofRect(
     polygon: rectPolygon(x0 - overhang, y0 - overhang, x1 - x0 + overhang * 2, y1 - y0 + overhang * 2),
     ridgeHeight: ROOF_DEFAULT_RIDGE,
     overhang,
+    mode: '2pentes',
+    pitchDeg: ROOF_DEFAULT_PITCH,
   }
   return {
     project: { ...project, roofs: [...project.roofs, roof], updatedAt: Date.now() },
     roofId: roof.id,
+  }
+}
+
+export function placeRailingPath(
+  project: Project,
+  storyId: string,
+  path: Vec2[],
+  height = RAILING_DEFAULT_HEIGHT,
+): { project: Project; railingId: string | null } {
+  const story = project.stories.find((s) => s.id === storyId)
+  if (!story) return { project, railingId: null }
+  if (path.length < 2) return { project, railingId: null }
+  const pts = path.map((p) => snapGrid(p))
+  for (let i = 0; i < pts.length - 1; i++) {
+    const L = Math.hypot(pts[i + 1]!.x - pts[i]!.x, pts[i + 1]!.y - pts[i]!.y)
+    if (L < 0.2) return { project, railingId: null }
+  }
+  const railing: Railing = {
+    id: uid('rail'),
+    storyId,
+    path: pts,
+    height: Math.max(0.5, height),
+    materialId: 'acier',
+  }
+  return {
+    project: {
+      ...project,
+      railings: [...(project.railings ?? []), railing],
+      updatedAt: Date.now(),
+    },
+    railingId: railing.id,
   }
 }

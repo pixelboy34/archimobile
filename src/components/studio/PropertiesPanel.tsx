@@ -2,7 +2,9 @@ import { useProjectStore } from '../../lib/store/project-store'
 import { FURNITURE_PRESETS } from '../../lib/bim/catalog'
 import { downloadIfc } from '../../lib/bim/ifc-export'
 import { labelForStairMode, normalizeStair } from '../../lib/cad/stairs'
-import type { StairMode } from '../../lib/bim/types'
+import { labelForRoofMode, normalizeRoof } from '../../lib/cad/roofs'
+import { stairHasRailings, stairRailingHeight } from '../../lib/cad/railings'
+import type { StairMode, RoofMode } from '../../lib/bim/types'
 
 function roundStep(v: number, step: number) {
   return Math.round(v / step) * step
@@ -82,6 +84,10 @@ export default function PropertiesPanel() {
       selection?.kind === 'stair' ? project.stairs.find((s) => s.id === selection.id) : null
     const roof =
       selection?.kind === 'roof' ? project.roofs.find((r) => r.id === selection.id) : null
+    const railing =
+      selection?.kind === 'railing'
+        ? (project.railings ?? []).find((r) => r.id === selection.id)
+        : null
 
     return (
       <div>
@@ -407,6 +413,42 @@ export default function PropertiesPanel() {
                 }))
               }
             />
+            <div className="flex items-center justify-between gap-2 mt-2 mb-1">
+              <span className="text-xs text-[#a8bdc8]">Garde-corps</span>
+              <button
+                type="button"
+                className="chip"
+                data-active={stairHasRailings(stair)}
+                onClick={() =>
+                  commit((p) => ({
+                    ...p,
+                    stairs: p.stairs.map((s) =>
+                      s.id === stair.id ? { ...s, railings: !stairHasRailings(stair) } : s,
+                    ),
+                  }))
+                }
+              >
+                {stairHasRailings(stair) ? 'Actif' : 'Off'}
+              </button>
+            </div>
+            {stairHasRailings(stair) && (
+              <SliderRow
+                label="Haut. GC"
+                value={stairRailingHeight(stair)}
+                min={0.7}
+                max={1.4}
+                step={0.05}
+                unit=" m"
+                onChange={(v) =>
+                  patchNow((p) => ({
+                    ...p,
+                    stairs: p.stairs.map((s) =>
+                      s.id === stair.id ? { ...s, railingHeight: v } : s,
+                    ),
+                  }))
+                }
+              />
+            )}
             <button
               type="button"
               className="chip mt-2"
@@ -423,24 +465,63 @@ export default function PropertiesPanel() {
         ) : roof ? (
           <>
             <p className="text-xs text-[#7a8f9c] mb-1 font-mono">{roof.id}</p>
-            <p className="text-sm mb-2">Toiture</p>
+            <p className="text-sm mb-2">
+              Toiture · {labelForRoofMode(normalizeRoof(roof).mode)}
+            </p>
+            <div className="flex flex-wrap gap-1 mb-2">
+              {(['terrasse', '2pentes', 'croupe'] as RoofMode[]).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  className="chip"
+                  data-active={normalizeRoof(roof).mode === m}
+                  onClick={() =>
+                    commit((p) => ({
+                      ...p,
+                      roofs: p.roofs.map((r) =>
+                        r.id === roof.id ? { ...normalizeRoof(r), mode: m } : r,
+                      ),
+                    }))
+                  }
+                >
+                  {labelForRoofMode(m)}
+                </button>
+              ))}
+            </div>
             <p className="text-xs text-[#7a8f9c] mb-2">
               Polygone · {roof.polygon.length} sommets
             </p>
-            <SliderRow
-              label="Faitage"
-              value={roof.ridgeHeight}
-              min={0.2}
-              max={4}
-              step={0.05}
-              unit=" m"
-              onChange={(v) =>
-                patchNow((p) => ({
-                  ...p,
-                  roofs: p.roofs.map((r) => (r.id === roof.id ? { ...r, ridgeHeight: v } : r)),
-                }))
-              }
-            />
+            {normalizeRoof(roof).mode === 'terrasse' ? (
+              <SliderRow
+                label="Epaisseur"
+                value={roof.ridgeHeight}
+                min={0.15}
+                max={1.5}
+                step={0.05}
+                unit=" m"
+                onChange={(v) =>
+                  patchNow((p) => ({
+                    ...p,
+                    roofs: p.roofs.map((r) => (r.id === roof.id ? { ...r, ridgeHeight: v } : r)),
+                  }))
+                }
+              />
+            ) : (
+              <SliderRow
+                label="Pente"
+                value={normalizeRoof(roof).pitchDeg}
+                min={10}
+                max={55}
+                step={1}
+                unit="°"
+                onChange={(v) =>
+                  patchNow((p) => ({
+                    ...p,
+                    roofs: p.roofs.map((r) => (r.id === roof.id ? { ...r, pitchDeg: v } : r)),
+                  }))
+                }
+              />
+            )}
             <SliderRow
               label="Debord"
               value={roof.overhang}
@@ -462,6 +543,42 @@ export default function PropertiesPanel() {
                 commit((p) => ({
                   ...p,
                   roofs: p.roofs.filter((r) => r.id !== roof.id),
+                }))
+              }
+            >
+              Supprimer
+            </button>
+          </>
+        ) : railing ? (
+          <>
+            <p className="text-xs text-[#7a8f9c] mb-1 font-mono">{railing.id}</p>
+            <p className="text-sm mb-2">Garde-corps</p>
+            <p className="text-xs text-[#7a8f9c] mb-2">
+              Parcours · {railing.path.length} points
+            </p>
+            <SliderRow
+              label="Hauteur"
+              value={railing.height}
+              min={0.7}
+              max={1.4}
+              step={0.05}
+              unit=" m"
+              onChange={(v) =>
+                patchNow((p) => ({
+                  ...p,
+                  railings: (p.railings ?? []).map((r) =>
+                    r.id === railing.id ? { ...r, height: v } : r,
+                  ),
+                }))
+              }
+            />
+            <button
+              type="button"
+              className="chip mt-2"
+              onClick={() =>
+                commit((p) => ({
+                  ...p,
+                  railings: (p.railings ?? []).filter((r) => r.id !== railing.id),
                 }))
               }
             >
@@ -553,7 +670,7 @@ export default function PropertiesPanel() {
           </>
         ) : (
           <p className="text-sm text-[#7a8f9c]">
-            Selectionnez un mur, une ouverture, une dalle, un pilier, un escalier ou un objet.
+            Selectionnez un mur, une ouverture, une dalle, un pilier, un escalier, une toiture, un garde-corps ou un objet.
           </p>
         )}
         <div className="mt-4">

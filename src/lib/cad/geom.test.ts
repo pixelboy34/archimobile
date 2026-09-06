@@ -38,6 +38,7 @@ function emptyProject(walls: Wall[], openings: Opening[] = [], rooms: Room[] = [
     roofs: [],
     columns: [],
     stairs: [],
+    railings: [],
     furniture: [],
     updatedAt: 1,
     createdAt: 1,

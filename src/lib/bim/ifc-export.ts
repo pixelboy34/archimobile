@@ -10,6 +10,7 @@
  */
 
 import type { Project, Wall, Opening, Slab, Furniture, Story, Roof, Column, Stair } from './types'
+import { pitchedRidgeHeight } from '../cad/roofs'
 import { wallLength, wallAngle, wallCenter } from './types'
 import { FURNITURE_PRESETS } from './catalog'
 
@@ -212,7 +213,7 @@ function writeRoof(
   const b = polygonBBox(roof.polygon)
   const z = story.height // relative to storey: on top of story
   const place = localPlacement(w, storeyPlaceId, b.cx, b.cy, z, 0)
-  const body = extrudedBox(w, ctxId, b.width, b.depth, Math.max(0.15, roof.ridgeHeight))
+  const body = extrudedBox(w, ctxId, b.width, b.depth, Math.max(0.15, pitchedRidgeHeight(roof)))
   const roofId = w.push(
     `IFCROOF('${ifcGuid()}',#${ownerId},'${esc(roof.id)}',$,$,#${place},#${body},$,.NOTDEFINED.)`,
   )

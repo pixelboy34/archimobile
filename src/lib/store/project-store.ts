@@ -13,6 +13,7 @@ import type {
   OpeningKind,
   SlabKind,
   StairMode,
+  RoofMode,
 } from '../bim/types'
 import { uid } from '../bim/types'
 import { allSeeds, newSketchProject } from '../bim/seed'
@@ -30,6 +31,7 @@ import {
   placeStairPath,
   placeRoofRect,
   placeRoofPolygon,
+  placeRailingPath,
   snapGrid,
 } from '../cad/ops'
 
@@ -55,6 +57,7 @@ type StoreState = {
   placeKind: FurnitureKind | null
   placeRotation: number
   stairMode: StairMode
+  roofMode: RoofMode
   polyDrawMode: 'polygon' | 'rect'
   cadNote: string | null
   coupeAxis: 'horizontal' | 'vertical'
@@ -103,7 +106,9 @@ type StoreState = {
   addStairPath: (path: Vec2[], mode?: StairMode) => void
   addRoof: (a: Vec2, b: Vec2) => void
   addRoofPolygon: (polygon: Vec2[]) => void
+  addRailingPath: (path: Vec2[]) => void
   setStairMode: (m: StairMode) => void
+  setRoofMode: (m: RoofMode) => void
   setPolyDrawMode: (m: 'polygon' | 'rect') => void
   placeAtPoint: (pos: Vec2) => void
 }
@@ -134,6 +139,7 @@ export const useProjectStore = create<StoreState>()(
       placeKind: null,
       placeRotation: 0,
       stairMode: 'droit',
+      roofMode: '2pentes',
       polyDrawMode: 'polygon',
       cadNote: null,
       coupeAxis: 'horizontal',
@@ -196,6 +202,7 @@ export const useProjectStore = create<StoreState>()(
           placeKind: t === 'objects' ? get().placeKind : null,
         }),
       setStairMode: (m) => set({ stairMode: m }),
+      setRoofMode: (m) => set({ roofMode: m }),
       setPolyDrawMode: (m) => set({ polyDrawMode: m }),
       setActiveStory: (id) => {
         set({ activeStoryId: id })
@@ -444,7 +451,7 @@ export const useProjectStore = create<StoreState>()(
       },
 
       addRoof: (a, b) => {
-        const { activeStoryId, getActive } = get()
+        const { activeStoryId, getActive, roofMode } = get()
         const project = getActive()
         if (!project) return
         const storyId = activeStoryId ?? project.stories[0]?.id
@@ -453,7 +460,13 @@ export const useProjectStore = create<StoreState>()(
         get().commit((p) => {
           const res = placeRoofRect(p, storyId, snapGrid(a), snapGrid(b))
           roofId = res.roofId
-          return res.project
+          if (!roofId) return res.project
+          return {
+            ...res.project,
+            roofs: res.project.roofs.map((r) =>
+              r.id === roofId ? { ...r, mode: roofMode } : r,
+            ),
+          }
         })
         if (roofId) {
           get().select({ kind: 'roof', id: roofId })
@@ -462,7 +475,7 @@ export const useProjectStore = create<StoreState>()(
       },
 
       addRoofPolygon: (polygon) => {
-        const { activeStoryId, getActive } = get()
+        const { activeStoryId, getActive, roofMode } = get()
         const project = getActive()
         if (!project) return
         const storyId = activeStoryId ?? project.stories[0]?.id
@@ -471,10 +484,34 @@ export const useProjectStore = create<StoreState>()(
         get().commit((p) => {
           const res = placeRoofPolygon(p, storyId, polygon)
           roofId = res.roofId
-          return res.project
+          if (!roofId) return res.project
+          return {
+            ...res.project,
+            roofs: res.project.roofs.map((r) =>
+              r.id === roofId ? { ...r, mode: roofMode } : r,
+            ),
+          }
         })
         if (roofId) {
           get().select({ kind: 'roof', id: roofId })
+          set({ inspectorOpen: true, inspectorTab: 'ouvrage' })
+        }
+      },
+
+      addRailingPath: (path) => {
+        const { activeStoryId, getActive } = get()
+        const project = getActive()
+        if (!project) return
+        const storyId = activeStoryId ?? project.stories[0]?.id
+        if (!storyId) return
+        let railingId: string | null = null
+        get().commit((p) => {
+          const res = placeRailingPath(p, storyId, path)
+          railingId = res.railingId
+          return res.project
+        })
+        if (railingId) {
+          get().select({ kind: 'railing', id: railingId })
           set({ inspectorOpen: true, inspectorTab: 'ouvrage' })
         }
       },
@@ -501,6 +538,18 @@ export const useProjectStore = create<StoreState>()(
         // Ensure seed names stay available if missing
         for (const [k, v] of Object.entries(seeds)) {
           if (!merged[k]) merged[k] = v
+        }
+        for (const proj of Object.values(merged)) {
+          if (!proj) continue
+          if (!proj.railings) proj.railings = []
+          for (const roof of proj.roofs ?? []) {
+            if (!roof.mode) roof.mode = 'terrasse'
+            if (roof.pitchDeg == null) roof.pitchDeg = 30
+          }
+          for (const stair of proj.stairs ?? []) {
+            if (stair.railings === undefined) stair.railings = true
+            if (stair.railingHeight == null) stair.railingHeight = 1.0
+          }
         }
         return {
           ...current,

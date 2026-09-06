@@ -53,12 +53,19 @@ export type Slab = {
   materialId?: string
 }
 
+export type RoofMode = 'terrasse' | '2pentes' | 'croupe'
+
 export type Roof = {
   id: string
   storyId: string
   polygon: Vec2[]
+  /** Flat thickness (terrasse) or legacy ridge hint */
   ridgeHeight: number
   overhang: number
+  /** Default terrasse for legacy saves */
+  mode?: RoofMode
+  /** Pitch angle in degrees (pitched modes); default ~30 */
+  pitchDeg?: number
 }
 
 export type Column = {
@@ -82,9 +89,21 @@ export type Stair = {
   mode?: StairMode
   /** Optional explicit total rise (m); default = story height */
   rise?: number
+  /** Auto garde-corps (default true) */
+  railings?: boolean
+  /** Garde-corps height in m (default 1.0) */
+  railingHeight?: number
   /** Legacy first/last path points (kept for IFC / older saves) */
   a: Vec2
   b: Vec2
+}
+
+export type Railing = {
+  id: string
+  storyId: string
+  path: Vec2[]
+  height: number
+  materialId?: string
 }
 
 export type FurnitureKind =
@@ -136,6 +155,7 @@ export type Project = {
   roofs: Roof[]
   columns: Column[]
   stairs: Stair[]
+  railings: Railing[]
   furniture: Furniture[]
   updatedAt: number
   createdAt: number
@@ -157,6 +177,7 @@ export type ToolMode =
   | 'column'
   | 'stair'
   | 'roof'
+  | 'railing'
 
 export type Selection =
   | { kind: 'wall'; id: string }
@@ -168,6 +189,7 @@ export type Selection =
   | { kind: 'stair'; id: string }
   | { kind: 'opening'; id: string }
   | { kind: 'roof'; id: string }
+  | { kind: 'railing'; id: string }
   | null
 
 export function uid(prefix = 'id'): string {

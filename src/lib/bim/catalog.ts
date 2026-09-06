@@ -61,4 +61,6 @@ export const OPENING_DEFAULTS = {
 export const COLUMN_DEFAULT_SIZE = 0.4
 export const SLAB_DEFAULT_THICKNESS = 0.25
 export const STAIR_DEFAULT_WIDTH = 1.0
-export const ROOF_DEFAULT_RIDGE = 1.0
+export const ROOF_DEFAULT_RIDGE = 0.35
+export const ROOF_DEFAULT_PITCH = 30
+export const RAILING_DEFAULT_HEIGHT = 1.0

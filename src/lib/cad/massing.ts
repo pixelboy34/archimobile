@@ -46,7 +46,7 @@ function facadeOpenings(envelope: Wall[], isGround: boolean, hsp: number): Openi
 /** Plateau + noyau + etages empiles + terrasse. Caps floors at 80. */
 export function generateMassing(params: MassingParams): Pick<
   Project,
-  'stories' | 'walls' | 'slabs' | 'columns' | 'furniture' | 'rooms' | 'roofs' | 'openings' | 'stairs'
+  'stories' | 'walls' | 'slabs' | 'columns' | 'furniture' | 'rooms' | 'roofs' | 'openings' | 'stairs' | 'railings'
 > {
   const width = Math.max(6, params.width)
   const depth = Math.max(6, params.depth)
@@ -139,8 +139,15 @@ export function generateMassing(params: MassingParams): Pick<
     storyId: story.id,
     a: { x: -0.6, y: coreZ + coreD - 1.4 },
     b: { x: 0.6, y: coreZ + coreD - 1.4 },
+    path: [
+      { x: -0.6, y: coreZ + coreD - 1.4 },
+      { x: 0.6, y: coreZ + coreD - 1.4 },
+    ],
     width: 1.2,
     rises: Math.max(8, Math.round(hsp / 0.17)),
+    mode: 'droit' as const,
+    railings: true,
+    railingHeight: 1.0,
   }))
 
   return {
@@ -153,5 +160,6 @@ export function generateMassing(params: MassingParams): Pick<
     roofs: [],
     openings,
     stairs,
+    railings: [],
   }
 }

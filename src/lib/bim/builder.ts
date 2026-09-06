@@ -1,4 +1,4 @@
-import type { Vec2, Wall, Room, Slab, Opening, Column, Furniture, Story, Project, Meta, Stair, Roof } from './types'
+import type { Vec2, Wall, Room, Slab, Opening, Column, Furniture, Story, Project, Meta, Stair, Roof, RoofMode, Railing } from './types'
 import { uid } from './types'
 
 export function rectWalls(
@@ -90,6 +90,7 @@ export function emptyProject(meta: Meta): Project {
     roofs: [],
     columns: [],
     stairs: [],
+    railings: [],
     furniture: [],
     updatedAt: now,
     createdAt: now,
@@ -126,9 +127,22 @@ export function makeStair(
     rises,
     mode,
     rise,
+    railings: true,
+    railingHeight: 1.0,
   }
 }
 
-export function makeRoof(storyId: string, polygon: Vec2[], ridgeHeight = 1.0, overhang = 0.3): Roof {
-  return { id: uid('roof'), storyId, polygon, ridgeHeight, overhang }
+export function makeRoof(
+  storyId: string,
+  polygon: Vec2[],
+  ridgeHeight = 0.35,
+  overhang = 0.3,
+  mode: RoofMode = 'terrasse',
+  pitchDeg = 30,
+): Roof {
+  return { id: uid('roof'), storyId, polygon, ridgeHeight, overhang, mode, pitchDeg }
+}
+
+export function makeRailing(storyId: string, path: Vec2[], height = 1.0, materialId = 'acier'): Railing {
+  return { id: uid('rail'), storyId, path: path.map((p) => ({ ...p })), height, materialId }
 }

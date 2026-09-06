@@ -7,6 +7,8 @@ import {
   placeColumnAt,
   placeStairRun,
   placeStairPath,
+  placeRoofRect,
+  placeRailingPath,
   nearestWallHit,
 } from './ops'
 import type { Project, Wall, Opening, Room } from '../bim/types'
@@ -33,6 +35,7 @@ function emptyProject(walls: Wall[], openings: Opening[] = [], rooms: Room[] = [
     roofs: [],
     columns: [],
     stairs: [],
+    railings: [],
     furniture: [],
     updatedAt: 0,
     createdAt: 0,
@@ -125,4 +128,31 @@ describe('placement ouvrage', () => {
     assert.equal(res.project.stairs[0]!.mode, 'quart')
     assert.equal(res.project.stairs[0]!.path.length, 3)
   })
+
+  it('new stairs get auto railings', () => {
+    const p = emptyProject([])
+    const res = placeStairRun(p, 's1', { x: 0, y: 0 }, { x: 3, y: 0 })
+    assert.equal(res.project.stairs[0]!.railings, true)
+  })
+
+  it('placeRoofRect defaults to 2pentes', () => {
+    const p = emptyProject([])
+    const res = placeRoofRect(p, 's1', { x: 0, y: 0 }, { x: 6, y: 4 })
+    assert.ok(res.roofId)
+    assert.equal(res.project.roofs[0]!.mode, '2pentes')
+    assert.equal(res.project.roofs[0]!.pitchDeg, 30)
+  })
+
+  it('placeRailingPath stores polyline', () => {
+    const p = emptyProject([])
+    const res = placeRailingPath(p, 's1', [
+      { x: 0, y: 0 },
+      { x: 2, y: 0 },
+      { x: 2, y: 1 },
+    ])
+    assert.ok(res.railingId)
+    assert.equal(res.project.railings.length, 1)
+    assert.equal(res.project.railings[0]!.path.length, 3)
+  })
+
 })
