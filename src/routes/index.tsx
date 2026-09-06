@@ -1,6 +1,8 @@
-/**
- * Future TanStack Start / Router file-route for `/`.
- * Currently re-exported into Vite + React Router (`App.tsx`).
- * Full Start migration blocked: see CLAUDE.md §1.
- */
-export { default } from '../pages/HomePage'
+import { createFileRoute } from "@tanstack/react-router";
+import { HomePage } from "@/components/home/HomePage";
+
+export const Route = createFileRoute("/")({ component: Home });
+
+function Home() {
+  return <HomePage />;
+}

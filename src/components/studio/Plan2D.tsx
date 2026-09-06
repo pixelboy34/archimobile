@@ -1,926 +1,574 @@
-import { useMemo, useRef, useState, useCallback, useEffect } from 'react'
-import type { Project, Vec2 } from '../../lib/bim/types'
-import { useProjectStore } from '../../lib/store/project-store'
-import { FURNITURE_PRESETS, OPENING_DEFAULTS } from '../../lib/bim/catalog'
-import { nearestWallHit } from '../../lib/cad/ops'
+import { useEffect, useRef } from "react";
+import { MATERIAL_COLORS, ROOM_HATCH, resolveMaterial } from "@/lib/bim/materials";
+import { OBJECT_MESH } from "@/lib/bim/catalog";
 import {
-  labelForStairMode,
-  normalizeStair,
-  pointsNeededForMode,
-  stairHitDist,
-  stairPlanOutlines,
-} from '../../lib/cad/stairs'
-import { stairRailingPlanPaths, railingHitDist } from '../../lib/cad/railings'
-import { normalizeRoof, roofPlanLines, labelForRoofMode } from '../../lib/cad/roofs'
-import type { StairMode, RoofMode } from '../../lib/bim/types'
+  dist,
+  distToSegment,
+  pointInPolygon,
+  polygonCentroid,
+  projectBounds,
+  snapVec,
+  wallLength,
+  wallAngle,
+} from "@/lib/bim/geometry";
+import type { Project, Tool, Vec2 } from "@/lib/bim/types";
+import { snapDetail } from "@/lib/bim/snap";
+import { orthoPoint } from "@/lib/cad/ops";
+import { useStudio } from "@/lib/store/project-store";
 
-type Props = {
-  project: Project
-  storyId: string | null
+interface Cam {
+  x: number;
+  y: number;
+  scale: number;
 }
 
-export default function Plan2D({ project, storyId }: Props) {
-  const tool = useProjectStore((s) => s.tool)
-  const layers = useProjectStore((s) => s.layers)
-  const ortho = useProjectStore((s) => s.ortho)
-  const setOrtho = useProjectStore((s) => s.setOrtho)
-  const addWall = useProjectStore((s) => s.addWall)
-  const select = useProjectStore((s) => s.select)
-  const selection = useProjectStore((s) => s.selection)
-  const placeKind = useProjectStore((s) => s.placeKind)
-  const placeRotation = useProjectStore((s) => s.placeRotation)
-  const addFurnitureAt = useProjectStore((s) => s.addFurnitureAt)
-  const applyTrim = useProjectStore((s) => s.applyTrim)
-  const applyExtend = useProjectStore((s) => s.applyExtend)
-  const setInspectorOpen = useProjectStore((s) => s.setInspectorOpen)
-  const setInspectorTab = useProjectStore((s) => s.setInspectorTab)
-  const addOpeningAtWall = useProjectStore((s) => s.addOpeningAtWall)
-  const addSlab = useProjectStore((s) => s.addSlab)
-  const addSlabPolygon = useProjectStore((s) => s.addSlabPolygon)
-  const addColumn = useProjectStore((s) => s.addColumn)
-  const addStairPath = useProjectStore((s) => s.addStairPath)
-  const addRoof = useProjectStore((s) => s.addRoof)
-  const addRoofPolygon = useProjectStore((s) => s.addRoofPolygon)
-  const addRailingPath = useProjectStore((s) => s.addRailingPath)
-  const stairMode = useProjectStore((s) => s.stairMode)
-  const setStairMode = useProjectStore((s) => s.setStairMode)
-  const roofMode = useProjectStore((s) => s.roofMode)
-  const setRoofMode = useProjectStore((s) => s.setRoofMode)
-  const polyDrawMode = useProjectStore((s) => s.polyDrawMode)
-  const setPolyDrawMode = useProjectStore((s) => s.setPolyDrawMode)
+function worldFromEvent(
+  e: { clientX: number; clientY: number },
+  canvas: HTMLCanvasElement,
+  cam: Cam,
+): Vec2 {
+  const r = canvas.getBoundingClientRect();
+  const sx = e.clientX - r.left;
+  const sy = e.clientY - r.top;
+  return {
+    x: cam.x + (sx - canvas.clientWidth / 2) / cam.scale,
+    y: cam.y - (sy - canvas.clientHeight / 2) / cam.scale,
+  };
+}
 
-  const [draft, setDraft] = useState<Vec2 | null>(null)
-  const [polyDraft, setPolyDraft] = useState<Vec2[]>([])
-  const [hover, setHover] = useState<Vec2 | null>(null)
-  /** For trim/extend: first selected wall id awaiting second click */
-  const [cadWallId, setCadWallId] = useState<string | null>(null)
-  const svgRef = useRef<SVGSVGElement>(null)
-  const lastClickAt = useRef(0)
-
-  const story = project.stories.find((s) => s.id === storyId) ?? project.stories[0]
-  const walls = layers.walls ? project.walls.filter((w) => w.storyId === story?.id) : []
-  const rooms = project.rooms.filter((r) => r.storyId === story?.id)
-  const furniture = layers.furniture ? project.furniture.filter((f) => f.storyId === story?.id) : []
-  const columns = layers.columns ? project.columns.filter((c) => c.storyId === story?.id) : []
-  const slabs = layers.slabs ? project.slabs.filter((s) => s.storyId === story?.id) : []
-  const stairs = layers.stairs ? project.stairs.filter((s) => s.storyId === story?.id) : []
-  const roofs = layers.roofs ? project.roofs.filter((r) => r.storyId === story?.id) : []
-  const railings = layers.railings
-    ? (project.railings ?? []).filter((r) => r.storyId === story?.id)
-    : []
-  const wallIds = new Set(walls.map((w) => w.id))
-  const openings = layers.openings ? project.openings.filter((o) => wallIds.has(o.wallId)) : []
-
-  useEffect(() => {
-    setDraft(null)
-    setPolyDraft([])
-    setCadWallId(null)
-  }, [tool, stairMode, roofMode, polyDrawMode])
-
-  const finishPolygon = useCallback(() => {
-    if (polyDraft.length < 3) return
-    if (tool === 'slab') addSlabPolygon(polyDraft)
-    else if (tool === 'roof') addRoofPolygon(polyDraft)
-    setPolyDraft([])
-  }, [polyDraft, tool, addSlabPolygon, addRoofPolygon])
-
-  const finishStairPath = useCallback(() => {
-    const minPts = stairMode === 'droit' ? 2 : 3
-    if (polyDraft.length < minPts) return
-    addStairPath(polyDraft, stairMode)
-    setPolyDraft([])
-  }, [polyDraft, stairMode, addStairPath])
-
-  const finishRailingPath = useCallback(() => {
-    if (polyDraft.length < 2) return
-    addRailingPath(polyDraft)
-    setPolyDraft([])
-  }, [polyDraft, addRailingPath])
+export function Plan2D({
+  project,
+  storyId,
+  tool,
+  snap,
+  grid,
+  selectedIds,
+  onSelect,
+  onWall,
+  onOpening,
+  onFurniture,
+  onColumn,
+  onStair,
+  onSlab,
+  onRoof,
+  onDeletePoint,
+}: {
+  project: Project;
+  storyId: string;
+  tool: Tool;
+  snap: boolean;
+  grid: boolean;
+  selectedIds: string[];
+  onSelect: (ids: string[]) => void;
+  onWall: (a: Vec2, b: Vec2) => void;
+  onOpening: (kind: "door" | "window", p: Vec2) => void;
+  onFurniture: (p: Vec2) => void;
+  onColumn: (p: Vec2) => void;
+  onStair: (p: Vec2) => void;
+  onSlab: (p: Vec2) => void;
+  onRoof: (p: Vec2) => void;
+  onDeletePoint: (p: Vec2) => void;
+}) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const cam = useRef<Cam>({ x: 8, y: 6, scale: 28 });
+  const drag = useRef<{ x: number; y: number; camX: number; camY: number } | null>(null);
+  const hover = useRef<Vec2 | null>(null);
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{ dist: number; scale: number } | null>(null);
+  const draft = useStudio((s) => s.draft);
+  const measure = useStudio((s) => s.measure);
+  const ortho = useStudio((s) => s.ortho);
+  const placeAt = useStudio((s) => s.placeAt);
+  const addStroke = useStudio((s) => s.addStroke);
+  const beginEdit = useStudio((s) => s.beginEdit);
+  const moveSelected = useStudio((s) => s.moveSelected);
+  const rotateSelected = useStudio((s) => s.rotateSelected);
+  const splitWall = useStudio((s) => s.splitWallAt);
+  const ink = useRef<Vec2[]>([]);
+  const moveDrag = useRef<{ last: Vec2 } | null>(null);
+  const lastTap = useRef(0);
+  const model = useRef({ project, storyId, tool, snap, grid, selectedIds, draft, measure, ortho });
+  model.current = { project, storyId, tool, snap, grid, selectedIds, draft, measure, ortho };
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setDraft(null)
-        setPolyDraft([])
-        setCadWallId(null)
+    const b = projectBounds(project, storyId);
+    cam.current.x = (b.min.x + b.max.x) / 2;
+    cam.current.y = (b.min.y + b.max.y) / 2;
+    const canvas = ref.current;
+    const w = canvas?.clientWidth || 390;
+    const h = canvas?.clientHeight || 560;
+    const sx = Math.max(8, b.max.x - b.min.x + 8);
+    const sy = Math.max(8, b.max.y - b.min.y + 8);
+    cam.current.scale = Math.max(2.4, Math.min(72, 0.9 * Math.min(w / sx, h / sy)));
+  }, [project.id, storyId]);
+
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    let raf = 0;
+    let alive = true;
+
+    const draw = () => {
+      if (!alive) return;
+      const { project: proj, storyId: sid, grid: showGrid, selectedIds: sel, draft: dr, measure: meas } =
+        model.current;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        raf = requestAnimationFrame(draw);
+        return;
       }
-      if (e.key === 'Enter') {
-        if (tool === 'slab' || tool === 'roof') {
-          if (polyDrawMode === 'polygon' && polyDraft.length >= 3) {
-            e.preventDefault()
-            finishPolygon()
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      if (w < 2 || h < 2) {
+        raf = requestAnimationFrame(draw);
+        return;
+      }
+      if (canvas.width !== Math.floor(w * dpr) || canvas.height !== Math.floor(h * dpr)) {
+        canvas.width = Math.floor(w * dpr);
+        canvas.height = Math.floor(h * dpr);
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.fillStyle = "#0a1118";
+      ctx.fillRect(0, 0, w, h);
+
+      const toS = (p: Vec2) => ({
+        x: w / 2 + (p.x - cam.current.x) * cam.current.scale,
+        y: h / 2 - (p.y - cam.current.y) * cam.current.scale,
+      });
+
+      if (showGrid) {
+        const step = cam.current.scale >= 36 ? 1 : 5;
+        ctx.beginPath();
+        const left = cam.current.x - w / 2 / cam.current.scale;
+        const right = cam.current.x + w / 2 / cam.current.scale;
+        const bottom = cam.current.y - h / 2 / cam.current.scale;
+        const top = cam.current.y + h / 2 / cam.current.scale;
+        const x0 = Math.floor(left / step) * step;
+        const y0 = Math.floor(bottom / step) * step;
+        for (let x = x0; x <= right; x += step) {
+          const s = toS({ x, y: 0 });
+          ctx.moveTo(s.x, 0);
+          ctx.lineTo(s.x, h);
+        }
+        for (let y = y0; y <= top; y += step) {
+          const s = toS({ x: 0, y });
+          ctx.moveTo(0, s.y);
+          ctx.lineTo(w, s.y);
+        }
+        ctx.strokeStyle = "rgba(110, 208, 195, 0.08)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+
+      const rooms = proj.rooms.filter((r) => r.storyId === sid);
+      for (const r of rooms) {
+        if (r.polygon.length < 3) continue;
+        ctx.beginPath();
+        r.polygon.forEach((p, i) => {
+          const s = toS(p);
+          if (i === 0) ctx.moveTo(s.x, s.y);
+          else ctx.lineTo(s.x, s.y);
+        });
+        ctx.closePath();
+        ctx.fillStyle = ROOM_HATCH[r.function] ?? "#c4bfb4";
+        ctx.globalAlpha = 0.16;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        const c = toS(polygonCentroid(r.polygon));
+        ctx.fillStyle = "#9a978e";
+        ctx.font = "500 11px Outfit, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(r.name, c.x, c.y);
+      }
+
+      const walls = proj.walls.filter((wl) => wl.storyId === sid);
+      for (const wall of walls) {
+        const a = toS(wall.a);
+        const b = toS(wall.b);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.strokeStyle = sel.includes(wall.id)
+          ? "#c8f0e6"
+          : resolveMaterial(wall.materialId, proj.materials).color;
+        ctx.lineWidth = Math.max(3, wall.thickness * cam.current.scale);
+        ctx.lineCap = "square";
+        ctx.stroke();
+        if (sel.includes(wall.id) || cam.current.scale >= 30) {
+          const mid = toS({ x: (wall.a.x + wall.b.x) / 2, y: (wall.a.y + wall.b.y) / 2 });
+          ctx.fillStyle = sel.includes(wall.id) ? "#c8f0e6" : "#9eb0b4";
+          ctx.font = "500 11px IBM Plex Mono, monospace";
+          ctx.textAlign = "center";
+          ctx.fillText(`${wallLength(wall).toFixed(2)} m`, mid.x, mid.y - 10);
+        }
+      }
+
+      for (const o of proj.openings) {
+        const wall = walls.find((wl) => wl.id === o.wallId);
+        if (!wall) continue;
+        const t = o.t;
+        const px = wall.a.x + (wall.b.x - wall.a.x) * t;
+        const py = wall.a.y + (wall.b.y - wall.a.y) * t;
+        const s = toS({ x: px, y: py });
+        const ang = wallAngle(wall);
+        const sc = cam.current.scale;
+        if (o.kind === "door") {
+          const dir = o.swing === "right" ? 1 : -1;
+          const hx = px - Math.cos(ang) * (o.width / 2) * dir;
+          const hy = py - Math.sin(ang) * (o.width / 2) * dir;
+          const hs = toS({ x: hx, y: hy });
+          const r = o.width * sc;
+          const start = -ang + (dir > 0 ? Math.PI : 0);
+          ctx.beginPath();
+          ctx.moveTo(hs.x, hs.y);
+          ctx.arc(hs.x, hs.y, r, start, start + dir * (Math.PI / 2), dir < 0);
+          ctx.strokeStyle = "rgba(138,104,72,0.75)";
+          ctx.lineWidth = 1.25;
+          ctx.stroke();
+        } else {
+          ctx.save();
+          ctx.translate(s.x, s.y);
+          ctx.rotate(-ang);
+          ctx.strokeStyle = "#7a9e96";
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect((-o.width * sc) / 2, -3, o.width * sc, 6);
+          ctx.restore();
+        }
+      }
+
+      for (const f of proj.furniture.filter((x) => x.storyId === sid)) {
+        const s = toS(f.position);
+        ctx.save();
+        ctx.translate(s.x, s.y);
+        ctx.rotate(-f.rotation);
+        ctx.fillStyle = sel.includes(f.id)
+          ? "#7a9e96"
+          : MATERIAL_COLORS[OBJECT_MESH[f.kind]?.mat ?? "wood"] ?? "rgba(232,228,217,0.35)";
+        ctx.fillRect(
+          (-f.w * cam.current.scale) / 2,
+          (-f.d * cam.current.scale) / 2,
+          f.w * cam.current.scale,
+          f.d * cam.current.scale,
+        );
+        ctx.restore();
+      }
+
+      for (const c of proj.columns.filter((x) => x.storyId === sid)) {
+        const s = toS(c.position);
+        const sc = cam.current.scale;
+        ctx.fillStyle = sel.includes(c.id) ? "#7a9e96" : "#9a958c";
+        ctx.fillRect(s.x - (c.width * sc) / 2, s.y - (c.depth * sc) / 2, c.width * sc, c.depth * sc);
+      }
+      for (const st of proj.stairs.filter((x) => x.storyId === sid)) {
+        const s = toS(st.origin);
+        ctx.save();
+        ctx.translate(s.x, s.y);
+        ctx.rotate(-st.direction);
+        ctx.strokeStyle = sel.includes(st.id) ? "#7a9e96" : "#c4bfb4";
+        ctx.strokeRect(0, (-st.width * cam.current.scale) / 2, st.run * cam.current.scale, st.width * cam.current.scale);
+        ctx.restore();
+      }
+
+      if (dr && hover.current) {
+        const hoverPt = model.current.ortho ? orthoPoint(dr, hover.current) : hover.current;
+        const a = toS(dr);
+        const b = toS(hoverPt);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.strokeStyle = "#7a9e96";
+        ctx.setLineDash([6, 4]);
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = "#f3f1ec";
+        ctx.font = "500 11px IBM Plex Mono, monospace";
+        ctx.fillText(`${dist(dr, hoverPt).toFixed(2)} m`, (a.x + b.x) / 2, (a.y + b.y) / 2 - 8);
+      }
+      if (dr && hover.current && model.current.tool === "rect") {
+        const a = toS(dr);
+        const b = toS(hover.current);
+        ctx.strokeStyle = "#7a9e96";
+        ctx.setLineDash([6, 4]);
+        ctx.strokeRect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+        ctx.setLineDash([]);
+        const w = Math.abs(hover.current.x - dr.x);
+        const d = Math.abs(hover.current.y - dr.y);
+        ctx.fillStyle = "#f3f1ec";
+        ctx.font = "500 11px IBM Plex Mono, monospace";
+        ctx.fillText(`${w.toFixed(2)} × ${d.toFixed(2)} m`, (a.x + b.x) / 2, (a.y + b.y) / 2);
+      }
+      if (hover.current && (model.current.tool === "wall" || model.current.tool === "rect" || model.current.tool === "measure")) {
+        const snap = snapDetail(hover.current, proj, sid, model.current.snap);
+        const spt = toS(snap.point);
+        ctx.beginPath();
+        if (snap.kind === "end") {
+          ctx.rect(spt.x - 5, spt.y - 5, 10, 10);
+        } else {
+          ctx.arc(spt.x, spt.y, 5, 0, Math.PI * 2);
+        }
+        ctx.strokeStyle = snap.kind === "none" ? "#5c5a54" : "#7a9e96";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+      if (meas) {
+        const a = toS(meas.a);
+        const b = toS(meas.b);
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.strokeStyle = "#e8e4d9";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = "#f3f1ec";
+        ctx.font = "500 11px IBM Plex Mono, monospace";
+        ctx.fillText(`${dist(meas.a, meas.b).toFixed(2)} m`, (a.x + b.x) / 2, (a.y + b.y) / 2 - 8);
+      }
+
+      const layers = proj.layers ?? [];
+      const visible = new Set(layers.filter((l) => l.visible).map((l) => l.id));
+      for (const sk of proj.strokes ?? []) {
+        if (sk.storyId !== sid || sk.points.length < 2) continue;
+        if (sk.layerId && visible.size && !visible.has(sk.layerId)) continue;
+        const layer = layers.find((l) => l.id === sk.layerId);
+        ctx.beginPath();
+        sk.points.forEach((pt, i) => {
+          const s = toS(pt);
+          if (i === 0) ctx.moveTo(s.x, s.y);
+          else ctx.lineTo(s.x, s.y);
+        });
+        ctx.strokeStyle = sk.color;
+        ctx.globalAlpha = layer?.opacity ?? 1;
+        ctx.lineWidth = Math.max(1.5, sk.width * cam.current.scale);
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+
+      const live = ink.current;
+      if (live.length > 1) {
+        ctx.beginPath();
+        live.forEach((pt, i) => {
+          const s = toS(pt);
+          if (i === 0) ctx.moveTo(s.x, s.y);
+          else ctx.lineTo(s.x, s.y);
+        });
+        ctx.strokeStyle = "#e8e4d9";
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = "round";
+        ctx.stroke();
+      }
+
+      const survey = (proj.survey ?? []).filter((sv) => sv.storyId === sid);
+      if (survey.length) {
+        ctx.beginPath();
+        survey.forEach((sv, i) => {
+          const s = toS(sv.position);
+          if (i === 0) ctx.moveTo(s.x, s.y);
+          else ctx.lineTo(s.x, s.y);
+        });
+        ctx.strokeStyle = "#c4a35a";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        for (let i = 0; i < survey.length; i++) {
+          const s = toS(survey[i]!.position);
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, 5, 0, Math.PI * 2);
+          ctx.fillStyle = "#c4a35a";
+          ctx.fill();
+          if (i > 0) {
+            const a = survey[i - 1]!.position;
+            const b = survey[i]!.position;
+            const mid = toS({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+            ctx.fillStyle = "#e8e4d9";
+            ctx.font = "500 11px IBM Plex Mono, monospace";
+            ctx.textAlign = "center";
+            ctx.fillText(`${dist(a, b).toFixed(2)} m`, mid.x, mid.y - 8);
           }
         }
-        if (tool === 'stair' && polyDraft.length >= (stairMode === 'droit' ? 2 : 3)) {
-          e.preventDefault()
-          finishStairPath()
-        }
-        if (tool === 'railing' && polyDraft.length >= 2) {
-          e.preventDefault()
-          finishRailingPath()
-        }
+      }
+
+      ctx.fillStyle = "#7a9e96";
+      ctx.font = "600 10px Outfit, sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText("N", 18, 28);
+      ctx.beginPath();
+      ctx.moveTo(22, 34);
+      ctx.lineTo(22, 52);
+      ctx.strokeStyle = "#7a9e96";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      const meters = cam.current.scale >= 40 ? 2 : cam.current.scale >= 22 ? 5 : 10;
+      const bar = meters * cam.current.scale;
+      const bx = 18;
+      const by = h - 22;
+      ctx.strokeStyle = "#e8e4d9";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(bx, by);
+      ctx.lineTo(bx + bar, by);
+      ctx.moveTo(bx, by - 4);
+      ctx.lineTo(bx, by + 4);
+      ctx.moveTo(bx + bar, by - 4);
+      ctx.lineTo(bx + bar, by + 4);
+      ctx.stroke();
+      ctx.fillStyle = "#c4bfb4";
+      ctx.font = "500 10px IBM Plex Mono, monospace";
+      ctx.textAlign = "left";
+      ctx.fillText(`${meters} m`, bx, by - 8);
+
+      raf = requestAnimationFrame(draw);
+    };
+    raf = requestAnimationFrame(draw);
+    return () => {
+      alive = false;
+      cancelAnimationFrame(raf);
+    };
+  }, []);
+
+  const hit = (p: Vec2): string | null => {
+    const { project: proj, storyId: sid } = model.current;
+    let bestId: string | null = null;
+    let bestD = Infinity;
+    const consider = (id: string, d: number) => {
+      if (d < bestD) {
+        bestD = d;
+        bestId = id;
+      }
+    };
+    for (const o of proj.openings) {
+      const wall = proj.walls.find((w) => w.id === o.wallId);
+      if (!wall || wall.storyId !== sid) continue;
+      const px = wall.a.x + (wall.b.x - wall.a.x) * o.t;
+      const py = wall.a.y + (wall.b.y - wall.a.y) * o.t;
+      const d = dist(p, { x: px, y: py });
+      if (d < 0.45) consider(o.id, d);
+    }
+    for (const f of proj.furniture.filter((x) => x.storyId === sid)) {
+      const d = dist(p, f.position);
+      if (d < Math.max(0.5, Math.min(f.w, f.d) * 0.6)) consider(f.id, d);
+    }
+    for (const c of proj.columns.filter((x) => x.storyId === sid)) {
+      const d = dist(p, c.position);
+      if (d < 0.5) consider(c.id, d);
+    }
+    for (const st of proj.stairs.filter((x) => x.storyId === sid)) {
+      const d = dist(p, st.origin);
+      if (d < 0.8) consider(st.id, d);
+    }
+    for (const w of proj.walls.filter((x) => x.storyId === sid)) {
+      const h = distToSegment(p, w.a, w.b);
+      if (h.dist < 0.4) consider(w.id, h.dist);
+    }
+    for (const r of proj.rooms.filter((x) => x.storyId === sid)) {
+      if (pointInPolygon(p, r.polygon)) {
+        const c = polygonCentroid(r.polygon);
+        consider(r.id, dist(p, c) * 0.25);
       }
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [tool, polyDrawMode, polyDraft, stairMode, finishPolygon, finishStairPath, finishRailingPath])
-
-  const bounds = useMemo(() => {
-    let minX = -15,
-      maxX = 15,
-      minY = -15,
-      maxY = 15
-    for (const w of walls) {
-      minX = Math.min(minX, w.a.x, w.b.x)
-      maxX = Math.max(maxX, w.a.x, w.b.x)
-      minY = Math.min(minY, w.a.y, w.b.y)
-      maxY = Math.max(maxY, w.a.y, w.b.y)
+    for (const sl of proj.slabs.filter((x) => x.storyId === sid)) {
+      if (pointInPolygon(p, sl.polygon)) consider(sl.id, 1.2);
     }
-    for (const f of furniture) {
-      minX = Math.min(minX, f.position.x)
-      maxX = Math.max(maxX, f.position.x)
-      minY = Math.min(minY, f.position.y)
-      maxY = Math.max(maxY, f.position.y)
+    for (const rf of proj.roofs.filter((x) => x.storyId === sid)) {
+      if (pointInPolygon(p, rf.polygon)) consider(rf.id, 1.4);
     }
-    for (const c of columns) {
-      minX = Math.min(minX, c.position.x)
-      maxX = Math.max(maxX, c.position.x)
-      minY = Math.min(minY, c.position.y)
-      maxY = Math.max(maxY, c.position.y)
-    }
-    const pad = 4
-    return { minX: minX - pad, maxX: maxX + pad, minY: minY - pad, maxY: maxY + pad }
-  }, [walls, furniture, columns])
-
-  const vb = `${bounds.minX} ${bounds.minY} ${bounds.maxX - bounds.minX} ${bounds.maxY - bounds.minY}`
-
-  const clientToWorld = useCallback(
-    (clientX: number, clientY: number): Vec2 => {
-      const svg = svgRef.current
-      if (!svg) return { x: 0, y: 0 }
-      const pt = svg.createSVGPoint()
-      pt.x = clientX
-      pt.y = clientY
-      const ctm = svg.getScreenCTM()
-      if (!ctm) return { x: 0, y: 0 }
-      const local = pt.matrixTransform(ctm.inverse())
-      let x = local.x
-      let y = local.y
-      const anchor =
-        draft ??
-        (polyDraft.length > 0 ? polyDraft[polyDraft.length - 1]! : null)
-      if (ortho && anchor && (tool === 'wall' || tool === 'stair')) {
-        const dx = Math.abs(x - anchor.x)
-        const dy = Math.abs(y - anchor.y)
-        if (dx > dy) y = anchor.y
-        else x = anchor.x
-      }
-      return { x: Math.round(x * 20) / 20, y: Math.round(y * 20) / 20 }
-    },
-    [draft, polyDraft, ortho, tool],
-  )
-
-  const hitWall = (p: Vec2, maxDist = 0.55): string | null => {
-    return nearestWallHit(p, walls, maxDist)?.wall.id ?? null
-  }
-
-  const onPointerMove = (e: React.PointerEvent) => {
-    setHover(clientToWorld(e.clientX, e.clientY))
-  }
-
-  const onPointerDown = (e: React.PointerEvent) => {
-    if (!story) return
-    const p = clientToWorld(e.clientX, e.clientY)
-
-    if (tool === 'objects' && placeKind) {
-      addFurnitureAt(p)
-      return
-    }
-
-    if (tool === 'door' || tool === 'window') {
-      const hit = nearestWallHit(p, walls, 0.7)
-      if (hit) {
-        addOpeningAtWall(hit.wall.id, hit.t, tool === 'door' ? 'door' : 'window')
-      }
-      return
-    }
-
-    if (tool === 'column') {
-      addColumn(p)
-      return
-    }
-
-    if (tool === 'slab' || tool === 'roof') {
-      const useRect = polyDrawMode === 'rect' || e.shiftKey
-      if (useRect) {
-        if (!draft) {
-          setDraft(p)
-          setPolyDraft([])
-          return
-        }
-        if (tool === 'slab') addSlab(draft, p)
-        else addRoof(draft, p)
-        setDraft(null)
-        return
-      }
-      // Polygon mode: click vertices; double-click closes
-      const now = Date.now()
-      const isDouble = now - lastClickAt.current < 320 && polyDraft.length >= 2
-      lastClickAt.current = now
-      if (isDouble) {
-        const next = [...polyDraft, p]
-        if (tool === 'slab') addSlabPolygon(next.length >= 3 ? next : polyDraft)
-        else addRoofPolygon(next.length >= 3 ? next : polyDraft)
-        setPolyDraft([])
-        return
-      }
-      setPolyDraft((prev) => [...prev, p])
-      return
-    }
-
-    if (tool === 'stair') {
-      const needed = pointsNeededForMode(stairMode)
-      const now = Date.now()
-      const next = [...polyDraft, p]
-      // Auto-finish when enough points for mode
-      if (next.length >= needed) {
-        addStairPath(next, stairMode)
-        setPolyDraft([])
-        lastClickAt.current = now
-        return
-      }
-      setPolyDraft(next)
-      lastClickAt.current = now
-      return
-    }
-
-    if (tool === 'railing') {
-      const now = Date.now()
-      const isDouble = now - lastClickAt.current < 320 && polyDraft.length >= 1
-      lastClickAt.current = now
-      if (isDouble) {
-        const next = [...polyDraft, p]
-        addRailingPath(next.length >= 2 ? next : polyDraft)
-        setPolyDraft([])
-        return
-      }
-      setPolyDraft((prev) => [...prev, p])
-      return
-    }
-
-    if (tool === 'trim') {
-      if (!cadWallId) {
-        const id = hitWall(p) ?? (selection?.kind === 'wall' ? selection.id : null)
-        if (id) {
-          setCadWallId(id)
-          select({ kind: 'wall', id })
-        }
-        return
-      }
-      applyTrim(cadWallId, p)
-      setCadWallId(null)
-      return
-    }
-
-    if (tool === 'extend') {
-      if (!cadWallId) {
-        const id = hitWall(p) ?? (selection?.kind === 'wall' ? selection.id : null)
-        if (id) {
-          setCadWallId(id)
-          select({ kind: 'wall', id })
-        }
-        return
-      }
-      const target = hitWall(p)
-      if (target && target !== cadWallId) {
-        applyExtend(cadWallId, target)
-        setCadWallId(null)
-      }
-      return
-    }
-
-    if (tool !== 'wall' && tool !== 'rect') {
-      const col = columns.find(
-        (c) => Math.hypot(c.position.x - p.x, c.position.y - p.y) < Math.max(0.35, c.width),
-      )
-      if (col) {
-        select({ kind: 'column', id: col.id })
-        setInspectorOpen(true)
-        setInspectorTab('ouvrage')
-        return
-      }
-      const railHit = railings.find((r) => railingHitDist(r, p) < 0.35)
-      if (railHit) {
-        select({ kind: 'railing', id: railHit.id })
-        setInspectorOpen(true)
-        setInspectorTab('ouvrage')
-        return
-      }
-      const stair = stairs.find((s) => stairHitDist(normalizeStair(s), p) < Math.max(0.45, (s.width ?? 1) * 0.55))
-      if (stair) {
-        select({ kind: 'stair', id: stair.id })
-        setInspectorOpen(true)
-        setInspectorTab('ouvrage')
-        return
-      }
-      const slab = slabs.find((s) => {
-        const xs = s.polygon.map((pt) => pt.x)
-        const ys = s.polygon.map((pt) => pt.y)
-        return p.x >= Math.min(...xs) && p.x <= Math.max(...xs) && p.y >= Math.min(...ys) && p.y <= Math.max(...ys)
-      })
-      if (slab) {
-        select({ kind: 'slab', id: slab.id })
-        setInspectorOpen(true)
-        setInspectorTab('ouvrage')
-        return
-      }
-      const furn = furniture.find(
-        (f) => Math.hypot(f.position.x - p.x, f.position.y - p.y) < Math.max(0.4, f.width * 0.35),
-      )
-      if (furn) {
-        select({ kind: 'furniture', id: furn.id })
-        setInspectorOpen(true)
-        setInspectorTab('ouvrage')
-        return
-      }
-      const openHit = nearestWallHit(p, walls, 0.45)
-      if (openHit) {
-        const nearOpen = openings.find((o) => {
-          if (o.wallId !== openHit.wall.id) return false
-          return Math.abs(o.t - openHit.t) * Math.hypot(openHit.wall.b.x - openHit.wall.a.x, openHit.wall.b.y - openHit.wall.a.y) < o.width * 0.6
-        })
-        if (nearOpen) {
-          select({ kind: 'opening', id: nearOpen.id })
-          setInspectorOpen(true)
-          setInspectorTab('ouvrage')
-          return
-        }
-      }
-      select(null)
-      setCadWallId(null)
-      return
-    }
-
-    if (!draft) {
-      setDraft(p)
-      return
-    }
-    if (tool === 'wall') {
-      addWall({
-        storyId: story.id,
-        a: draft,
-        b: p,
-        thickness: 0.2,
-        height: story.height,
-        typology: 'exterior',
-      })
-      setDraft(null)
-    } else if (tool === 'rect') {
-      const x0 = Math.min(draft.x, p.x)
-      const y0 = Math.min(draft.y, p.y)
-      const x1 = Math.max(draft.x, p.x)
-      const y1 = Math.max(draft.y, p.y)
-      const corners: Vec2[] = [
-        { x: x0, y: y0 },
-        { x: x1, y: y0 },
-        { x: x1, y: y1 },
-        { x: x0, y: y1 },
-      ]
-      for (let i = 0; i < 4; i++) {
-        addWall({
-          storyId: story.id,
-          a: corners[i],
-          b: corners[(i + 1) % 4],
-          thickness: 0.2,
-          height: story.height,
-          typology: 'exterior',
-        })
-      }
-      setDraft(null)
-    }
-  }
-
-  const openingPreview =
-    (tool === 'door' || tool === 'window') && hover
-      ? nearestWallHit(hover, walls, 0.7)
-      : null
+    return bestId;
+  };
 
   return (
-    <div className="absolute inset-0 bg-[#04080c]">
-      <div className="absolute top-[5.75rem] left-3 z-10 flex gap-2 flex-wrap max-w-[70vw]">
-        <button type="button" className="chip" data-active={ortho} onClick={() => setOrtho(!ortho)}>
-          Ortho
-        </button>
-        {(draft || polyDraft.length > 0) && (
-          <button
-            type="button"
-            className="chip"
-            onClick={() => {
-              setDraft(null)
-              setPolyDraft([])
-            }}
-          >
-            Annuler
-          </button>
-        )}
-        {tool === 'stair' &&
-          polyDraft.length >= (stairMode === 'droit' ? 2 : 3) &&
-          polyDraft.length < pointsNeededForMode(stairMode) && (
-          <button type="button" className="chip" onClick={() => finishStairPath()}>
-            Terminer
-          </button>
-        )}
-        {tool === 'railing' && polyDraft.length >= 2 && (
-          <button type="button" className="chip" onClick={() => finishRailingPath()}>
-            Terminer
-          </button>
-        )}
-        {(tool === 'slab' || tool === 'roof') && polyDrawMode === 'polygon' && polyDraft.length >= 3 && (
-          <button type="button" className="chip" onClick={() => finishPolygon()}>
-            Terminer
-          </button>
-        )}
-        {cadWallId && (
-          <button type="button" className="chip" onClick={() => setCadWallId(null)}>
-            Annuler
-          </button>
-        )}
-      </div>
-      <svg
-        ref={svgRef}
-        viewBox={vb}
-        className="w-full h-full"
-        style={{ touchAction: 'none' }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-      >
-        <defs>
-          <pattern id="grid" width="1" height="1" patternUnits="userSpaceOnUse">
-            <path d="M 1 0 L 0 0 0 1" fill="none" stroke="#12202a" strokeWidth="0.02" />
-          </pattern>
-        </defs>
-        <rect
-          x={bounds.minX}
-          y={bounds.minY}
-          width={bounds.maxX - bounds.minX}
-          height={bounds.maxY - bounds.minY}
-          fill="url(#grid)"
-        />
-
-        {rooms.map((r) => {
-          const pts = r.polygon.map((pt) => `${pt.x},${pt.y}`).join(' ')
-          return <polygon key={r.id} points={pts} fill="rgba(110,208,195,0.08)" stroke="none" />
-        })}
-
-        {slabs.map((s) => {
-          const pts = s.polygon.map((pt) => `${pt.x},${pt.y}`).join(' ')
-          const active = selection?.kind === 'slab' && selection.id === s.id
-          return (
-            <polygon
-              key={s.id}
-              points={pts}
-              fill={active ? 'rgba(110,208,195,0.22)' : 'rgba(110,208,195,0.06)'}
-              stroke={active ? '#6ed0c3' : '#3a5560'}
-              strokeWidth={0.04}
-              strokeDasharray={s.kind === 'pool' ? '0.15 0.1' : undefined}
-              onPointerDown={(e) => {
-                e.stopPropagation()
-                select({ kind: 'slab', id: s.id })
-                setInspectorOpen(true)
-                setInspectorTab('ouvrage')
-              }}
-            />
-          )
-        })}
-
-        {roofs.map((r) => {
-          const nr = normalizeRoof(r)
-          const pts = nr.polygon.map((pt) => `${pt.x},${pt.y}`).join(' ')
-          const active = selection?.kind === 'roof' && selection.id === r.id
-          const lines = roofPlanLines(nr)
-          return (
-            <g
-              key={r.id}
-              onPointerDown={(e) => {
-                e.stopPropagation()
-                select({ kind: 'roof', id: r.id })
-                setInspectorOpen(true)
-                setInspectorTab('ouvrage')
-              }}
-            >
-              <polygon
-                points={pts}
-                fill={active ? 'rgba(139,69,19,0.12)' : 'rgba(139,69,19,0.05)'}
-                stroke={active ? '#c4784a' : '#8b5a3c'}
-                strokeWidth={0.05}
-                strokeDasharray="0.2 0.12"
-              />
-              {lines.map((ln, i) => (
-                <line
-                  key={`ridge-${i}`}
-                  x1={ln.a.x}
-                  y1={ln.a.y}
-                  x2={ln.b.x}
-                  y2={ln.b.y}
-                  stroke={active ? '#e8a06a' : '#a86b45'}
-                  strokeWidth={0.04}
-                />
-              ))}
-            </g>
-          )
-        })}
-
-        {furniture.map((f) => {
-          const active = selection?.kind === 'furniture' && selection.id === f.id
-          const preset = FURNITURE_PRESETS[f.kind]
-          return (
-            <g
-              key={f.id}
-              transform={`translate(${f.position.x}, ${f.position.y}) rotate(${(f.rotation * 180) / Math.PI})`}
-              onPointerDown={(e) => {
-                e.stopPropagation()
-                select({ kind: 'furniture', id: f.id })
-                setInspectorOpen(true)
-                setInspectorTab('ouvrage')
-              }}
-            >
-              <rect
-                x={-f.width / 2}
-                y={-f.depth / 2}
-                width={f.width}
-                height={f.depth}
-                fill={active ? 'rgba(110,208,195,0.45)' : 'rgba(110,208,195,0.18)'}
-                stroke={active ? '#6ed0c3' : '#4a6570'}
-                strokeWidth={0.04}
-              />
-              <text
-                x={0}
-                y={0.08}
-                textAnchor="middle"
-                fill="#a8bdc8"
-                fontSize={0.28}
-                fontFamily="IBM Plex Mono"
-              >
-                {preset?.label?.slice(0, 6) ?? f.kind}
-              </text>
-            </g>
-          )
-        })}
-
-        {columns.map((c) => {
-          const active = selection?.kind === 'column' && selection.id === c.id
-          return (
-            <rect
-              key={c.id}
-              x={c.position.x - c.width / 2}
-              y={c.position.y - c.depth / 2}
-              width={c.width}
-              height={c.depth}
-              fill={active ? 'rgba(110,208,195,0.5)' : 'rgba(154,163,168,0.55)'}
-              stroke={active ? '#6ed0c3' : '#9aa3a8'}
-              strokeWidth={0.04}
-              onPointerDown={(e) => {
-                e.stopPropagation()
-                select({ kind: 'column', id: c.id })
-                setInspectorOpen(true)
-                setInspectorTab('ouvrage')
-              }}
-            />
-          )
-        })}
-
-        {stairs.map((raw) => {
-          const s = normalizeStair(raw)
-          const active = selection?.kind === 'stair' && selection.id === s.id
-          const outlines = stairPlanOutlines(s)
-          return (
-            <g
-              key={s.id}
-              onPointerDown={(e) => {
-                e.stopPropagation()
-                select({ kind: 'stair', id: s.id })
-                setInspectorOpen(true)
-                setInspectorTab('ouvrage')
-              }}
-            >
-              {outlines.landings.map((poly, i) => (
-                <polygon
-                  key={`land-${i}`}
-                  points={poly.map((pt) => `${pt.x},${pt.y}`).join(' ')}
-                  fill={active ? 'rgba(110,208,195,0.28)' : 'rgba(110,208,195,0.1)'}
-                  stroke="#6ed0c3"
-                  strokeWidth={0.035}
-                />
-              ))}
-              {outlines.flights.map((poly, i) => (
-                <polygon
-                  key={`flight-${i}`}
-                  points={poly.map((pt) => `${pt.x},${pt.y}`).join(' ')}
-                  fill={active ? 'rgba(110,208,195,0.35)' : 'rgba(110,208,195,0.12)'}
-                  stroke="#6ed0c3"
-                  strokeWidth={0.04}
-                />
-              ))}
-              {s.path.map((pt, i) =>
-                i < s.path.length - 1 ? (
-                  <line
-                    key={`path-${i}`}
-                    x1={pt.x}
-                    y1={pt.y}
-                    x2={s.path[i + 1]!.x}
-                    y2={s.path[i + 1]!.y}
-                    stroke="#6ed0c3"
-                    strokeWidth={0.03}
-                    opacity={0.4}
-                    strokeDasharray="0.1 0.08"
-                  />
-                ) : null,
-              )}
-              {stairRailingPlanPaths(raw).map((path, ri) =>
-                path.map((pt, i) =>
-                  i < path.length - 1 ? (
-                    <line
-                      key={`sr-${ri}-${i}`}
-                      x1={pt.x}
-                      y1={pt.y}
-                      x2={path[i + 1]!.x}
-                      y2={path[i + 1]!.y}
-                      stroke={active ? '#9ad9d0' : '#6a8a90'}
-                      strokeWidth={0.025}
-                      opacity={0.85}
-                    />
-                  ) : null,
-                ),
-              )}
-            </g>
-          )
-        })}
-
-        {railings.map((r) => {
-          const active = selection?.kind === 'railing' && selection.id === r.id
-          return (
-            <g
-              key={r.id}
-              onPointerDown={(e) => {
-                e.stopPropagation()
-                select({ kind: 'railing', id: r.id })
-                setInspectorOpen(true)
-                setInspectorTab('ouvrage')
-              }}
-            >
-              {r.path.map((pt, i) =>
-                i < r.path.length - 1 ? (
-                  <line
-                    key={i}
-                    x1={pt.x}
-                    y1={pt.y}
-                    x2={r.path[i + 1]!.x}
-                    y2={r.path[i + 1]!.y}
-                    stroke={active ? '#6ed0c3' : '#8aa0ae'}
-                    strokeWidth={0.03}
-                  />
-                ) : null,
-              )}
-            </g>
-          )
-        })}
-
-        {walls.map((w) => {
-          const active =
-            (selection?.kind === 'wall' && selection.id === w.id) || cadWallId === w.id
-          return (
-            <line
-              key={w.id}
-              x1={w.a.x}
-              y1={w.a.y}
-              x2={w.b.x}
-              y2={w.b.y}
-              stroke={active ? '#6ed0c3' : w.typology === 'exterior' ? '#c5d4de' : '#8aa0ae'}
-              strokeWidth={w.thickness}
-              strokeLinecap="square"
-              onPointerDown={(e) => {
-                e.stopPropagation()
-                if (tool === 'door' || tool === 'window') {
-                  const p = clientToWorld(e.clientX, e.clientY)
-                  const hit = nearestWallHit(p, [w], 2)
-                  if (hit) addOpeningAtWall(w.id, hit.t, tool === 'door' ? 'door' : 'window')
-                  return
-                }
-                if (tool === 'trim' || tool === 'extend') {
-                  if (!cadWallId) {
-                    setCadWallId(w.id)
-                    select({ kind: 'wall', id: w.id })
-                  } else if (tool === 'extend' && cadWallId !== w.id) {
-                    applyExtend(cadWallId, w.id)
-                    setCadWallId(null)
-                  } else if (tool === 'trim') {
-                    const mid = {
-                      x: (w.a.x + w.b.x) / 2,
-                      y: (w.a.y + w.b.y) / 2,
-                    }
-                    const p = clientToWorld(e.clientX, e.clientY)
-                    applyTrim(cadWallId, cadWallId === w.id ? p : mid)
-                    setCadWallId(null)
-                  }
-                  return
-                }
-                select({ kind: 'wall', id: w.id })
-                setInspectorOpen(true)
-                setInspectorTab('ouvrage')
-              }}
-            />
-          )
-        })}
-
-        {openings.map((op) => {
-          const w = walls.find((ww) => ww.id === op.wallId)
-          if (!w) return null
-          const dx = w.b.x - w.a.x
-          const dy = w.b.y - w.a.y
-          const len = Math.hypot(dx, dy)
-          if (len < 1e-6) return null
-          const ang = (Math.atan2(dy, dx) * 180) / Math.PI
-          const cx = w.a.x + op.t * dx
-          const cy = w.a.y + op.t * dy
-          const isDoor = op.kind === 'door'
-          const active = selection?.kind === 'opening' && selection.id === op.id
-          return (
-            <g
-              key={op.id}
-              transform={`translate(${cx}, ${cy}) rotate(${ang})`}
-              onPointerDown={(e) => {
-                e.stopPropagation()
-                select({ kind: 'opening', id: op.id })
-                setInspectorOpen(true)
-                setInspectorTab('ouvrage')
-              }}
-            >
-              <rect
-                x={-op.width / 2}
-                y={-w.thickness / 2 - 0.02}
-                width={op.width}
-                height={w.thickness + 0.04}
-                fill="#04080c"
-                stroke={active ? '#9eefe4' : isDoor ? '#6ed0c3' : '#7eb8c9'}
-                strokeWidth={active ? 0.05 : 0.035}
-              />
-              {isDoor && (
-                <path
-                  d={`M ${-op.width / 2} 0 A ${op.width} ${op.width} 0 0 1 ${op.width / 2} ${op.width}`}
-                  fill="none"
-                  stroke="#6ed0c3"
-                  strokeWidth={0.03}
-                  opacity={0.55}
-                />
-              )}
-              {!isDoor && (
-                <line
-                  x1={-op.width / 2 + 0.05}
-                  y1={0}
-                  x2={op.width / 2 - 0.05}
-                  y2={0}
-                  stroke="#7eb8c9"
-                  strokeWidth={0.04}
-                  opacity={0.7}
-                />
-              )}
-            </g>
-          )
-        })}
-
-        {/* Opening place preview */}
-        {openingPreview && (
-          (() => {
-            const w = openingPreview.wall
-            const def = OPENING_DEFAULTS[tool === 'door' ? 'door' : 'window']
-            const dx = w.b.x - w.a.x
-            const dy = w.b.y - w.a.y
-            const ang = (Math.atan2(dy, dx) * 180) / Math.PI
-            const cx = w.a.x + openingPreview.t * dx
-            const cy = w.a.y + openingPreview.t * dy
-            return (
-              <g transform={`translate(${cx}, ${cy}) rotate(${ang})`} opacity={0.7}>
-                <rect
-                  x={-def.width / 2}
-                  y={-w.thickness / 2 - 0.03}
-                  width={def.width}
-                  height={w.thickness + 0.06}
-                  fill="none"
-                  stroke="#6ed0c3"
-                  strokeWidth={0.05}
-                  strokeDasharray="0.1 0.08"
-                />
-              </g>
-            )
-          })()
-        )}
-
-        {/* Draft previews */}
-        {draft && hover && (tool === 'rect' || ((tool === 'slab' || tool === 'roof') && polyDrawMode === 'rect')) && (
-          <rect
-            x={Math.min(draft.x, hover.x)}
-            y={Math.min(draft.y, hover.y)}
-            width={Math.abs(hover.x - draft.x)}
-            height={Math.abs(hover.y - draft.y)}
-            fill="rgba(110,208,195,0.12)"
-            stroke="#6ed0c3"
-            strokeWidth={0.04}
-            strokeDasharray="0.12 0.08"
-          />
-        )}
-        {draft && hover && tool === 'wall' && (
-          <g>
-            <line
-              x1={draft.x}
-              y1={draft.y}
-              x2={hover.x}
-              y2={hover.y}
-              stroke="#6ed0c3"
-              strokeWidth={0.1}
-              opacity={0.75}
-              strokeLinecap="round"
-            />
-            <circle cx={hover.x} cy={hover.y} r={0.14} fill="#9eefe4" />
-            <text
-              x={(draft.x + hover.x) / 2}
-              y={(draft.y + hover.y) / 2 - 0.35}
-              fill="#6ed0c3"
-              fontSize={0.45}
-              fontFamily="IBM Plex Mono"
-              textAnchor="middle"
-            >
-              {Math.hypot(hover.x - draft.x, hover.y - draft.y).toFixed(2)} m
-            </text>
-          </g>
-        )}
-        {hover && (tool === 'wall' || tool === 'column') && !draft && (
-          <g>
-            <circle cx={hover.x} cy={hover.y} r={0.12} fill="none" stroke="#6ed0c3" strokeWidth={0.04} opacity={0.8} />
-            <circle cx={hover.x} cy={hover.y} r={0.04} fill="#6ed0c3" />
-          </g>
-        )}
-        {/* Polygon / stair path preview */}
-        {polyDraft.length > 0 && (tool === 'slab' || tool === 'roof' || tool === 'stair' || tool === 'railing') && (
-          <g>
-            {polyDraft.length >= 2 && (
-              <polyline
-                points={polyDraft.map((pt) => `${pt.x},${pt.y}`).join(' ')}
-                fill="none"
-                stroke="#6ed0c3"
-                strokeWidth={tool === 'stair' ? 0.08 : 0.05}
-                opacity={0.7}
-              />
-            )}
-            {hover && (
-              <line
-                x1={polyDraft[polyDraft.length - 1]!.x}
-                y1={polyDraft[polyDraft.length - 1]!.y}
-                x2={hover.x}
-                y2={hover.y}
-                stroke="#6ed0c3"
-                strokeWidth={0.05}
-                strokeDasharray="0.1 0.08"
-                opacity={0.55}
-              />
-            )}
-            {(tool === 'slab' || tool === 'roof') && polyDraft.length >= 2 && hover && (
-              <polygon
-                points={[...polyDraft, hover].map((pt) => `${pt.x},${pt.y}`).join(' ')}
-                fill="rgba(110,208,195,0.12)"
-                stroke="#6ed0c3"
-                strokeWidth={0.04}
-                strokeDasharray="0.12 0.08"
-              />
-            )}
-            {polyDraft.map((pt, i) => (
-              <circle key={i} cx={pt.x} cy={pt.y} r={0.12} fill="#6ed0c3" />
-            ))}
-          </g>
-        )}
-
-        {draft && <circle cx={draft.x} cy={draft.y} r={0.15} fill="#6ed0c3" />}
-        {tool === 'column' && hover && (
-          <rect
-            x={hover.x - 0.2}
-            y={hover.y - 0.2}
-            width={0.4}
-            height={0.4}
-            fill="rgba(154,163,168,0.4)"
-            stroke="#6ed0c3"
-            strokeWidth={0.04}
-            strokeDasharray="0.08 0.06"
-          />
-        )}
-
-        <g
-          transform={`translate(${bounds.maxX - 2}, ${bounds.minY + 2}) rotate(${-project.meta.north})`}
-        >
-          <line x1={0} y1={0.8} x2={0} y2={-0.8} stroke="#6ed0c3" strokeWidth={0.06} />
-          <text x={0} y={-1} textAnchor="middle" fill="#6ed0c3" fontSize={0.5} fontFamily="IBM Plex Mono">
-            N
-          </text>
-        </g>
-      </svg>
-    </div>
-  )
+    <canvas
+      ref={ref}
+      className="studio-canvas h-full w-full touch-none"
+      onWheel={(e) => {
+        e.preventDefault();
+        const factor = e.deltaY > 0 ? 0.92 : 1.08;
+        cam.current.scale = Math.min(110, Math.max(2.4, cam.current.scale * factor));
+      }}
+      onPointerDown={(e) => {
+        const canvas = ref.current!;
+        canvas.setPointerCapture(e.pointerId);
+        pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pointers.current.size === 2) {
+          const pts = [...pointers.current.values()];
+          pinch.current = {
+            dist: Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y),
+            scale: cam.current.scale,
+          };
+          return;
+        }
+        const p = worldFromEvent(e, canvas, cam.current);
+        const wp = model.current.snap ? snapVec(p) : p;
+        const currentTool = model.current.tool;
+        if (currentTool === "pen") {
+          ink.current = [wp];
+          return;
+        }
+        if (currentTool === "select" || e.button === 1 || e.altKey) {
+          const id = hit(p);
+          const now = performance.now();
+          if (id && currentTool === "select" && now - lastTap.current < 320) {
+            splitWall(p);
+            rotateSelected(Math.PI / 2);
+            lastTap.current = 0;
+            return;
+          }
+          lastTap.current = now;
+          if (id && currentTool === "select" && model.current.selectedIds.includes(id)) {
+            beginEdit();
+            moveDrag.current = { last: p };
+            return;
+          }
+          drag.current = { x: e.clientX, y: e.clientY, camX: cam.current.x, camY: cam.current.y };
+          if (id && currentTool === "select") onSelect([id]);
+          else if (currentTool === "select") onSelect([]);
+          return;
+        }
+        placeAt(wp);
+      }}
+      onPointerMove={(e) => {
+        pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        const canvas = ref.current!;
+        hover.current = worldFromEvent(e, canvas, cam.current);
+        if (moveDrag.current) {
+          const p = hover.current;
+          moveSelected(p.x - moveDrag.current.last.x, p.y - moveDrag.current.last.y);
+          moveDrag.current.last = p;
+          return;
+        }
+        if (model.current.tool === "pen" && ink.current.length) {
+          const p = worldFromEvent(e, canvas, cam.current);
+          ink.current = [...ink.current, p];
+          return;
+        }
+        if (pinch.current && pointers.current.size >= 2) {
+          const pts = [...pointers.current.values()];
+          const d = Math.hypot(pts[0]!.x - pts[1]!.x, pts[0]!.y - pts[1]!.y);
+          cam.current.scale = Math.min(
+            110,
+            Math.max(2.4, pinch.current.scale * (d / pinch.current.dist)),
+          );
+          return;
+        }
+        if (drag.current) {
+          const dx = e.clientX - drag.current.x;
+          const dy = e.clientY - drag.current.y;
+          cam.current.x = drag.current.camX - dx / cam.current.scale;
+          cam.current.y = drag.current.camY + dy / cam.current.scale;
+        }
+      }}
+      onPointerUp={(e) => {
+        if (ink.current.length > 1) addStroke(ink.current);
+        ink.current = [];
+        pointers.current.delete(e.pointerId);
+        if (pointers.current.size < 2) pinch.current = null;
+        drag.current = null;
+        moveDrag.current = null;
+      }}
+    />
+  );
 }

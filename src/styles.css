@@ -1,110 +1,201 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
 @theme {
-  --color-forma-bg: #04080c;
-  --color-forma-accent: #6ed0c3;
-  --color-forma-panel: #0a1218;
-  --color-forma-panel2: #0e1a22;
-  --color-forma-border: #1a2a35;
-  --color-forma-muted: #7a8f9c;
-  --color-forma-text: #e8f0f4;
-  --font-display: "Syne", system-ui, sans-serif;
-  --font-body: "Outfit", system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Syne", "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-bg: #04080c;
+  --color-surface: #0a1118;
+  --color-elevated: #121c26;
+  --color-fg: #e8f4f2;
+  --color-muted: #7f9399;
+  --color-subtle: #4e6168;
+  --color-border: #1a2c36;
+  --color-primary: #c8f0e6;
+  --color-primary-fg: #041016;
+  --color-accent: #6ed0c3;
+  --color-accent-fg: #041016;
+  --color-danger: #d46755;
+  --color-ok: #6b9a78;
+  --color-warn: #c4a35a;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --shadow-border:
+    0 0 0 1px color-mix(in oklab, var(--color-accent) 28%, transparent),
+    0 12px 40px -24px rgb(0 0 0 / 0.65);
 }
 
-html, body, #root {
-  height: 100%;
-  margin: 0;
-  background: #04080c;
-  color: #e8f0f4;
-  font-family: var(--font-body);
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-  overflow: hidden;
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+  }
+
+  html,
+  body,
+  #app {
+    min-height: 100%;
+    min-height: 100dvh;
+    background: var(--color-bg);
+    color: var(--color-fg);
+  }
+
+  body {
+    font-family: var(--font-sans);
+    line-height: 1.5;
+    overscroll-behavior: none;
+    touch-action: manipulation;
+    background-color: var(--color-bg);
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-accent) 40%, transparent);
+    color: var(--color-fg);
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+    font-family: var(--font-display);
+    letter-spacing: -0.04em;
+    line-height: 1.12;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  input[type="range"] {
+    touch-action: pan-x;
+    min-height: 44px;
+    accent-color: var(--color-accent);
+  }
 }
 
-* { box-sizing: border-box; }
-
-.font-display { font-family: var(--font-display); }
-.font-mono { font-family: var(--font-mono); }
-
-.safe-top { padding-top: env(safe-area-inset-top, 0px); }
-.safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
-.safe-x {
-  padding-left: env(safe-area-inset-left, 0px);
-  padding-right: env(safe-area-inset-right, 0px);
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
-.chip {
-  min-height: 48px;
-  min-width: 48px;
-  border-radius: 999px;
-  border: 1px solid rgba(26, 42, 53, 0.95);
-  background: rgba(10, 18, 24, 0.78);
-  color: #e8f0f4;
-  padding: 0 16px;
-  font-size: 13px;
-  font-weight: 500;
-  backdrop-filter: blur(10px);
-  transition: border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
-}
-.chip[data-active="true"] {
-  border-color: #6ed0c3;
-  color: #6ed0c3;
-  box-shadow: 0 0 0 1px rgba(110, 208, 195, 0.22);
-  background: rgba(110, 208, 195, 0.08);
-}
-.chip:disabled {
-  opacity: 0.4;
+.tabular {
+  font-variant-numeric: tabular-nums;
 }
 
-.expert-toggle[data-active="true"] {
-  background: rgba(110, 208, 195, 0.16);
+.page-grid {
+  background-image:
+    linear-gradient(color-mix(in oklab, var(--color-accent) 7%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in oklab, var(--color-accent) 7%, transparent) 1px, transparent 1px),
+    radial-gradient(900px 520px at 100% -8%, color-mix(in oklab, var(--color-accent) 14%, transparent), transparent 62%);
+  background-size: 28px 28px, 28px 28px, auto;
+  background-position: -1px -1px, -1px -1px, 0 0;
 }
 
-.btn-accent {
-  background: #6ed0c3;
-  color: #041016;
-  font-weight: 600;
-  border-radius: 14px;
-  min-height: 48px;
-  padding: 0 18px;
-  border: none;
-  letter-spacing: 0.01em;
+.studio-canvas {
+  touch-action: none;
+  transform: translateZ(0);
+  isolation: isolate;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-accent) 22%, transparent);
+}
+.studio-canvas canvas {
+  display: block;
+  transform: translateZ(0);
 }
 
-.panel {
-  background: linear-gradient(160deg, rgba(14, 26, 34, 0.96), rgba(8, 14, 20, 0.98));
-  border: 1px solid #1a2a35;
-  border-radius: 18px;
-}
-
-.project-card {
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
-}
-
-input[type="range"] {
-  width: 100%;
-  accent-color: #6ed0c3;
-}
-
-.slider-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
-  align-items: center;
-  margin-bottom: 12px;
-}
-.slider-row label {
-  grid-column: 1 / -1;
-  font-size: 12px;
-  color: #7a8f9c;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.slider-row .val {
+.hud-label {
   font-family: var(--font-mono);
-  font-size: 12px;
-  color: #6ed0c3;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--color-subtle);
+}
+
+.hud-panel {
+  background: color-mix(in oklab, var(--color-surface) 88%, transparent);
+  box-shadow: var(--shadow-border);
+  backdrop-filter: blur(16px);
+  border-radius: var(--radius-md);
+}
+
+.hud-chip {
+  display: flex;
+  height: 32px;
+  flex-shrink: 0;
+  align-items: center;
+  padding: 0 11px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--color-muted);
+  background: color-mix(in oklab, var(--color-surface) 82%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-accent) 20%, var(--color-border));
+  backdrop-filter: blur(12px);
+  border-radius: 2px;
+}
+.hud-chip-on {
+  color: var(--color-primary-fg);
+  background: var(--color-primary);
+  box-shadow: none;
+}
+
+.led {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-accent);
+  box-shadow: 0 0 8px color-mix(in oklab, var(--color-accent) 80%, transparent);
+}
+
+.vf-arm {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-color: color-mix(in oklab, var(--color-accent) 85%, white);
+  border-style: solid;
+  opacity: 0.75;
+  pointer-events: none;
+}
+.vf-tl {
+  top: 8px;
+  left: 8px;
+  border-width: 1px 0 0 1px;
+}
+.vf-tr {
+  top: 8px;
+  right: 8px;
+  border-width: 1px 1px 0 0;
+}
+.vf-bl {
+  bottom: 8px;
+  left: 8px;
+  border-width: 0 0 1px 1px;
+}
+.vf-br {
+  bottom: 8px;
+  right: 8px;
+  border-width: 0 1px 1px 0;
+}
+
+.mark {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
 }

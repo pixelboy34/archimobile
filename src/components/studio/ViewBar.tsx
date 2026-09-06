@@ -1,109 +1,130 @@
-import { useProjectStore } from '../../lib/store/project-store'
+import { ChevronLeft, ChevronRight, Layers, Plus } from "lucide-react";
+import type { Project, ViewMode } from "@/lib/bim/types";
+import { useStudio } from "@/lib/store/project-store";
 
-function roundStep(v: number, step: number) {
-  return Math.round(v / step) * step
-}
+export function ViewBar({
+  project,
+  onStories,
+}: {
+  project: Project;
+  onStories: () => void;
+}) {
+  const view = useStudio((s) => s.view);
+  const setView = useStudio((s) => s.setView);
+  const workspace = useStudio((s) => s.workspace);
+  const storyId = useStudio((s) => s.storyId);
+  const setStory = useStudio((s) => s.setStory);
+  const isolateStory = useStudio((s) => s.isolateStory);
+  const setIsolateStory = useStudio((s) => s.setIsolateStory);
+  const snap = useStudio((s) => s.snap);
+  const grid = useStudio((s) => s.grid);
+  const ortho = useStudio((s) => s.ortho);
+  const setSnap = useStudio((s) => s.setSnap);
+  const setGrid = useStudio((s) => s.setGrid);
+  const setOrtho = useStudio((s) => s.setOrtho);
+  const skill = useStudio((s) => s.skill);
+  const physics = useStudio((s) => s.physics);
+  const setPhysics = useStudio((s) => s.setPhysics);
+  const addStory = useStudio((s) => s.addStory);
+  const active = storyId ?? project.stories[0]?.id;
+  const idx = Math.max(0, project.stories.findIndex((s) => s.id === active));
+  const simple = skill === "simple";
+  if (workspace !== "modele" && view !== "ar") return null;
 
-export default function ViewBar() {
-  const project = useProjectStore((s) => (s.activeId ? s.projects[s.activeId] : null))
-  const activeStoryId = useProjectStore((s) => s.activeStoryId)
-  const setActiveStory = useProjectStore((s) => s.setActiveStory)
-  const viewMode = useProjectStore((s) => s.viewMode)
-  const coupeAxis = useProjectStore((s) => s.coupeAxis)
-  const coupeCut = useProjectStore((s) => s.coupeCut)
-  const setCoupeAxis = useProjectStore((s) => s.setCoupeAxis)
-  const setCoupeCut = useProjectStore((s) => s.setCoupeCut)
-  const syncCoupeToStory = useProjectStore((s) => s.syncCoupeToStory)
+  const views: { id: ViewMode; label: string }[] = simple
+    ? [
+        { id: "3d", label: "3D" },
+        { id: "plan", label: "Plan" },
+        { id: "visite", label: "Visite" },
+      ]
+    : [
+        { id: "3d", label: "3D" },
+        { id: "plan", label: "Plan" },
+        { id: "visite", label: "Visite" },
+        { id: "coupe", label: "Coupe" },
+        { id: "ar", label: "AR" },
+      ];
 
-  if (!project) return null
-
-  const idx = Math.max(
-    0,
-    project.stories.findIndex((s) => s.id === activeStoryId),
-  )
-  const story = project.stories[idx] ?? project.stories[0]
-  const compact = project.stories.length > 5
-  const showStories = project.stories.length > 1
-  const coupe = viewMode === 'coupe'
-
-  const go = (dir: -1 | 1) => {
-    const next = Math.min(project.stories.length - 1, Math.max(0, idx + dir))
-    setActiveStory(project.stories[next].id)
-  }
-
-  const maxElev =
-    project.stories.reduce((m, s) => Math.max(m, s.elevation + s.height), 4) + 1
-  const cutMin = coupeAxis === 'horizontal' ? -1 : -40
-  const cutMax = coupeAxis === 'horizontal' ? maxElev : 40
-  const cutStep = coupeAxis === 'horizontal' ? 0.05 : 0.1
-  const cutDisplay = roundStep(coupeCut, cutStep)
+  const go = (dir: number) => {
+    const n = project.stories[(idx + dir + project.stories.length) % project.stories.length];
+    if (!n) return;
+    setStory(n.id);
+    if (project.stories.length > 2) setIsolateStory(true);
+  };
 
   return (
-    <div className="absolute top-[5.75rem] left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2 max-w-[96vw] pointer-events-none">
-      {showStories && (
-        <div className="pointer-events-auto flex items-center gap-2">
-          <button type="button" className="chip px-3" onClick={() => go(-1)} disabled={idx === 0}>
-            ‹
-          </button>
-          <div className="chip font-mono text-xs min-w-[7rem] justify-center flex items-center">
-            {compact ? `${story?.name ?? ''} · ${idx + 1}/${project.stories.length}` : story?.name}
-          </div>
+    <div className="pointer-events-auto absolute top-[calc(env(safe-area-inset-top)+3.1rem)] left-2 z-10 flex max-w-[calc(100%-5.25rem)] flex-col gap-1">
+      <div className="flex flex-nowrap gap-1 overflow-x-auto pb-0.5">
+        {views.map((v) => (
           <button
+            key={v.id}
             type="button"
-            className="chip px-3"
-            onClick={() => go(1)}
-            disabled={idx >= project.stories.length - 1}
+            onClick={() => setView(v.id)}
+            className={`hud-chip ${view === v.id ? "hud-chip-on" : ""}`}
           >
-            ›
+            {v.label}
           </button>
-        </div>
-      )}
-
-      {coupe && (
-        <div className="pointer-events-auto flex flex-col gap-2 w-[min(92vw,22rem)] rounded-2xl bg-[#0a1218]/92 border border-[#1a2a35] backdrop-blur-md px-3 py-2">
-          <div className="flex gap-1">
-            <button
-              type="button"
-              className="chip flex-1"
-              data-active={coupeAxis === 'horizontal'}
-              onClick={() => {
-                setCoupeAxis('horizontal')
-                syncCoupeToStory()
-              }}
-            >
-              Horizontale
+        ))}
+      </div>
+      <div className="flex flex-nowrap gap-1 overflow-x-auto pb-0.5">
+        {project.stories.length > 5 ? (
+          <>
+            <button type="button" aria-label="Niveau précédent" className="hud-chip px-2" onClick={() => go(-1)}>
+              <ChevronLeft className="size-3.5" />
             </button>
-            <button
-              type="button"
-              className="chip flex-1"
-              data-active={coupeAxis === 'vertical'}
-              onClick={() => {
-                setCoupeAxis('vertical')
-                setCoupeCut(0)
-              }}
-            >
-              Verticale
+            <button type="button" onClick={onStories} className="hud-chip hud-chip-on">
+              {project.stories[idx]?.name ?? "Niveau"} · {idx + 1}/{project.stories.length}
             </button>
-          </div>
-          <div className="slider-row mb-0">
-            <label>{coupeAxis === 'horizontal' ? 'Hauteur de coupe' : 'Position X'}</label>
-            <input
-              type="range"
-              min={cutMin}
-              max={cutMax}
-              step={cutStep}
-              value={cutDisplay}
-              onChange={(e) => setCoupeCut(Number(e.target.value))}
-            />
-            <span className="val">
-              {cutDisplay.toFixed(2)} m
-            </span>
-          </div>
-          <p className="text-[10px] text-[#7a8f9c]">
-            Geometrie au-dela du plan masquee. Inspecteur reste actif.
-          </p>
-        </div>
-      )}
+            <button type="button" aria-label="Niveau suivant" className="hud-chip px-2" onClick={() => go(1)}>
+              <ChevronRight className="size-3.5" />
+            </button>
+          </>
+        ) : (
+          project.stories.map((st) => (
+            <button
+              key={st.id}
+              type="button"
+              onClick={() => {
+                if (st.id === active) onStories();
+                else {
+                  setStory(st.id);
+                  if (project.stories.length > 2) setIsolateStory(true);
+                }
+              }}
+              className={`hud-chip ${st.id === active ? "hud-chip-on" : ""}`}
+            >
+              {st.name}
+            </button>
+          ))
+        )}
+        <button type="button" aria-label="Ajouter un niveau" title="Ajouter un niveau" onClick={() => addStory()} className="hud-chip px-2">
+          <Plus className="size-3.5" />
+        </button>
+        {project.stories.length > 1 && (
+          <button type="button" onClick={() => setIsolateStory(!isolateStory)} className={`hud-chip gap-1 ${isolateStory ? "hud-chip-on" : ""}`}>
+            <Layers className="size-3.5" />
+            {isolateStory ? "Seul" : "Tous"}
+          </button>
+        )}
+        {view === "plan" && (
+          <>
+            <button type="button" onClick={() => setSnap(!snap)} className={`hud-chip ${snap ? "hud-chip-on" : ""}`}>
+              Aimant
+            </button>
+            <button type="button" onClick={() => setGrid(!grid)} className={`hud-chip ${grid ? "hud-chip-on" : ""}`}>
+              Grille
+            </button>
+            <button type="button" onClick={() => setOrtho(!ortho)} className={`hud-chip ${ortho ? "hud-chip-on" : ""}`}>
+              Ortho
+            </button>
+          </>
+        )}
+        {view === "visite" && (
+          <button type="button" onClick={() => setPhysics(!physics)} className={`hud-chip ${physics ? "hud-chip-on" : ""}`}>
+            Physique
+          </button>
+        )}
+      </div>
     </div>
-  )
+  );
 }

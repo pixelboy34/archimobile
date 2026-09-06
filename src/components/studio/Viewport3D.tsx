@@ -1,520 +1,464 @@
-import { Suspense, useMemo, useEffect, useCallback, useState } from 'react'
-import { Canvas, useThree, ThreeEvent } from '@react-three/fiber'
-import * as THREE from 'three'
-import type { Project, Vec2 } from '../../lib/bim/types'
-import { detectQuality } from '../../lib/render/quality'
-import BuildingScene from './BuildingScene'
-import OrbitRig from './OrbitRig'
-import VisitControls from './VisitControls'
-import { useProjectStore } from '../../lib/store/project-store'
-import { nearestWallHit } from '../../lib/cad/ops'
-import { pointsNeededForMode } from '../../lib/cad/stairs'
-import { Line } from '@react-three/drei'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Canvas, useThree } from "@react-three/fiber";
+import { OrthographicCamera } from "@react-three/drei";
+import * as THREE from "three";
+import { BuildingScene, Ground, sunPosition } from "./BuildingScene";
+import { OrbitRig } from "./OrbitRig";
+import { WalkController } from "./WalkController";
+import { PhysicsRig } from "./PhysicsRig";
+import { PLAYER_HALF, PLAYER_RADIUS } from "@/lib/physics/rapier-world";
+import { dist, projectBounds, polygonArea, polygonCentroid } from "@/lib/bim/geometry";
+import { detectQuality, type RenderQuality } from "@/lib/render/quality";
+import {
+  interiorOn,
+  skyColor,
+  sunColor,
+  type Lighting,
+} from "@/lib/render/lighting";
+import { useStudio } from "@/lib/store/project-store";
+import type { Project, Vec2, ViewMode } from "@/lib/bim/types";
 
-function InvalidateOnUpdate({ stamp }: { stamp: number }) {
-  const invalidate = useThree((s) => s.invalidate)
-  useEffect(() => {
-    invalidate()
-  }, [stamp, invalidate])
-  return null
-}
+const noopRaycast = () => {};
 
-/** Global clipping plane for Coupe mode + translucent section helper + edges. */
-function CoupeClip({
-  enabled,
-  axis,
-  cut,
+function NorthMark({
+  cx,
+  cz,
+  elev,
+  north,
+  span,
 }: {
-  enabled: boolean
-  axis: 'horizontal' | 'vertical'
-  cut: number
+  cx: number;
+  cz: number;
+  elev: number;
+  north: number;
+  span: number;
 }) {
-  const { gl, invalidate } = useThree()
-
-  useEffect(() => {
-    gl.localClippingEnabled = enabled
-    if (!enabled) {
-      gl.clippingPlanes = []
-      invalidate()
-      return
-    }
-    const plane =
-      axis === 'horizontal'
-        ? new THREE.Plane(new THREE.Vector3(0, -1, 0), cut)
-        : new THREE.Plane(new THREE.Vector3(-1, 0, 0), cut)
-    gl.clippingPlanes = [plane]
-    invalidate()
-    return () => {
-      gl.clippingPlanes = []
-      gl.localClippingEnabled = false
-    }
-  }, [enabled, axis, cut, gl, invalidate])
-
-  const edgeH = useMemo(() => new THREE.EdgesGeometry(new THREE.PlaneGeometry(80, 80)), [])
-  const edgeV = useMemo(() => new THREE.EdgesGeometry(new THREE.PlaneGeometry(80, 40)), [])
-
-  if (!enabled) return null
-
-  if (axis === 'horizontal') {
-    return (
-      <group position={[0, cut, 0]} renderOrder={10}>
-        <mesh rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[80, 80]} />
-          <meshBasicMaterial
-            color="#6ed0c3"
-            transparent
-            opacity={0.2}
-            side={THREE.DoubleSide}
-            depthWrite={false}
-            toneMapped={false}
-          />
-        </mesh>
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
-          <ringGeometry args={[38.5, 40, 64]} />
-          <meshBasicMaterial color="#6ed0c3" toneMapped={false} transparent opacity={0.95} />
-        </mesh>
-        <lineSegments geometry={edgeH} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
-          <lineBasicMaterial color="#9eefe4" toneMapped={false} />
-        </lineSegments>
-        <mesh position={[0, 0.015, 0]}>
-          <boxGeometry args={[80, 0.04, 0.08]} />
-          <meshBasicMaterial color="#6ed0c3" transparent opacity={0.55} toneMapped={false} />
-        </mesh>
-        <mesh position={[0, 0.015, 0]}>
-          <boxGeometry args={[0.08, 0.04, 80]} />
-          <meshBasicMaterial color="#6ed0c3" transparent opacity={0.55} toneMapped={false} />
-        </mesh>
-      </group>
-    )
-  }
-
+  const rad = (north * Math.PI) / 180;
+  const d = Math.max(6, span * 0.42);
   return (
-    <group position={[cut, 12, 0]} renderOrder={10}>
-      <mesh rotation={[0, Math.PI / 2, 0]}>
-        <planeGeometry args={[80, 40]} />
-        <meshBasicMaterial
-          color="#6ed0c3"
-          transparent
-          opacity={0.2}
-          side={THREE.DoubleSide}
-          depthWrite={false}
-          toneMapped={false}
-        />
-      </mesh>
-      <lineSegments geometry={edgeV} rotation={[0, Math.PI / 2, 0]} position={[0.02, 0, 0]}>
-        <lineBasicMaterial color="#9eefe4" toneMapped={false} />
-      </lineSegments>
-      <mesh rotation={[0, Math.PI / 2, 0]} position={[0.03, 0, 0]}>
-        <boxGeometry args={[80, 0.08, 0.06]} />
-        <meshBasicMaterial color="#6ed0c3" transparent opacity={0.55} toneMapped={false} />
-      </mesh>
-      <mesh rotation={[0, Math.PI / 2, 0]} position={[0.03, 0, 0]}>
-        <boxGeometry args={[0.08, 40, 0.06]} />
-        <meshBasicMaterial color="#6ed0c3" transparent opacity={0.55} toneMapped={false} />
+    <group position={[cx, elev + 0.05, cz]} rotation={[0, rad, 0]} raycast={noopRaycast}>
+      <mesh position={[0, 0, d]} rotation={[Math.PI / 2, 0, 0]} raycast={noopRaycast}>
+        <coneGeometry args={[0.22, 0.7, 3]} />
+        <meshBasicMaterial color="#7a9e96" />
       </mesh>
     </group>
-  )
+  );
+}
+const OUTDOOR = new Set(["terrace", "patio", "garage"]);
+
+function AdaptiveGpu({ mobile }: { mobile: boolean }) {
+  const gl = useThree((s) => s.gl);
+  useEffect(() => {
+    gl.shadowMap.autoUpdate = gl.shadowMap.enabled;
+    if (mobile) gl.shadowMap.type = THREE.PCFSoftShadowMap;
+  }, [gl, mobile]);
+  return null;
 }
 
-function PlaceSurface({
-  enabled,
-  elevation,
-  onPlace,
-  onHover,
+function CamLens({ fov, far }: { fov: number; far: number }) {
+  const camera = useThree((s) => s.camera);
+  const invalidate = useThree((s) => s.invalidate);
+  useEffect(() => {
+    if ("fov" in camera) {
+      (camera as THREE.PerspectiveCamera).fov = fov;
+      camera.far = far;
+      camera.near = 0.15;
+      camera.updateProjectionMatrix();
+      invalidate();
+    }
+  }, [camera, fov, far, invalidate]);
+  return null;
+}
+
+function BootFrame() {
+  const invalidate = useThree((s) => s.invalidate);
+  const size = useThree((s) => s.size);
+  useLayoutEffect(() => {
+    invalidate();
+  }, [invalidate, size.width, size.height]);
+  return null;
+}
+
+function Invalidate({ tick }: { tick: string }) {
+  const invalidate = useThree((s) => s.invalidate);
+  useEffect(() => {
+    invalidate();
+  }, [invalidate, tick]);
+  return null;
+}
+
+function LightRig({
+  lighting,
+  shadows,
+  type,
+  mobile,
 }: {
-  enabled: boolean
-  elevation: number
-  onPlace: (x: number, z: number) => void
-  onHover?: (x: number, z: number) => void
+  lighting: Lighting;
+  shadows: boolean;
+  type: THREE.ShadowMapType;
+  mobile: boolean;
 }) {
-  const onPointerDown = useCallback(
-    (e: ThreeEvent<PointerEvent>) => {
-      if (!enabled) return
-      e.stopPropagation()
-      onPlace(e.point.x, e.point.z)
-    },
-    [enabled, onPlace],
-  )
-  const onPointerMove = useCallback(
-    (e: ThreeEvent<PointerEvent>) => {
-      if (!enabled || !onHover) return
-      onHover(e.point.x, e.point.z)
-    },
-    [enabled, onHover],
-  )
-  if (!enabled) return null
-  return (
-    <mesh
-      rotation={[-Math.PI / 2, 0, 0]}
-      position={[0, elevation + 0.02, 0]}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-    >
-      <planeGeometry args={[200, 200]} />
-      <meshBasicMaterial visible={false} />
-    </mesh>
-  )
+  const { gl, invalidate } = useThree();
+  useEffect(() => {
+    gl.shadowMap.enabled = shadows;
+    gl.shadowMap.type = type;
+    gl.shadowMap.needsUpdate = true;
+    gl.shadowMap.autoUpdate = shadows;
+    gl.toneMapping = THREE.ACESFilmicToneMapping;
+    gl.toneMappingExposure = lighting.exposure;
+    invalidate();
+  }, [gl, invalidate, shadows, type, lighting.exposure, mobile]);
+  return null;
 }
 
-type Props = {
-  project: Project
-  activeStoryId: string | null
-  visiting?: boolean
-  coupe?: boolean
-}
-
-export default function Viewport3D({
+function InteriorLights({
   project,
-  activeStoryId,
-  visiting = false,
-  coupe = false,
-}: Props) {
-  const quality = useMemo(() => detectQuality(), [])
-  const tool = useProjectStore((s) => s.tool)
-  const placeKind = useProjectStore((s) => s.placeKind)
-  const addFurnitureAt = useProjectStore((s) => s.addFurnitureAt)
-  const addOpeningAtWall = useProjectStore((s) => s.addOpeningAtWall)
-  const addSlab = useProjectStore((s) => s.addSlab)
-  const addSlabPolygon = useProjectStore((s) => s.addSlabPolygon)
-  const addColumn = useProjectStore((s) => s.addColumn)
-  const addStairPath = useProjectStore((s) => s.addStairPath)
-  const addRoof = useProjectStore((s) => s.addRoof)
-  const addRoofPolygon = useProjectStore((s) => s.addRoofPolygon)
-  const addWall = useProjectStore((s) => s.addWall)
-  const ortho = useProjectStore((s) => s.ortho)
-  const stairMode = useProjectStore((s) => s.stairMode)
-  const polyDrawMode = useProjectStore((s) => s.polyDrawMode)
-  const coupeAxis = useProjectStore((s) => s.coupeAxis)
-  const coupeCut = useProjectStore((s) => s.coupeCut)
+  gain,
+  cap,
+}: {
+  project: Project;
+  gain: number;
+  cap: number;
+}) {
+  const lights = useMemo(() => {
+    if (cap <= 0) return [];
+    const rooms = project.rooms
+      .filter((r) => !OUTDOOR.has(r.function) && r.polygon.length >= 3)
+      .map((r) => ({
+        id: r.id,
+        c: polygonCentroid(r.polygon),
+        area: polygonArea(r.polygon),
+        elev: (project.stories.find((s) => s.id === r.storyId)?.elevation ?? 0) +
+          (project.stories.find((s) => s.id === r.storyId)?.height ?? 2.8) - 0.22,
+      }))
+      .sort((a, b) => b.area - a.area)
+      .slice(0, cap);
+    return rooms;
+  }, [project, cap]);
+  return (
+    <>
+      {lights.map((l) => (
+        <pointLight
+          key={l.id}
+          position={[l.c.x, l.elev, l.c.y]}
+          intensity={1.4 * gain}
+          distance={Math.max(4.5, Math.sqrt(l.area) * 1.6)}
+          decay={2}
+          color="#ffd7a8"
+        />
+      ))}
+    </>
+  );
+}
 
-  const [draft, setDraft] = useState<Vec2 | null>(null)
-  const [polyDraft, setPolyDraft] = useState<Vec2[]>([])
-  const [hover, setHover] = useState<Vec2 | null>(null)
-  const lastClickAt = useState(() => ({ t: 0 }))[0]
+function Placement({
+  elev,
+  enabled,
+  target,
+  north,
+  span,
+}: {
+  elev: number;
+  enabled: boolean;
+  target: [number, number, number];
+  north: number;
+  span: number;
+}) {
+  const { camera, invalidate } = useThree();
+  const placeAt = useStudio((s) => s.placeAt);
+
+  const planePoint = (ndcX: number, ndcY: number): Vec2 | null => {
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -elev);
+    const hit = new THREE.Vector3();
+    if (!ray.ray.intersectPlane(plane, hit)) return null;
+    return { x: hit.x, y: hit.z };
+  };
+
+  return (
+    <OrbitRig
+      target={target}
+      north={north}
+      span={span}
+      minDistance={Math.max(2.2, span * 0.05)}
+      maxDistance={Math.max(240, span * 10)}
+      onTap={
+        enabled
+          ? (x, y) => {
+              const p = planePoint(x, y);
+              if (p) placeAt(p);
+              invalidate();
+            }
+          : undefined
+      }
+    />
+  );
+}
+
+function DraftGhost({ elev, height }: { elev: number; height: number }) {
+  const draft = useStudio((s) => s.draft);
+  const tool = useStudio((s) => s.tool);
+  const measure = useStudio((s) => s.measure);
+  const { camera, gl, invalidate } = useThree();
+  const hover = useRef<Vec2 | null>(null);
+  const [, bump] = useState(0);
 
   useEffect(() => {
-    setDraft(null)
-    setPolyDraft([])
-    setHover(null)
-  }, [tool, stairMode, polyDrawMode])
+    const el = gl.domElement;
+    const move = (e: PointerEvent) => {
+      if (!draft && tool !== "measure") return;
+      const r = el.getBoundingClientRect();
+      const ndcX = ((e.clientX - r.left) / r.width) * 2 - 1;
+      const ndcY = -(((e.clientY - r.top) / r.height) * 2 - 1);
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
+      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -elev);
+      const hit = new THREE.Vector3();
+      if (ray.ray.intersectPlane(plane, hit)) {
+        hover.current = { x: hit.x, y: hit.z };
+        bump((n) => n + 1);
+        invalidate();
+      }
+    };
+    el.addEventListener("pointermove", move);
+    return () => el.removeEventListener("pointermove", move);
+  }, [camera, gl, invalidate, draft, tool, elev]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setDraft(null)
-        setPolyDraft([])
-      }
-      if (e.key === 'Enter') {
-        if ((tool === 'slab' || tool === 'roof') && polyDrawMode === 'polygon' && polyDraft.length >= 3) {
-          e.preventDefault()
-          if (tool === 'slab') addSlabPolygon(polyDraft)
-          else addRoofPolygon(polyDraft)
-          setPolyDraft([])
-        }
-        if (tool === 'stair' && polyDraft.length >= (stairMode === 'droit' ? 2 : 3)) {
-          e.preventDefault()
-          addStairPath(polyDraft, stairMode)
-          setPolyDraft([])
-        }
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [tool, polyDrawMode, polyDraft, stairMode, addSlabPolygon, addRoofPolygon, addStairPath])
+  const b = hover.current;
+  return (
+    <group>
+      {draft && b && (tool === "wall" || tool === "measure") && (
+        <mesh
+          position={[(draft.x + b.x) / 2, elev + (tool === "wall" ? height : 0.04) / 2, (draft.y + b.y) / 2]}
+          rotation={[0, -Math.atan2(b.y - draft.y, b.x - draft.x), 0]}
+          raycast={noopRaycast}
+        >
+          <boxGeometry
+            args={[Math.max(0.05, dist(draft, b)), tool === "wall" ? height : 0.04, tool === "wall" ? 0.22 : 0.08]}
+          />
+          <meshLambertMaterial color="#7a9e96" transparent opacity={0.45} depthWrite={false} />
+        </mesh>
+      )}
+      {measure && (
+        <mesh
+          position={[
+            (measure.a.x + measure.b.x) / 2,
+            elev + 1.1,
+            (measure.a.y + measure.b.y) / 2,
+          ]}
+          rotation={[0, -Math.atan2(measure.b.y - measure.a.y, measure.b.x - measure.a.x), 0]}
+          raycast={noopRaycast}
+        >
+          <boxGeometry args={[Math.max(0.05, dist(measure.a, measure.b)), 0.05, 0.05]} />
+          <meshBasicMaterial color="#e8e4d9" />
+        </mesh>
+      )}
+    </group>
+  );
+}
 
-  const story = useMemo(() => {
-    if (!activeStoryId) return project.stories[0]
-    return project.stories.find((s) => s.id === activeStoryId) ?? project.stories[0]
-  }, [project.stories, activeStoryId])
-
-  const elevation = story?.elevation ?? 0
-  const storyHeight = story?.height ?? 2.8
-  const walls = useMemo(
-    () => project.walls.filter((w) => w.storyId === story?.id),
-    [project.walls, story?.id],
-  )
-  const furniture = useMemo(
-    () => project.furniture.filter((f) => f.storyId === story?.id),
-    [project.furniture, story?.id],
-  )
-  const rooms = useMemo(
-    () => project.rooms.filter((r) => r.storyId === story?.id),
-    [project.rooms, story?.id],
-  )
-
-  const targetY = useMemo(() => {
-    if (coupe && coupeAxis === 'horizontal') return coupeCut
-    if (!story) return 1.5
-    return story.elevation + story.height * 0.4
-  }, [story, coupe, coupeAxis, coupeCut])
-
-  const placingObjects = tool === 'objects' && !!placeKind && !visiting && !coupe
-  const placingPoint =
-    !visiting &&
-    !coupe &&
-    (tool === 'wall' ||
-      tool === 'rect' ||
-      tool === 'column' ||
-      tool === 'door' ||
-      tool === 'window' ||
-      tool === 'slab' ||
-      tool === 'stair' ||
-      tool === 'roof' ||
-      placingObjects)
-  const orbitOff = placingPoint
-
-  const snap = (x: number, z: number, anchor: Vec2 | null = null): Vec2 => {
-    let sx = Math.round(x * 20) / 20
-    let sy = Math.round(z * 20) / 20
-    if (ortho && anchor && (tool === 'wall' || tool === 'stair')) {
-      const dx = Math.abs(sx - anchor.x)
-      const dy = Math.abs(sy - anchor.y)
-      if (dx > dy) sy = anchor.y
-      else sx = anchor.x
-    }
-    // Snap to nearby wall endpoints (visible feedback)
-    let best = 0.35
-    for (const w of walls) {
-      for (const pt of [w.a, w.b]) {
-        const dist = Math.hypot(sx - pt.x, sy - pt.y)
-        if (dist < best) {
-          best = dist
-          sx = pt.x
-          sy = pt.y
-        }
-      }
-    }
-    return { x: sx, y: sy }
-  }
-
-  const onPlace = useCallback(
-    (x: number, z: number) => {
-      const p = snap(x, z, draft ?? (polyDraft.length ? polyDraft[polyDraft.length - 1]! : null))
-      if (tool === 'objects' && placeKind) {
-        addFurnitureAt(p)
-        return
-      }
-      if (tool === 'wall') {
-        if (!draft) {
-          setDraft(p)
-          return
-        }
-        addWall({
-          storyId: story?.id ?? '',
-          a: draft,
-          b: p,
-          thickness: 0.2,
-          height: storyHeight,
-          typology: 'exterior',
-          materialId: 'enduit',
-        })
-        setDraft(null)
-        return
-      }
-      if (tool === 'rect') {
-        if (!draft) {
-          setDraft(p)
-          return
-        }
-        const x0 = Math.min(draft.x, p.x)
-        const y0 = Math.min(draft.y, p.y)
-        const x1 = Math.max(draft.x, p.x)
-        const y1 = Math.max(draft.y, p.y)
-        const corners = [
-          { x: x0, y: y0 },
-          { x: x1, y: y0 },
-          { x: x1, y: y1 },
-          { x: x0, y: y1 },
-        ]
-        for (let i = 0; i < 4; i++) {
-          addWall({
-            storyId: story?.id ?? '',
-            a: corners[i]!,
-            b: corners[(i + 1) % 4]!,
-            thickness: 0.2,
-            height: storyHeight,
-            typology: 'exterior',
-            materialId: 'enduit',
-          })
-        }
-        setDraft(null)
-        return
-      }
-      if (tool === 'door' || tool === 'window') {
-        const hit = nearestWallHit(p, walls, 0.85)
-        if (hit) addOpeningAtWall(hit.wall.id, hit.t, tool === 'door' ? 'door' : 'window')
-        return
-      }
-      if (tool === 'column') {
-        addColumn(p)
-        return
-      }
-      if (tool === 'slab' || tool === 'roof') {
-        if (polyDrawMode === 'rect') {
-          if (!draft) {
-            setDraft(p)
-            setPolyDraft([])
-            return
-          }
-          if (tool === 'slab') addSlab(draft, p)
-          else addRoof(draft, p)
-          setDraft(null)
-          return
-        }
-        const now = Date.now()
-        const isDouble = now - lastClickAt.t < 320 && polyDraft.length >= 2
-        lastClickAt.t = now
-        if (isDouble) {
-          const pts = polyDraft.length >= 3 ? polyDraft : [...polyDraft, p]
-          if (pts.length >= 3) {
-            if (tool === 'slab') addSlabPolygon(pts)
-            else addRoofPolygon(pts)
-          }
-          setPolyDraft([])
-          return
-        }
-        setPolyDraft((prev) => [...prev, p])
-        return
-      }
-      if (tool === 'stair') {
-        const needed = pointsNeededForMode(stairMode)
-        const next = [...polyDraft, p]
-        if (next.length >= needed) {
-          addStairPath(next, stairMode)
-          setPolyDraft([])
-          return
-        }
-        setPolyDraft(next)
-      }
-    },
-    [
-      tool,
-      placeKind,
-      walls,
-      draft,
-      polyDraft,
-      polyDrawMode,
-      stairMode,
-      lastClickAt,
-      story,
-      storyHeight,
-      ortho,
-      addFurnitureAt,
-      addOpeningAtWall,
-      addColumn,
-      addSlab,
-      addSlabPolygon,
-      addRoof,
-      addRoofPolygon,
-      addStairPath,
-      addWall,
-    ],
-  )
-
-  const stamp =
-    project.updatedAt +
-    (coupe ? coupeCut * 1000 + (coupeAxis === 'vertical' ? 7 : 0) : 0)
+export function Viewport3D({
+  project,
+  selectedIds,
+  onSelect,
+  view,
+  sunHour: _sunHour,
+  clipY,
+}: {
+  project: Project;
+  selectedIds: string[];
+  onSelect: (id: string | null) => void;
+  view: ViewMode;
+  sunHour: number;
+  clipY: number;
+}) {
+  const lighting = useStudio((s) => s.lighting);
+  const tool = useStudio((s) => s.tool);
+  const buildPhase = useStudio((s) => s.buildPhase);
+  const draft = useStudio((s) => s.draft);
+  const storyId = useStudio((s) => s.storyId);
+  const showGrid = useStudio((s) => s.grid);
+  const isolateStory = useStudio((s) => s.isolateStory);
+  const showStructure = useStudio((s) => s.showStructure);
+  const physicsOn = useStudio((s) => s.physics);
+  const orthoCam = useStudio((s) => s.nav.orthoCam);
+  const fov = useStudio((s) => s.nav.fov);
+  const [quality] = useState<RenderQuality>(() => detectQuality());
+  const b = projectBounds(project);
+  const cx = (b.min.x + b.max.x) / 2;
+  const cz = (b.min.y + b.max.y) / 2;
+  const horiz = Math.max(b.max.x - b.min.x, b.max.y - b.min.y, 8);
+  const tall = Math.max(...project.stories.map((s) => s.elevation + s.height), 8);
+  const span = Math.max(horiz, tall * 0.55);
+  const camDist = Math.max(14, Math.max(horiz, tall) * 1.05);
+  const hour = lighting.sunHour;
+  const sun = useMemo(
+    () =>
+      sunPosition(
+        hour,
+        quality.mobile ? 40 : 52,
+        project.meta.north,
+        project.meta.latitude,
+        lighting.month,
+      ),
+    [hour, quality.mobile, project.meta.north, project.meta.latitude, lighting.month],
+  );
+  const walking = view === "visite";
+  const clipping = view === "coupe";
+  const sky = skyColor(hour);
+  const sunCol = sunColor(hour);
+  const shadows = lighting.shadows && quality.shadows;
+  const mapSize = quality.shadowMap;
+  const shadowType = THREE.PCFSoftShadowMap;
+  const half = Math.max(12, span * (quality.mobile ? 0.7 : 0.9));
+  const night = hour < 7 || hour >= 19.5;
+  const sunI = lighting.sunIntensity * (night ? 0.18 : 1);
+  const showInterior = interiorOn(lighting) && quality.interiorLights > 0;
+  const story = project.stories.find((s) => s.id === (storyId ?? project.stories[0]?.id));
+  const elev = story?.elevation ?? 0;
+  const storyH = story?.height ?? 2.8;
+  const walkStart: [number, number, number] = physicsOn
+    ? [cx, elev + PLAYER_HALF + PLAYER_RADIUS, cz]
+    : [cx, elev + 1.65, cz];
+  const drawing = !walking && tool !== "select";
+  const sceneQuality = { ...quality, shadows };
+  const ambient = lighting.ambient;
+  const lens = fov || (quality.mobile ? 58 : 48);
+  const camFar = Math.max(180, horiz * 8, tall * 14);
+  const plotSide = Math.sqrt(Math.max(220, project.meta.plotM2 ?? span * span));
+  const site = Math.min(420, Math.max(quality.ground, plotSide * 2.4, span * 4.2, 80));
 
   return (
     <Canvas
-      frameloop={visiting ? 'always' : 'demand'}
-      shadows={quality.shadows}
-      dpr={[1, quality.dpr]}
-      camera={{
-        position: visiting ? [0, elevation + 1.6, 4] : coupe ? [28, 18, 28] : [22, 16, 22],
-        fov: visiting ? 70 : 42,
-        near: 0.05,
-        far: 400,
-      }}
+      className="studio-canvas h-full w-full"
+      shadows={shadows}
+      dpr={quality.dpr}
+      frameloop={walking ? "always" : "demand"}
+      performance={{ min: 0.85, max: 1, debounce: 200 }}
       gl={{
-        antialias: true,
-        powerPreference: 'high-performance',
-        toneMapping: 4,
-        toneMappingExposure: 1.12,
+        antialias: quality.antialias,
+        alpha: false,
+        powerPreference: "high-performance",
+        stencil: false,
+        depth: true,
+        preserveDrawingBuffer: !quality.mobile,
+        precision: quality.precision,
       }}
-      style={{ position: 'absolute', inset: 0, touchAction: 'none' }}
+      camera={{
+        position: [cx + camDist * 0.62, camDist * 0.48, cz + camDist * 0.62],
+        fov: lens,
+        near: 0.15,
+        far: camFar,
+      }}
       onCreated={({ gl }) => {
-        gl.setClearColor('#6a90a8')
-        gl.shadowMap.enabled = quality.shadows
-        gl.shadowMap.type = 2
-        gl.localClippingEnabled = false
+        gl.shadowMap.enabled = shadows;
+        gl.shadowMap.type = THREE.PCFSoftShadowMap;
+        gl.shadowMap.autoUpdate = shadows;
+        gl.outputColorSpace = THREE.SRGBColorSpace;
+        gl.toneMapping = THREE.ACESFilmicToneMapping;
+        gl.toneMappingExposure = lighting.exposure || 1;
+        gl.setClearColor(sky, 1);
+      }}
+      onPointerMissed={() => {
+        if (tool === "select") onSelect(null);
       }}
     >
-      <Suspense fallback={null}>
-        <InvalidateOnUpdate stamp={stamp} />
-        <CoupeClip enabled={coupe} axis={coupeAxis} cut={coupeCut} />
-        {!visiting && <OrbitRig target={[0, targetY, 0]} enabled={!orbitOff} />}
-        {visiting && (
-          <VisitControls
-            walls={walls}
-            furniture={furniture}
-            rooms={rooms}
-            elevation={elevation}
-            storyHeight={storyHeight}
-            enabled={visiting}
-            storyKey={story?.id ?? 'none'}
-          />
-        )}
-        <PlaceSurface
-          enabled={!!placingPoint}
-          elevation={elevation}
-          onPlace={onPlace}
-          onHover={(x, z) => {
-            if (!placingPoint) {
-              setHover(null)
-              return
-            }
-            setHover(snap(x, z, draft ?? (polyDraft.length ? polyDraft[polyDraft.length - 1]! : null)))
-          }}
+      <BootFrame />
+      <CamLens fov={lens} far={camFar} />
+      {orthoCam && !walking && (
+        <OrthographicCamera
+          makeDefault
+          position={[cx + camDist * 0.62, camDist * 0.48, cz + camDist * 0.62]}
+          zoom={Math.max(12, 280 / span)}
+          near={0.1}
+          far={camFar}
         />
-        {draft && (
-          <mesh position={[draft.x, elevation + 0.06, draft.y]}>
-            <sphereGeometry args={[0.14, 14, 14]} />
-            <meshBasicMaterial color="#6ed0c3" depthTest={false} />
-          </mesh>
-        )}
-        {draft && hover && (tool === 'wall' || tool === 'rect') && (
-          <>
-            <Line
-              points={
-                tool === 'wall'
-                  ? [
-                      [draft.x, elevation + 0.08, draft.y],
-                      [hover.x, elevation + 0.08, hover.y],
-                    ]
-                  : [
-                      [draft.x, elevation + 0.08, draft.y],
-                      [hover.x, elevation + 0.08, draft.y],
-                      [hover.x, elevation + 0.08, hover.y],
-                      [draft.x, elevation + 0.08, hover.y],
-                      [draft.x, elevation + 0.08, draft.y],
-                    ]
-              }
-              color="#6ed0c3"
-              lineWidth={2}
-              transparent
-              opacity={0.85}
-            />
-            <mesh position={[hover.x, elevation + 0.06, hover.y]}>
-              <sphereGeometry args={[0.11, 12, 12]} />
-              <meshBasicMaterial color="#9eefe4" depthTest={false} />
-            </mesh>
-          </>
-        )}
-        {hover && (tool === 'wall' || tool === 'column' || tool === 'objects') && (
-          <mesh position={[hover.x, elevation + 0.04, hover.y]} rotation={[-Math.PI / 2, 0, 0]}>
-            <ringGeometry args={[0.12, 0.18, 24]} />
-            <meshBasicMaterial color="#6ed0c3" transparent opacity={0.75} depthTest={false} />
-          </mesh>
-        )}
-        {polyDraft.map((pt, i) => (
-          <mesh key={`pd-${i}`} position={[pt.x, elevation + 0.05, pt.y]}>
-            <sphereGeometry args={[0.1, 10, 10]} />
-            <meshBasicMaterial color="#6ed0c3" />
-          </mesh>
-        ))}
-        <BuildingScene project={project} activeStoryId={activeStoryId} visiting={visiting} />
-      </Suspense>
+      )}
+      <AdaptiveGpu mobile={quality.mobile} />
+      <Invalidate
+        tick={`${project.updatedAt}|${selectedIds.join(",")}|${hour}|${clipY}|${view}|${lighting.month}|${lighting.sunIntensity}|${lighting.fill}|${lighting.ambient}|${lighting.hemi}|${lighting.exposure}|${shadows}|${lighting.shadowSoftness}|${lighting.interior}|${lighting.interiorGain}|${buildPhase}|${tool}|${draft ? "d" : ""}|${showGrid ? "g" : ""}|${isolateStory ? storyId : "all"}|${showStructure ? "st" : ""}|${orthoCam ? "o" : ""}|${fov}`}
+      />
+      <LightRig lighting={lighting} shadows={shadows} type={shadowType} mobile={quality.mobile} />
+      <color attach="background" args={[sky]} />
+      {quality.fog && <fog attach="fog" args={[sky, Math.max(28, span * 1.6), Math.max(90, span * 5)]} />}
+      <hemisphereLight args={[night ? "#9aa4b8" : "#f2f0ea", "#4a4a40", lighting.hemi]} />
+      <ambientLight intensity={ambient} />
+      <directionalLight
+        position={sun}
+        intensity={sunI}
+        castShadow={shadows}
+        shadow-mapSize-width={mapSize}
+        shadow-mapSize-height={mapSize}
+        shadow-camera-near={2}
+        shadow-camera-far={Math.max(60, span * 3.2)}
+        shadow-camera-left={-half}
+        shadow-camera-right={half}
+        shadow-camera-top={half}
+        shadow-camera-bottom={-half}
+        shadow-bias={-0.0006}
+        shadow-normalBias={0.02 + lighting.shadowSoftness * 0.04}
+        color={sunCol}
+      />
+      <directionalLight
+          position={[-sun[0] * 0.35, Math.max(6, sun[1] * 0.45), -sun[2] * 0.35]}
+          intensity={lighting.fill}
+          color={night ? "#7a88a8" : "#c5d0dc"}
+        />
+      {showInterior && (
+        <InteriorLights project={project} gain={lighting.interiorGain} cap={quality.interiorLights} />
+      )}
+      <mesh position={sun} raycast={noopRaycast}>
+          <sphereGeometry args={[1.35, 14, 14]} />
+          <meshBasicMaterial color={sunCol} />
+        </mesh>
+      <mesh raycast={noopRaycast}>
+        <sphereGeometry args={[camFar * 0.48, 28, 18]} />
+        <meshBasicMaterial color={sky} side={THREE.BackSide} />
+      </mesh>
+      <BuildingScene
+        project={project}
+        selectedIds={selectedIds}
+        onSelect={(id) => {
+          if (tool === "select") onSelect(id);
+        }}
+        clipY={clipY}
+        showClip={clipping}
+        quality={sceneQuality}
+        phase={buildPhase}
+        storyFilter={isolateStory ? (storyId ?? project.stories[0]?.id ?? null) : null}
+        labelStory={storyId ?? project.stories[0]?.id ?? null}
+        showStructure={showStructure}
+      />
+      <Ground size={site} shadows={shadows} plot={plotSide} cx={cx} cz={cz} />
+      <NorthMark cx={cx} cz={cz} elev={elev} north={project.meta.north} span={span} />
+      {showGrid && !walking && (
+      <gridHelper
+        args={[site, quality.gridDiv, "#3a4844", "#24302c"]}
+        position={[0, elev + 0.01, 0]}
+        frustumCulled
+      />
+      )}
+      {walking && physicsOn ? (
+        <PhysicsRig
+          project={project}
+          storyId={isolateStory ? (storyId ?? project.stories[0]?.id ?? null) : null}
+          start={walkStart}
+        >
+          <WalkController key={story?.id ?? "g"} start={walkStart} />
+        </PhysicsRig>
+      ) : walking ? (
+        <WalkController key={story?.id ?? "g"} start={walkStart} />
+      ) : (
+        <Placement
+          elev={elev}
+          enabled={drawing}
+          target={[cx, elev + 1.2, cz]}
+          north={project.meta.north}
+          span={span}
+        />
+      )}
+      <DraftGhost elev={elev} height={storyH} />
     </Canvas>
-  )
+  );
 }

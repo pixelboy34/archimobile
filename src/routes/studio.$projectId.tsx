@@ -1,6 +1,11 @@
-/**
- * Future TanStack Start / Router file-route for `/studio/$projectId`.
- * Currently re-exported into Vite + React Router (`App.tsx` + `StudioPage`).
- * Full Start migration blocked: see CLAUDE.md §1.
- */
-export { default } from '../pages/StudioPage'
+import { createFileRoute } from "@tanstack/react-router";
+import { StudioShell } from "@/components/studio/StudioShell";
+
+export const Route = createFileRoute("/studio/$projectId")({
+  component: StudioPage,
+});
+
+function StudioPage() {
+  const { projectId } = Route.useParams();
+  return <StudioShell projectId={projectId} />;
+}

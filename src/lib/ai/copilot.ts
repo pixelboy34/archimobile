@@ -1,47 +1,132 @@
-import type { MassingParams } from '../cad/massing'
+import { createServerFn } from "@tanstack/react-start";
+import { fallbackDraftFromPrompt, type AiDraft } from "@/lib/bim/seed";
 
-export type CopilotResult =
-  | { ok: true; params: MassingParams; summary: string }
-  | { ok: false; message: string }
+const SYSTEM = `Tu es FORMA, architecte BIM expert (France, Eurocodes, RE2020).
+Tu génères des bâtiments en JSON strict, coordonnées en mètres, origine coin sud-ouest, Y = nord.
+Les pièces sont des rectangles {x,y,w,d} qui s'emboîtent sans vide (sauf patio).
+Épaisseur de mur implicite 0.22 m. Portes 0.9×2.1, fenêtres 1.4–2.4 × 1.4, baies 2.4–4.0 × 2.2.
+Réponds UNIQUEMENT avec un objet JSON valide, sans markdown.
 
-/**
- * Local massing prompt parser (no network).
- * Examples: "immeuble 12x18 8 etages", "tour 15 20 HSP 3.2 R+12"
- */
-export function parseMassingPrompt(raw: string): CopilotResult {
-  const text = raw.trim().toLowerCase().normalize('NFD').replace(/\p{M}/gu, '')
-  if (!text) return { ok: false, message: 'Decrivez un massing (ex. immeuble 12x18, 8 etages).' }
+Schéma:
+{
+  "name": string,
+  "location": string,
+  "brief": string,
+  "roof": "flat" | "gable",
+  "stories": [{"name": string, "elevation": number, "height": number}],
+  "rooms": [{"x":n,"y":n,"w":n,"d":n,"name":string,"function":"living|kitchen|bedroom|bath|wc|entry|corridor|office|dining|storage|laundry|terrace|patio|garage|studio|other","story":0}],
+  "openings": [{"x":n,"y":n,"kind":"door|window","width":n,"height":n,"sill":n,"story":0}],
+  "furniture": [{"kind":"sofa|table|bed|kitchen|desk|bath|plant|car|pool|counter","x":n,"y":n,"rotation":0,"story":0}]
+}`;
 
-  let width = 12
-  let depth = 18
-  let floors = 4
-  let floorHeight = 3
-
-  const dim = text.match(/(\d+(?:[.,]\d+)?)\s*[x×]\s*(\d+(?:[.,]\d+)?)/)
-  if (dim) {
-    width = Number(dim[1].replace(',', '.'))
-    depth = Number(dim[2].replace(',', '.'))
-  } else {
-    const w = text.match(/larg(?:eur)?\s*[:=]?\s*(\d+(?:[.,]\d+)?)/)
-    const d = text.match(/prof(?:ondeur)?\s*[:=]?\s*(\d+(?:[.,]\d+)?)/)
-    if (w) width = Number(w[1].replace(',', '.'))
-    if (d) depth = Number(d[1].replace(',', '.'))
-  }
-
-  const rplus = text.match(/r\s*\+\s*(\d+)/)
-  const etages = text.match(/(\d+)\s*(?:etages?|niveaux?|floors?)/)
-  if (rplus) floors = Number(rplus[1]) + 1
-  else if (etages) floors = Number(etages[1])
-
-  const hsp = text.match(/hsp\s*[:=]?\s*(\d+(?:[.,]\d+)?)/)
-  if (hsp) floorHeight = Number(hsp[1].replace(',', '.'))
-
-  width = Math.min(60, Math.max(6, width))
-  depth = Math.min(60, Math.max(6, depth))
-  floors = Math.min(80, Math.max(1, floors))
-  floorHeight = Math.min(4.5, Math.max(2.5, floorHeight))
-
-  const params: MassingParams = { width, depth, floors, floorHeight }
-  const summary = `Massing ${width} x ${depth} m · ${floors} niveaux · HSP ${floorHeight} m`
-  return { ok: true, params, summary }
+function extractJson(text: string): unknown {
+  const trimmed = text.trim();
+  const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const raw = fence ? fence[1]!.trim() : trimmed;
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start < 0 || end <= start) throw new Error("JSON introuvable");
+  return JSON.parse(raw.slice(start, end + 1));
 }
+
+export const generateBuilding = createServerFn({ method: "POST" })
+  .validator((input: { prompt: string }) => input)
+  .handler(async ({ data }) => {
+    const apiKey = process.env.XAI_API_KEY;
+    if (!apiKey) {
+      return {
+        ok: true as const,
+        source: "local" as const,
+        draft: fallbackDraftFromPrompt(data.prompt),
+        note: "IA indisponible — massing local appliqué.",
+      };
+    }
+    try {
+      const res = await fetch("https://api.x.ai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "grok-4.5",
+          temperature: 0.4,
+          max_tokens: 1400,
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content: SYSTEM },
+            {
+              role: "user",
+              content: `Programme architectural à modéliser :\n${data.prompt}\n\nConstruis un bâtiment cohérent, 80–220 m², pièces fermées, ouvertures sur les murs existants.`,
+            },
+          ],
+        }),
+        signal: AbortSignal.timeout(12000),
+      });
+      if (!res.ok) {
+        return {
+          ok: true as const,
+          source: "local" as const,
+          draft: fallbackDraftFromPrompt(data.prompt),
+          note: `IA ${res.status} — massing local.`,
+        };
+      }
+      const body = (await res.json()) as {
+        choices: { message: { content: string } }[];
+      };
+      const draft = extractJson(body.choices[0]?.message.content ?? "") as AiDraft;
+      return { ok: true as const, source: "grok" as const, draft, note: "" };
+    } catch {
+      return {
+        ok: true as const,
+        source: "local" as const,
+        draft: fallbackDraftFromPrompt(data.prompt),
+        note: "Analyse locale — l'IA n'a pas renvoyé de JSON.",
+      };
+    }
+  });
+
+export const askArchitect = createServerFn({ method: "POST" })
+  .validator((input: { question: string; context: string }) => input)
+  .handler(async ({ data }) => {
+    const apiKey = process.env.XAI_API_KEY;
+    if (!apiKey) {
+      return {
+        ok: false as const,
+        error: "Les fonctions IA ne sont pas disponibles ici.",
+      };
+    }
+    try {
+    const res = await fetch("https://api.x.ai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "grok-4.5",
+        temperature: 0.5,
+        max_tokens: 700,
+        messages: [
+          {
+            role: "system",
+            content:
+              "Tu es FORMA, architecte associé. Réponses courtes, précises, en français. Surfaces, lumières, structure, usages. Pas de markdown décoratif.",
+          },
+          {
+            role: "user",
+            content: `Contexte BIM:\n${data.context.slice(0, 4000)}\n\nQuestion:\n${data.question}`,
+          },
+        ],
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return { ok: false as const, error: `Erreur IA ${res.status}` };
+    const body = (await res.json()) as {
+      choices: { message: { content: string } }[];
+    };
+    return { ok: true as const, text: body.choices[0]?.message.content ?? "" };
+    } catch {
+      return { ok: false as const, error: "L'architecte IA n'a pas répondu." };
+    }
+  });

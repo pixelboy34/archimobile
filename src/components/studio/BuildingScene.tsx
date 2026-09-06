@@ -1,942 +1,1064 @@
-import { useMemo, useEffect, memo } from 'react'
-import * as THREE from 'three'
-import { Sky } from '@react-three/drei'
-import type { Project, Wall, Slab, Furniture, Column, Roof, Opening, Stair, Railing } from '../../lib/bim/types'
-import { wallLength, wallAngle, wallCenter } from '../../lib/bim/types'
-import { MATERIALS, FURNITURE_PRESETS } from '../../lib/bim/catalog'
-import { detectQuality } from '../../lib/render/quality'
-import { useProjectStore } from '../../lib/store/project-store'
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import * as THREE from "three";
+import { OBJECT_MESH } from "@/lib/bim/catalog";
+import { MATERIAL_CATALOG, resolveMaterial } from "@/lib/bim/materials";
+import { createStyledMaterial, syncMaterial } from "@/lib/render/world-material";
 import {
-  plasterMap,
-  concreteMap,
-  woodMap,
-  tileMap,
-  grassMap,
-  softShadowMap,
-  gridOverlayMap,
-} from '../../lib/render/materials'
-import { wallSolidBoxes, openingsLocal } from '../../lib/bim/wall-openings'
-import { buildStairGeometry, normalizeStair } from '../../lib/cad/stairs'
-import {
-  buildStairRailingRuns,
-  buildPathRailingRun,
-  RAILING_POST_SIZE,
-  RAILING_RAIL_SIZE,
-  type RailingRun,
-} from '../../lib/cad/railings'
-import { buildRoofGeometry, normalizeRoof, pitchedRidgeHeight } from '../../lib/cad/roofs'
+  boundsOf,
+  lerp,
+  polygonCentroid,
+  wallAngle,
+  wallNormalOffset,
+  wallSolidSegments,
+} from "@/lib/bim/geometry";
+import type { RenderQuality } from "@/lib/render/quality";
+import { furniturePhase, visibleAt } from "@/lib/bim/construction";
+import { isBearingWall } from "@/lib/bim/structure";
+import type {
+  Furniture,
+  MaterialId,
+  MaterialStyles,
+  Opening,
+  Project,
+  Roof,
+  Stair,
+  Wall,
+} from "@/lib/bim/types";
 
-const EMPTY_OPENINGS: Opening[] = []
-const boxGeo = new THREE.BoxGeometry(1, 1, 1)
+type MatMap = Record<MaterialId, THREE.Material>;
 
-function mapFor(kind?: string, texSize = 256) {
-  if (kind === 'plaster') return plasterMap(texSize)
-  if (kind === 'concrete') return concreteMap(texSize)
-  if (kind === 'wood') return woodMap(texSize)
-  if (kind === 'tile') return tileMap(texSize)
-  if (kind === 'grass') return grassMap(texSize)
-  return null
-}
+const labelCache = new Map<string, THREE.CanvasTexture>();
 
-function matFor(id?: string, fallback = 'beton', texSize = 256) {
-  const def = MATERIALS[id ?? fallback] ?? MATERIALS[fallback]
-  const map = mapFor(def.map, texSize)
-  return {
-    color: def.color,
-    roughness: def.roughness,
-    metalness: def.metalness,
-    map,
+function labelTexture(text: string) {
+  const hit = labelCache.get(text);
+  if (hit) return hit;
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 64;
+  const ctx = c.getContext("2d")!;
+  ctx.clearRect(0, 0, 256, 64);
+  ctx.fillStyle = "rgba(12,12,11,0.72)";
+  if (typeof ctx.roundRect === "function") {
+    ctx.roundRect(8, 10, 240, 44, 8);
+    ctx.fill();
+  } else {
+    ctx.fillRect(8, 10, 240, 44);
   }
+  ctx.fillStyle = "#e8e4d9";
+  ctx.font = "600 22px Outfit, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text.slice(0, 22), 128, 32);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  labelCache.set(text, t);
+  return t;
 }
 
-function WallMesh({
+const skipRaycast = () => {};
+const dummy = new THREE.Object3D();
+
+function pickMat(mats: MatMap, id: MaterialId | undefined): THREE.Material {
+  return (id && mats[id]) || mats.plaster || Object.values(mats)[0]!;
+}
+
+function useSharedResources(
+  lambert: boolean,
+  overrides: MaterialStyles | undefined,
+  texSize: number,
+) {
+  const box = useMemo(() => new THREE.BoxGeometry(1, 1, 1), []);
+  const cyl = useMemo(() => new THREE.CylinderGeometry(0.5, 0.5, 1, 20), []);
+  const sph = useMemo(() => new THREE.SphereGeometry(0.5, 18, 14), []);
+  const styleKey = JSON.stringify(overrides ?? {});
+  const mats = useMemo(() => {
+    const out = {} as MatMap;
+    for (const id of Object.keys(MATERIAL_CATALOG) as MaterialId[]) {
+      out[id] = createStyledMaterial(resolveMaterial(id, overrides), lambert, texSize);
+    }
+    return out;
+  }, [lambert, texSize]);
+  useLayoutEffect(() => {
+    for (const id of Object.keys(MATERIAL_CATALOG) as MaterialId[]) {
+      syncMaterial(mats[id]!, resolveMaterial(id, overrides), texSize);
+    }
+  }, [mats, styleKey, texSize, overrides]);
+  const select = useMemo(
+    () =>
+      new THREE.MeshLambertMaterial({
+        color: "#7a9e96",
+        emissive: "#7a9e96",
+        emissiveIntensity: 0.22,
+      }),
+    [],
+  );
+  useEffect(
+    () => () => {
+      box.dispose();
+      cyl.dispose();
+      sph.dispose();
+      select.dispose();
+      for (const m of Object.values(mats)) m.dispose();
+    },
+    [box, cyl, sph, mats, select],
+  );
+  return { box, cyl, sph, mats, select };
+}
+
+function storyElev(project: Project, storyId: string): number {
+  return project.stories.find((s) => s.id === storyId)?.elevation ?? 0;
+}
+
+function WallGroup({
   wall,
   openings,
-  elevation,
-  visitMode = false,
+  elev,
+  selected,
+  onSelect,
+  box,
+  mats,
+  selectMat,
+  shadows,
+  structureMode,
+  structMat,
+  ghostMat,
 }: {
-  wall: Wall
-  openings: Opening[]
-  elevation: number
-  visitMode?: boolean
+  wall: Wall;
+  openings: Opening[];
+  elev: number;
+  selected: boolean;
+  onSelect: (id: string) => void;
+  box: THREE.BoxGeometry;
+  mats: MatMap;
+  selectMat: THREE.Material;
+  shadows: boolean;
+  structureMode?: boolean;
+  structMat: THREE.Material;
+  ghostMat: THREE.Material;
 }) {
-  const len = wallLength(wall)
-  const angle = wallAngle(wall)
-  const c = wallCenter(wall)
-  const m = matFor(wall.materialId, wall.typology === 'curtain' ? 'rideau' : 'enduit')
-  const solids = useMemo(() => wallSolidBoxes(wall, openings), [wall, openings])
-  const locals = useMemo(() => openingsLocal(wall, openings), [wall, openings])
+  const segs = wallSolidSegments(wall, openings);
+  const angle = wallAngle(wall);
+  const bearing = isBearingWall(wall);
+  const material = selected
+    ? selectMat
+    : structureMode
+      ? bearing
+        ? structMat
+        : ghostMat
+      : pickMat(mats, wall.materialId);
+  const base = wall.baseOffset ?? 0;
+  const n = wallNormalOffset(wall);
+  return (
+    <group>
+      {segs.map((seg, i) => {
+        const mid = lerp(seg.a, seg.b, 0.5);
+        return (
+          <mesh
+            key={`${wall.id}-${i}`}
+            geometry={box}
+            material={material}
+            position={[mid.x + n.x, elev + base + wall.height / 2, mid.y + n.y]}
+            rotation={[0, -angle, 0]}
+            scale={[seg.length, wall.height, wall.thickness]}
+            castShadow={shadows}
+            receiveShadow={shadows}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(wall.id);
+            }}
+          />
+        );
+      })}
+      {openings
+        .filter((o) => o.wallId === wall.id)
+        .map((o) => {
+          const p = lerp(wall.a, wall.b, o.t);
+          const y = elev + base + o.sill + o.height / 2;
+          const frame = o.frame ?? 0.06;
+          const frameMat = pickMat(mats, o.kind === "door" ? "darkwood" : "metal");
+          const fillMat = pickMat(
+            mats,
+            o.kind === "window" || o.variant === "french" ? "glass" : "darkwood",
+          );
+          const leaves = o.variant === "double" || o.width > 1.45 ? 2 : 1;
+          const win = o.kind === "window" || o.variant === "french";
+          return (
+            <group key={o.id} position={[p.x + n.x, 0, p.y + n.y]} rotation={[0, -angle, 0]}>
+              <mesh
+                geometry={box}
+                material={frameMat}
+                position={[0, y, 0]}
+                scale={[o.width + frame * 2, o.height + frame * 2, wall.thickness + 0.04]}
+                castShadow={shadows}
+                raycast={skipRaycast}
+              />
+              {Array.from({ length: leaves }, (_, i) => (
+                <mesh
+                  key={i}
+                  geometry={box}
+                  material={fillMat}
+                  position={[leaves === 1 ? 0 : i === 0 ? -o.width * 0.25 : o.width * 0.25, y, wall.thickness * 0.08]}
+                  scale={[
+                    o.width / leaves - 0.03,
+                    o.height - 0.02,
+                    win ? wall.thickness * 0.22 : wall.thickness * 0.18,
+                  ]}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelect(o.id);
+                  }}
+                />
+              ))}
+              {win && (
+                <>
+                <mesh
+                  geometry={box}
+                  material={frameMat}
+                  position={[0, y, wall.thickness * 0.12]}
+                  scale={[0.03, o.height, wall.thickness * 0.28]}
+                  raycast={skipRaycast}
+                />
+                <mesh
+                  geometry={box}
+                  material={frameMat}
+                  position={[0, y, wall.thickness * 0.12]}
+                  scale={[o.width, 0.03, wall.thickness * 0.28]}
+                  raycast={skipRaycast}
+                />
+                </>
+              )}
+              <mesh
+                geometry={box}
+                material={frameMat}
+                position={[0, elev + base + o.sill - 0.03, wall.thickness * 0.35]}
+                scale={[o.width + frame * 2.4, 0.05, 0.12]}
+                raycast={skipRaycast}
+              />
+              {o.shutter && (
+                <mesh
+                  geometry={box}
+                  material={pickMat(mats, "darkwood")}
+                  position={[o.width * 0.58, y, wall.thickness * 0.75]}
+                  scale={[0.08, o.height, 0.04]}
+                  raycast={skipRaycast}
+                />
+              )}
+            </group>
+          );
+        })}
+    </group>
+  );
+}
 
-  if (len < 0.01) return null
+function SlabMesh({
+  id,
+  polygon,
+  thickness,
+  y,
+  material,
+  outdoor,
+  shadows,
+  onSelect,
+}: {
+  id: string;
+  polygon: { x: number; y: number }[];
+  thickness: number;
+  y: number;
+  material: THREE.Material;
+  outdoor?: boolean;
+  shadows: boolean;
+  onSelect: (id: string) => void;
+}) {
+  const geom = useMemo(() => {
+    if (polygon.length < 3) return new THREE.BoxGeometry(1, thickness, 1);
+    const shape = new THREE.Shape();
+    shape.moveTo(polygon[0]!.x, polygon[0]!.y);
+    for (let i = 1; i < polygon.length; i++) shape.lineTo(polygon[i]!.x, polygon[i]!.y);
+    shape.closePath();
+    const g = new THREE.ExtrudeGeometry(shape, { depth: thickness, bevelEnabled: false, steps: 1 });
+    g.rotateX(-Math.PI / 2);
+    g.translate(0, y - thickness, 0);
+    return g;
+  }, [polygon, thickness, y]);
+  useEffect(() => () => geom.dispose(), [geom]);
+  return (
+    <mesh
+      geometry={geom}
+      material={material}
+      receiveShadow={shadows}
+      castShadow={shadows && !outdoor}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect(id);
+      }}
+    />
+  );
+}
 
-  const frameMat = MATERIALS.bois
-  const metalMat = MATERIALS.acier
-  const glassMat = MATERIALS.verre
+function GableRoofMesh({
+  roof,
+  elev,
+  box,
+  material,
+  shadows,
+  onSelect,
+}: {
+  roof: Roof;
+  elev: number;
+  box: THREE.BoxGeometry;
+  material: THREE.Material;
+  shadows: boolean;
+  onSelect: (id: string) => void;
+}) {
+  const b = boundsOf(roof.polygon);
+  const w = b.max.x - b.min.x + roof.overhang * 2;
+  const d = b.max.y - b.min.y + roof.overhang * 2;
+  const cx = (b.min.x + b.max.x) / 2;
+  const cz = (b.min.y + b.max.y) / 2;
+  const alongX = w >= d;
+  const half = (alongX ? d : w) / 2;
+  const rise = Math.tan((roof.pitch * Math.PI) / 180) * half;
+  const hypot = Math.hypot(half, rise);
+  const pitch = Math.atan2(rise, half);
+  const len = alongX ? w : d;
+  const shadow = {
+    castShadow: shadows,
+    receiveShadow: shadows,
+    onClick: (e: { stopPropagation: () => void }) => {
+      e.stopPropagation();
+      onSelect(roof.id);
+    },
+  };
+
+  if (roof.kind === "flat") {
+    return (
+      <mesh
+        geometry={box}
+        material={material}
+        position={[cx, elev + roof.thickness / 2, cz]}
+        scale={[w, roof.thickness, d]}
+        {...shadow}
+      />
+    );
+  }
+
+  if (roof.kind === "shed") {
+    const hypotS = Math.hypot(alongX ? d : w, rise);
+    return (
+      <mesh
+        geometry={box}
+        material={material}
+        position={[cx, elev + rise / 2, cz]}
+        rotation={alongX ? [pitch / 2, 0, 0] : [0, 0, -pitch / 2]}
+        scale={alongX ? [w, roof.thickness, hypotS] : [hypotS, roof.thickness, d]}
+        {...shadow}
+      />
+    );
+  }
+
+  if (roof.kind === "hip") {
+    return (
+      <group position={[cx, elev, cz]}>
+        <mesh
+          geometry={box}
+          material={material}
+          position={[0, rise / 2, 0]}
+          scale={[w * 0.55, roof.thickness, d * 0.55]}
+          {...shadow}
+        />
+        <mesh
+          geometry={box}
+          material={material}
+          position={alongX ? [0, rise / 2, -half / 2] : [-half / 2, rise / 2, 0]}
+          rotation={alongX ? [pitch, 0, 0] : [0, 0, -pitch]}
+          scale={alongX ? [len * 0.85, roof.thickness, hypot] : [hypot, roof.thickness, len * 0.85]}
+          {...shadow}
+        />
+        <mesh
+          geometry={box}
+          material={material}
+          position={alongX ? [0, rise / 2, half / 2] : [half / 2, rise / 2, 0]}
+          rotation={alongX ? [-pitch, 0, 0] : [0, 0, pitch]}
+          scale={alongX ? [len * 0.85, roof.thickness, hypot] : [hypot, roof.thickness, len * 0.85]}
+          {...shadow}
+        />
+      </group>
+    );
+  }
 
   return (
-    <group position={[c.x, elevation, c.y]} rotation={[0, -angle, 0]}>
-      {solids.map((seg, i) => (
-        <mesh
-          key={`seg-${i}`}
-          geometry={boxGeo}
-          position={[seg.x, seg.y, 0]}
-          scale={[seg.w, seg.h, wall.thickness]}
-          castShadow
-          receiveShadow
-        >
-          <meshStandardMaterial
-            color={m.color}
-            map={m.map}
-            roughness={m.roughness}
-            metalness={m.metalness}
-            side={visitMode ? THREE.DoubleSide : THREE.FrontSide}
-            emissive={visitMode ? '#1a3030' : '#000000'}
-            emissiveIntensity={visitMode ? 0.12 : 0}
+    <group position={[cx, elev, cz]}>
+      <mesh
+        geometry={box}
+        material={material}
+        position={alongX ? [0, rise / 2, -half / 2] : [-half / 2, rise / 2, 0]}
+        rotation={alongX ? [pitch, 0, 0] : [0, 0, -pitch]}
+        scale={alongX ? [len, roof.thickness, hypot] : [hypot, roof.thickness, len]}
+        {...shadow}
+      />
+      <mesh
+        geometry={box}
+        material={material}
+        position={alongX ? [0, rise / 2, half / 2] : [half / 2, rise / 2, 0]}
+        rotation={alongX ? [-pitch, 0, 0] : [0, 0, pitch]}
+        scale={alongX ? [len, roof.thickness, hypot] : [hypot, roof.thickness, len]}
+        {...shadow}
+      />
+    </group>
+  );
+}
+
+function FurnitureMesh({
+  item,
+  elev,
+  selected,
+  onSelect,
+  box,
+  cyl,
+  sph,
+  mats,
+  selectMat,
+  shadows,
+}: {
+  item: Furniture;
+  elev: number;
+  selected: boolean;
+  onSelect: (id: string) => void;
+  box: THREE.BoxGeometry;
+  cyl: THREE.CylinderGeometry;
+  sph: THREE.SphereGeometry;
+  mats: MatMap;
+  selectMat: THREE.Material;
+  shadows: boolean;
+}) {
+  const pick = {
+    castShadow: shadows,
+    receiveShadow: shadows,
+    onClick: (e: { stopPropagation: () => void }) => {
+      e.stopPropagation();
+      onSelect(item.id);
+    },
+  };
+  const deco = { castShadow: shadows, receiveShadow: shadows, raycast: skipRaycast };
+  const def = OBJECT_MESH[item.kind] ?? { style: "box" as const, mat: "wood" as const };
+  const body = selected ? selectMat : pickMat(mats, def.mat);
+  const wood = selected ? selectMat : pickMat(mats, "wood");
+  const dark = pickMat(mats, "darkwood");
+  const white = selected ? selectMat : pickMat(mats, "white");
+  const glass = pickMat(mats, "glass");
+  const veg = pickMat(mats, "vegetation");
+  const stone = pickMat(mats, "stone");
+  const metal = pickMat(mats, "metal");
+  const k = def.style;
+  const { w, d, h } = item;
+  const leg = (x: number, z: number, hh = h * 0.92, t = 0.05) => (
+    <mesh geometry={box} material={wood} position={[x, hh / 2, z]} scale={[t, hh, t]} {...deco} />
+  );
+  return (
+    <group position={[item.position.x, elev, item.position.y]} rotation={[0, item.rotation, 0]}>
+      {k === "sofa" && (
+        <>
+          <mesh geometry={box} material={body} position={[0, h * 0.32, 0]} scale={[w * 0.92, h * 0.42, d * 0.88]} {...pick} />
+          <mesh geometry={box} material={body} position={[0, h * 0.72, -d * 0.36]} scale={[w, h * 0.72, 0.16]} {...deco} />
+          <mesh geometry={box} material={body} position={[-w * 0.46, h * 0.48, 0]} scale={[0.12, h * 0.55, d]} {...deco} />
+          <mesh geometry={box} material={body} position={[w * 0.46, h * 0.48, 0]} scale={[0.12, h * 0.55, d]} {...deco} />
+          <mesh geometry={box} material={white} position={[-w * 0.2, h * 0.56, d * 0.05]} scale={[w * 0.38, 0.08, d * 0.5]} {...deco} />
+          <mesh geometry={box} material={white} position={[w * 0.2, h * 0.56, d * 0.05]} scale={[w * 0.38, 0.08, d * 0.5]} {...deco} />
+        </>
+      )}
+      {k === "chair" && (
+        <>
+          <mesh geometry={box} material={wood} position={[0, 0.46, 0]} scale={[w, 0.05, d]} {...pick} />
+          <mesh geometry={box} material={wood} position={[0, 0.78, -d * 0.42]} scale={[w, 0.7, 0.05]} {...deco} />
+          {leg(-w * 0.38, -d * 0.38, 0.44)}
+          {leg(w * 0.38, -d * 0.38, 0.44)}
+          {leg(-w * 0.38, d * 0.38, 0.44)}
+          {leg(w * 0.38, d * 0.38, 0.44)}
+        </>
+      )}
+      {k === "table" && (
+        <>
+          <mesh geometry={box} material={wood} position={[0, h, 0]} scale={[w, 0.05, d]} {...pick} />
+          {leg(-w * 0.42, -d * 0.4, h)}
+          {leg(w * 0.42, -d * 0.4, h)}
+          {leg(-w * 0.42, d * 0.4, h)}
+          {leg(w * 0.42, d * 0.4, h)}
+        </>
+      )}
+      {k === "bed" && (
+        <>
+          <mesh geometry={box} material={dark} position={[0, 0.12, 0]} scale={[w + 0.1, 0.18, d + 0.1]} {...pick} />
+          <mesh geometry={box} material={white} position={[0, 0.32, 0.05]} scale={[w, 0.22, d * 0.92]} {...deco} />
+          <mesh geometry={box} material={body} position={[0, 0.72, -d * 0.46]} scale={[w + 0.08, 0.9, 0.08]} {...deco} />
+          <mesh geometry={box} material={white} position={[-w * 0.22, 0.5, -d * 0.32]} scale={[0.38, 0.12, 0.28]} {...deco} />
+          <mesh geometry={box} material={white} position={[w * 0.22, 0.5, -d * 0.32]} scale={[0.38, 0.12, 0.28]} {...deco} />
+        </>
+      )}
+      {k === "cabinet" && (
+        <>
+          <mesh geometry={box} material={body} position={[0, h / 2, 0]} scale={[w, h, d]} {...pick} />
+          <mesh geometry={box} material={dark} position={[0, h * 0.52, d * 0.48]} scale={[0.01, h * 0.7, 0.02]} {...deco} />
+          <mesh geometry={box} material={stone} position={[0, h + 0.015, 0]} scale={[w + 0.04, 0.03, d + 0.04]} {...deco} />
+        </>
+      )}
+      {k === "appliance" && (
+        <>
+          <mesh geometry={box} material={metal} position={[0, h / 2, 0]} scale={[w, h, d]} {...pick} />
+          <mesh geometry={box} material={glass} position={[0, h * 0.62, d * 0.48]} scale={[w * 0.72, h * 0.38, 0.02]} {...deco} />
+        </>
+      )}
+      {k === "box" && (
+        <mesh geometry={box} material={body} position={[0, h / 2, 0]} scale={[w, h, d]} {...pick} />
+      )}
+      {k === "sanitary" && item.kind === "shower" && (
+        <>
+          <mesh geometry={box} material={stone} position={[0, 0.03, 0]} scale={[w, 0.06, d]} {...pick} />
+          <mesh geometry={box} material={glass} position={[0, h / 2, -d / 2]} scale={[w, h, 0.03]} {...deco} />
+          <mesh geometry={box} material={metal} position={[w * 0.35, h * 0.7, 0]} scale={[0.04, h * 0.4, 0.04]} {...deco} />
+        </>
+      )}
+      {k === "sanitary" && item.kind !== "shower" && (
+        <>
+          <mesh
+            geometry={item.kind === "toilet" ? cyl : box}
+            material={white}
+            position={[0, Math.min(h, 0.42) / 2 + (item.kind === "basin" ? 0.72 : 0), 0]}
+            scale={item.kind === "toilet" ? [w, Math.min(h, 0.42), d] : [w, Math.min(h, 0.42), d]}
+            {...pick}
           />
-        </mesh>
-      ))}
+          {item.kind === "basin" && (
+            <mesh geometry={box} material={dark} position={[0, 0.4, 0]} scale={[0.08, 0.8, 0.08]} {...deco} />
+          )}
+        </>
+      )}
+      {k === "lamp" && (
+        <>
+          <mesh geometry={cyl} material={dark} position={[0, h * 0.4, 0]} scale={[0.08, h * 0.8, 0.08]} {...pick} />
+          <mesh geometry={cyl} material={white} position={[0, h * 0.88, 0]} scale={[0.38, 0.22, 0.38]} {...deco} />
+        </>
+      )}
+      {k === "screen" && (
+        <>
+          <mesh geometry={box} material={metal} position={[0, h * 0.12, 0]} scale={[w * 0.35, 0.06, d * 1.4]} {...pick} />
+          <mesh geometry={box} material={metal} position={[0, h * 0.45, 0]} scale={[0.06, h * 0.55, 0.06]} {...deco} />
+          <mesh geometry={box} material={pickMat(mats, "metal")} position={[0, h * 0.85, 0]} scale={[w, h * 0.62, Math.max(d, 0.05)]} {...deco} />
+          <mesh geometry={box} material={glass} position={[0, h * 0.85, d * 0.4]} scale={[w * 0.92, h * 0.54, 0.02]} {...deco} />
+        </>
+      )}
+      {k === "plant" && (
+        <>
+          <mesh geometry={cyl} material={stone} position={[0, 0.18, 0]} scale={[0.32, 0.36, 0.32]} {...pick} />
+          <mesh geometry={sph} material={veg} position={[0, 0.85, 0]} scale={[0.7, 0.9, 0.7]} {...deco} />
+          <mesh geometry={sph} material={veg} position={[0.18, 1.05, 0.1]} scale={[0.45, 0.5, 0.45]} {...deco} />
+        </>
+      )}
+      {k === "tree" && (
+        <>
+          <mesh geometry={cyl} material={dark} position={[0, 1.15, 0]} scale={[0.32, 2.3, 0.32]} {...pick} />
+          <mesh geometry={sph} material={veg} position={[0, 3.15, 0]} scale={[w, 2.6, d]} {...deco} />
+          <mesh geometry={sph} material={veg} position={[w * 0.18, 3.55, d * 0.1]} scale={[w * 0.7, 1.8, d * 0.7]} {...deco} />
+        </>
+      )}
+      {k === "hedge" && (
+        <mesh geometry={box} material={veg} position={[0, h / 2, 0]} scale={[w, h, d]} {...pick} />
+      )}
+      {k === "fence" && (
+        <>
+          <mesh geometry={box} material={body} position={[0, h * 0.45, 0]} scale={[w, 0.06, 0.04]} {...pick} />
+          <mesh geometry={box} material={body} position={[0, h * 0.75, 0]} scale={[w, 0.06, 0.04]} {...deco} />
+          {[-0.4, 0, 0.4].map((t) => (
+            <mesh key={t} geometry={box} material={body} position={[w * t, h / 2, 0]} scale={[0.06, h, 0.06]} {...deco} />
+          ))}
+        </>
+      )}
+      {k === "pergola" && (
+        <>
+          {[-1, 1].flatMap((sx) =>
+            [-1, 1].map((sz) => (
+              <mesh
+                key={`${sx}${sz}`}
+                geometry={box}
+                material={wood}
+                position={[(sx * w) / 2 - sx * 0.08, h / 2, (sz * d) / 2 - sz * 0.08]}
+                scale={[0.12, h, 0.12]}
+                {...(sx === -1 && sz === -1 ? pick : deco)}
+              />
+            )),
+          )}
+          <mesh geometry={box} material={wood} position={[0, h, 0]} scale={[w, 0.08, d]} {...deco} />
+          <mesh geometry={box} material={wood} position={[0, h + 0.06, 0]} scale={[w * 0.2, 0.04, d]} {...deco} />
+        </>
+      )}
+      {k === "vehicle" && (
+        <>
+          <mesh geometry={box} material={metal} position={[0, 0.42, 0]} scale={[w, 0.5, d]} {...pick} />
+          <mesh geometry={box} material={glass} position={[w * 0.08, 0.92, 0]} scale={[w * 0.5, 0.4, d * 0.86]} {...deco} />
+          {[
+            [-w * 0.32, -d * 0.4],
+            [w * 0.32, -d * 0.4],
+            [-w * 0.32, d * 0.4],
+            [w * 0.32, d * 0.4],
+          ].map(([x, z], i) => (
+            <mesh key={i} geometry={cyl} material={dark} position={[x, 0.18, z]} rotation={[Math.PI / 2, 0, 0]} scale={[0.36, 0.16, 0.36]} {...deco} />
+          ))}
+        </>
+      )}
+      {k === "pool" && (
+        <>
+          <mesh geometry={box} material={stone} position={[0, 0.12, 0]} scale={[w + 0.35, 0.24, d + 0.35]} {...pick} />
+          <mesh geometry={box} material={pickMat(mats, "water")} position={[0, 0.2, 0]} scale={[w, 0.08, d]} {...deco} />
+        </>
+      )}
+      {k === "people" && (
+        <>
+          <mesh geometry={box} material={pickMat(mats, "lime")} position={[0, 0.55, 0]} scale={[0.32, 0.85, 0.2]} {...pick} />
+          <mesh geometry={sph} material={pickMat(mats, "lime")} position={[0, 1.18, 0]} scale={[0.28, 0.32, 0.28]} {...deco} />
+          <mesh geometry={box} material={pickMat(mats, "plaster")} position={[0, 0.18, 0]} scale={[0.3, 0.36, 0.18]} {...deco} />
+        </>
+      )}
+      {k === "rug" && (
+        <mesh geometry={box} material={body} position={[0, 0.015, 0]} scale={[w, 0.03, d]} {...pick} />
+      )}
+      {k === "fire" && (
+        <>
+          <mesh geometry={box} material={stone} position={[0, h / 2, 0]} scale={[w, h, d]} {...pick} />
+          <mesh geometry={box} material={dark} position={[0, h * 0.32, d * 0.22]} scale={[w * 0.5, h * 0.42, 0.08]} {...deco} />
+          <mesh geometry={box} material={pickMat(mats, "terracotta")} position={[0, h * 0.22, d * 0.18]} scale={[w * 0.32, 0.12, 0.06]} {...deco} />
+        </>
+      )}
+      {k === "post" && (
+        <>
+          <mesh geometry={cyl} material={metal} position={[0, h / 2, 0]} scale={[0.1, h, 0.1]} {...pick} />
+          <mesh geometry={sph} material={white} position={[0, h, 0]} scale={[0.32, 0.32, 0.32]} {...deco} />
+        </>
+      )}
+      {k === "panel" && (
+        <mesh geometry={box} material={body} position={[0, Math.max(h / 2, 0.06), 0]} scale={[w, Math.max(h, 0.06), d]} {...pick} />
+      )}
+    </group>
+  );
+}
 
-      {locals.map((op) => {
-        const midY = op.sill + op.height / 2
-        const frame = Math.min(0.07, op.width * 0.12, op.height * 0.08)
-        const depth = wall.thickness + 0.03
-        const isDoor = op.kind === 'door'
-        const isWindow = op.kind === 'window'
-        const fColor = isDoor ? frameMat.color : metalMat.color
-        const fRough = isDoor ? frameMat.roughness : metalMat.roughness
-        const fMetal = isDoor ? frameMat.metalness : metalMat.metalness
-        const innerW = Math.max(0.05, op.width - frame * 2)
-        const innerH = Math.max(0.05, op.height - frame * 2)
+function StairMesh({
+  stair,
+  elev,
+  box,
+  material,
+  shadows,
+  onSelect,
+}: {
+  stair: Stair;
+  elev: number;
+  box: THREE.BoxGeometry;
+  material: THREE.Material;
+  shadows: boolean;
+  onSelect: (id: string) => void;
+}) {
+  const ref = useRef<THREE.InstancedMesh>(null);
+  const count = Math.max(1, stair.steps);
+  useLayoutEffect(() => {
+    const inst = ref.current;
+    if (!inst) return;
+    const tread = stair.run / count;
+    const rise = stair.rise / count;
+    const fx = Math.cos(stair.direction);
+    const fz = Math.sin(stair.direction);
+    for (let i = 0; i < count; i++) {
+      dummy.position.set(
+        stair.origin.x + fx * (i + 0.5) * tread,
+        elev + (i + 0.5) * rise,
+        stair.origin.y + fz * (i + 0.5) * tread,
+      );
+      dummy.rotation.set(0, -stair.direction, 0);
+      dummy.scale.set(stair.width, rise, tread);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    }
+    inst.instanceMatrix.needsUpdate = true;
+    inst.computeBoundingSphere();
+  }, [stair, elev, count]);
+  const fx = Math.cos(stair.direction);
+  const fz = Math.sin(stair.direction);
+  return (
+    <group>
+      <instancedMesh
+        ref={ref}
+        args={[box, material, count]}
+        castShadow={shadows}
+        receiveShadow={shadows}
+        frustumCulled
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect(stair.id);
+        }}
+      />
+      {stair.railing && (
+        <mesh
+          geometry={box}
+          material={material}
+          position={[
+            stair.origin.x + fx * (stair.run / 2) + fz * (stair.width / 2 + 0.04),
+            elev + stair.rise / 2 + 0.45,
+            stair.origin.y + fz * (stair.run / 2) - fx * (stair.width / 2 + 0.04),
+          ]}
+          rotation={[0, -stair.direction, Math.atan2(stair.rise, stair.run)]}
+          scale={[0.04, 0.04, Math.hypot(stair.run, stair.rise)]}
+          raycast={skipRaycast}
+        />
+      )}
+    </group>
+  );
+}
 
+export function BuildingScene({
+  project,
+  selectedIds,
+  onSelect,
+  clipY,
+  showClip,
+  quality,
+  phase = 7,
+  storyFilter = null,
+  labelStory = null,
+  showStructure = false,
+}: {
+  project: Project;
+  selectedIds: string[];
+  onSelect: (id: string | null) => void;
+  clipY: number;
+  showClip: boolean;
+  quality: RenderQuality;
+  phase?: number;
+  storyFilter?: string | null;
+  labelStory?: string | null;
+  showStructure?: boolean;
+}) {
+  const { box, cyl, sph, mats, select } = useSharedResources(
+    quality.lambert,
+    project.materials,
+    quality.texSize,
+  );
+  const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const structMat = useMemo(
+    () =>
+      new THREE.MeshLambertMaterial({
+        color: "#8d6750",
+        emissive: "#2c1810",
+        emissiveIntensity: 0.16,
+      }),
+    [],
+  );
+  const ghostMat = useMemo(
+    () =>
+      new THREE.MeshLambertMaterial({
+        color: "#5c5a55",
+        transparent: true,
+        opacity: 0.14,
+        depthWrite: false,
+      }),
+    [],
+  );
+  useEffect(() => () => {
+    structMat.dispose();
+    ghostMat.dispose();
+  }, [structMat, ghostMat]);
+  const maxH = Math.max(...project.stories.map((s) => s.elevation + s.height), 3);
+  const cut = showClip ? clipY * maxH : 999;
+  const shadows = quality.shadows;
+  const keep = (sid: string) => !storyFilter || sid === storyFilter;
+
+  return (
+    <group>
+      {project.slabs.map((s) => {
+        if (!keep(s.storyId)) return null;
+        const elev = storyElev(project, s.storyId);
+        if (!visibleAt(phase, s.outdoor ? 0 : elev < 0.4 ? 1 : 4)) return null;
+        if (elev > cut) return null;
         return (
-          <group key={op.id} position={[op.x, 0, 0]}>
-            {/* jambs */}
-            <mesh
-              geometry={boxGeo}
-              position={[-op.width / 2 + frame / 2, midY, 0]}
-              scale={[frame, op.height, depth]}
-              castShadow
-            >
-              <meshStandardMaterial color={fColor} roughness={fRough} metalness={fMetal} />
-            </mesh>
-            <mesh
-              geometry={boxGeo}
-              position={[op.width / 2 - frame / 2, midY, 0]}
-              scale={[frame, op.height, depth]}
-              castShadow
-            >
-              <meshStandardMaterial color={fColor} roughness={fRough} metalness={fMetal} />
-            </mesh>
-            {/* head */}
-            <mesh
-              geometry={boxGeo}
-              position={[0, op.sill + op.height - frame / 2, 0]}
-              scale={[op.width, frame, depth]}
-              castShadow
-            >
-              <meshStandardMaterial color={fColor} roughness={fRough} metalness={fMetal} />
-            </mesh>
-            {/* sill bar (windows / generic openings) */}
-            {!isDoor && (
+          <SlabMesh
+            key={s.id}
+            id={s.id}
+            polygon={s.polygon}
+            thickness={s.thickness}
+            y={elev}
+            material={pickMat(mats, s.materialId)}
+            outdoor={s.outdoor}
+            shadows={shadows}
+            onSelect={onSelect}
+          />
+        );
+      })}
+      {project.walls.map((w) => {
+        if (!keep(w.storyId) || !visibleAt(phase, 3)) return null;
+        const elev = storyElev(project, w.storyId);
+        if (elev > cut) return null;
+        const wall = elev + w.height > cut ? { ...w, height: Math.max(0.1, cut - elev) } : w;
+        return (
+          <WallGroup
+            key={w.id}
+            wall={wall}
+            openings={visibleAt(phase, 6) ? project.openings : []}
+            elev={elev}
+            selected={selected.has(w.id)}
+            onSelect={onSelect}
+            box={box}
+            mats={mats}
+            selectMat={select}
+            shadows={shadows}
+            structureMode={showStructure}
+            structMat={structMat}
+            ghostMat={ghostMat}
+          />
+        );
+      })}
+      {project.columns.map((c) => {
+        if (!keep(c.storyId) || !visibleAt(phase, 2)) return null;
+        const elev = storyElev(project, c.storyId);
+        if (elev > cut) return null;
+        const mat = selected.has(c.id)
+          ? select
+          : showStructure
+            ? structMat
+            : pickMat(mats, c.materialId);
+        const rot = c.rotation ?? 0;
+        const round = c.shape === "round";
+        return round ? (
+          <mesh
+            key={c.id}
+            material={mat}
+            position={[c.position.x, elev + c.height / 2, c.position.y]}
+            rotation={[0, -rot, 0]}
+            castShadow={shadows}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(c.id);
+            }}
+          >
+            <cylinderGeometry args={[c.width / 2, c.width / 2, c.height, 24]} />
+          </mesh>
+        ) : (
+          <mesh
+            key={c.id}
+            geometry={box}
+            material={mat}
+            position={[c.position.x, elev + c.height / 2, c.position.y]}
+            rotation={[0, -rot, 0]}
+            scale={[c.width, c.height, c.depth]}
+            castShadow={shadows}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(c.id);
+            }}
+          />
+        );
+      })}
+      {project.stairs.map((st) => {
+        if (!keep(st.storyId) || !visibleAt(phase, 2)) return null;
+        const elev = storyElev(project, st.storyId);
+        if (elev > cut) return null;
+        return (
+          <StairMesh
+            key={st.id}
+            stair={st}
+            elev={elev}
+            box={box}
+            material={pickMat(mats, st.materialId ?? "stone")}
+            shadows={shadows}
+            onSelect={onSelect}
+          />
+        );
+      })}
+      {project.furniture.map((f) => {
+        if (showStructure) return null;
+        if (!keep(f.storyId) || !visibleAt(phase, furniturePhase(f))) return null;
+        const elev = storyElev(project, f.storyId);
+        if (elev > cut) return null;
+        return (
+          <FurnitureMesh
+            key={f.id}
+            item={f}
+            elev={elev}
+            selected={selected.has(f.id)}
+            onSelect={onSelect}
+            box={box}
+            cyl={cyl}
+            sph={sph}
+            mats={mats}
+            selectMat={select}
+            shadows={shadows}
+          />
+        );
+      })}
+      {!showClip &&
+        project.roofs.map((r) => {
+          if (!keep(r.storyId) || !visibleAt(phase, 5)) return null;
+          const story = project.stories.find((s) => s.id === r.storyId);
+          const elev = (story?.elevation ?? 0) + (story?.height ?? 2.8);
+          return (
+            <GableRoofMesh
+              key={r.id}
+              roof={r}
+              elev={elev}
+              box={box}
+              material={pickMat(mats, r.materialId)}
+              shadows={shadows}
+              onSelect={onSelect}
+            />
+          );
+        })}
+      {project.rooms.map((r) => {
+        if (!keep(r.storyId)) return null;
+        const c = polygonCentroid(r.polygon);
+        const b = boundsOf(r.polygon);
+        const elev = storyElev(project, r.storyId);
+        if (elev > cut) return null;
+        return (
+          <group key={r.id}>
+            {r.floorFinish && r.function !== "terrace" && r.function !== "patio" && (
               <mesh
-                geometry={boxGeo}
-                position={[0, op.sill + frame / 2, 0]}
-                scale={[op.width, frame, depth]}
-                castShadow
-              >
-                <meshStandardMaterial color={fColor} roughness={fRough} metalness={fMetal} />
-              </mesh>
+                geometry={box}
+                material={pickMat(mats, r.floorFinish)}
+                position={[c.x, elev + 0.025, c.y]}
+                scale={[
+                  Math.max(0.8, b.max.x - b.min.x - 0.4),
+                  0.03,
+                  Math.max(0.8, b.max.y - b.min.y - 0.4),
+                ]}
+                receiveShadow={shadows}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelect(r.id);
+                }}
+              />
             )}
-            {/* glass pane */}
-            {isWindow && (
-              <mesh
-                geometry={boxGeo}
-                position={[0, midY, 0]}
-                scale={[innerW, innerH, Math.max(0.018, wall.thickness * 0.18)]}
-              >
-                <meshPhysicalMaterial
-                  color={glassMat.color}
-                  roughness={0.05}
-                  metalness={0.05}
-                  transmission={visitMode ? 0.75 : 0.85}
-                  thickness={0.08}
-                  ior={1.45}
-                  transparent
-                  opacity={1}
-                  side={THREE.DoubleSide}
-                  depthWrite={false}
-                  envMapIntensity={1.2}
-                />
-              </mesh>
+            {selected.has(r.id) && (
+            <mesh
+              geometry={box}
+              position={[c.x, elev + 0.05, c.y]}
+              scale={[
+                Math.max(0.9, b.max.x - b.min.x - 0.35),
+                0.05,
+                Math.max(0.9, b.max.y - b.min.y - 0.35),
+              ]}
+              raycast={skipRaycast}
+            >
+              <meshBasicMaterial
+                transparent
+                opacity={0.2}
+                color="#7a9e96"
+                depthWrite={false}
+              />
+            </mesh>
             )}
-            {/* lightly ajar door leaf — stays clear of the opening center for visite */}
-            {isDoor && (
+            {quality.labels && (!labelStory || r.storyId === labelStory) && (
+              <sprite position={[c.x, elev + 1.35, c.y]} scale={[2.4, 0.6, 1]} raycast={skipRaycast}>
+                <spriteMaterial map={labelTexture(r.name)} transparent depthWrite={false} />
+              </sprite>
+            )}
+            {r.function === "patio" && (
               <mesh
-                geometry={boxGeo}
-                position={[op.width / 2 - 0.03, midY, wall.thickness / 2 + 0.22]}
-                rotation={[0, -0.55, 0]}
-                scale={[op.width * 0.72, innerH, 0.04]}
-                castShadow
-              >
-                <meshStandardMaterial
-                  color={frameMat.color}
-                  roughness={frameMat.roughness}
-                  metalness={0}
-                />
-              </mesh>
+                geometry={box}
+                material={pickMat(mats, "vegetation")}
+                position={[c.x, elev + 0.02, c.y]}
+                scale={[
+                  Math.max(2.2, b.max.x - b.min.x - 0.2),
+                  0.04,
+                  Math.max(2.2, b.max.y - b.min.y - 0.2),
+                ]}
+                receiveShadow={shadows}
+                raycast={skipRaycast}
+              />
             )}
           </group>
-        )
+        );
       })}
     </group>
-  )
+  );
 }
 
-
-function bbox(poly: { x: number; y: number }[]) {
-  let minX = Infinity,
-    maxX = -Infinity,
-    minY = Infinity,
-    maxY = -Infinity
-  for (const p of poly) {
-    minX = Math.min(minX, p.x)
-    maxX = Math.max(maxX, p.x)
-    minY = Math.min(minY, p.y)
-    maxY = Math.max(maxY, p.y)
-  }
-  return { w: maxX - minX, d: maxY - minY, cx: (minX + maxX) / 2, cz: (minY + maxY) / 2 }
-}
-
-/** Extrude plan polygon (XZ) into a vertical prism of given thickness. */
-function usePolygonExtrude(poly: { x: number; y: number }[], thickness: number) {
-  const geo = useMemo(() => {
-    if (!poly || poly.length < 3) return null
-    const shape = new THREE.Shape()
-    shape.moveTo(poly[0]!.x, poly[0]!.y)
-    for (let i = 1; i < poly.length; i++) {
-      shape.lineTo(poly[i]!.x, poly[i]!.y)
-    }
-    shape.closePath()
-    const g = new THREE.ExtrudeGeometry(shape, {
-      depth: Math.max(0.02, thickness),
-      bevelEnabled: false,
-      steps: 1,
-    })
-    // Shape XY + extrude +Z → rotateX(+90°) so shape Y → world Z, depth → -Y
-    g.rotateX(Math.PI / 2)
-    g.computeVertexNormals()
-    return g
-  }, [poly, thickness])
-
-  useEffect(() => {
-    return () => {
-      geo?.dispose()
-    }
-  }, [geo])
-
-  return geo
-}
-
-function SlabMesh({ slab }: { slab: Slab }) {
-  const kindMat =
-    slab.kind === 'pool' ? 'eau' : slab.kind === 'terrace' ? 'beton' : slab.kind === 'ground' ? 'pierre' : 'beton'
-  const m = matFor(slab.materialId, kindMat)
-  const geo = usePolygonExtrude(slab.polygon, slab.thickness)
-  if (!geo) {
-    // Fallback bbox box if degenerate
-    const b = bbox(slab.polygon)
-    if (b.w < 0.05 || b.d < 0.05) return null
-    return (
-      <mesh
-        geometry={boxGeo}
-        position={[b.cx, slab.elevation - slab.thickness / 2, b.cz]}
-        scale={[b.w, slab.thickness, b.d]}
-        receiveShadow
-        castShadow={slab.kind !== 'ground'}
-      >
-        <meshStandardMaterial color={m.color} map={m.map} roughness={m.roughness} metalness={m.metalness} />
-      </mesh>
-    )
-  }
+export function Ground({
+  size,
+  shadows,
+  plot,
+  cx = 0,
+  cz = 0,
+}: {
+  size: number;
+  shadows: boolean;
+  plot?: number;
+  cx?: number;
+  cz?: number;
+}) {
+  const grass = useMemo(
+    () => createStyledMaterial(resolveMaterial("vegetation"), false, 192),
+    [],
+  );
+  const earth = useMemo(
+    () => createStyledMaterial(resolveMaterial("concrete"), false, 192),
+    [],
+  );
+  useEffect(
+    () => () => {
+      grass.dispose();
+      earth.dispose();
+    },
+    [grass, earth],
+  );
+  const parcel = Math.max(18, plot ?? size * 0.45);
   return (
-    <mesh
-      geometry={geo}
-      position={[0, slab.elevation, 0]}
-      receiveShadow
-      castShadow={slab.kind !== 'ground'}
-    >
-      <meshPhysicalMaterial
-        color={m.color}
-        map={slab.kind === 'pool' ? undefined : m.map}
-        roughness={slab.kind === 'pool' ? 0.08 : m.roughness}
-        metalness={slab.kind === 'pool' ? 0.25 : m.metalness}
-        transparent={slab.kind === 'pool'}
-        opacity={slab.kind === 'pool' ? 0.72 : 1}
-        transmission={slab.kind === 'pool' ? 0.35 : 0}
-        thickness={slab.kind === 'pool' ? 0.4 : 0}
-        side={THREE.DoubleSide}
-      />
-    </mesh>
-  )
-}
-
-function facesToGeometry(faces: { verts: { x: number; y: number; z: number }[] }[]) {
-  const positions: number[] = []
-  const normals: number[] = []
-  const pushTri = (
-    a: { x: number; y: number; z: number },
-    b: { x: number; y: number; z: number },
-    c: { x: number; y: number; z: number },
-  ) => {
-    const abx = b.x - a.x
-    const aby = b.y - a.y
-    const abz = b.z - a.z
-    const acx = c.x - a.x
-    const acy = c.y - a.y
-    const acz = c.z - a.z
-    let nx = aby * acz - abz * acy
-    let ny = abz * acx - abx * acz
-    let nz = abx * acy - aby * acx
-    const nl = Math.hypot(nx, ny, nz) || 1
-    nx /= nl
-    ny /= nl
-    nz /= nl
-    for (const v of [a, b, c]) {
-      positions.push(v.x, v.y, v.z)
-      normals.push(nx, ny, nz)
-    }
-  }
-  for (const f of faces) {
-    const v = f.verts
-    if (v.length === 3) pushTri(v[0]!, v[1]!, v[2]!)
-    else if (v.length >= 4) {
-      pushTri(v[0]!, v[1]!, v[2]!)
-      pushTri(v[0]!, v[2]!, v[3]!)
-    }
-  }
-  const g = new THREE.BufferGeometry()
-  g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-  g.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
-  return g
-}
-
-function RoofMesh({ roof, elevation }: { roof: Roof; elevation: number }) {
-  const m = matFor('tuile')
-  const nr = normalizeRoof(roof)
-  const polyKey = nr.polygon.map((p) => `${p.x},${p.y}`).join(';')
-  const geom = useMemo(
-    () => buildRoofGeometry(nr),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [nr.mode, nr.pitchDeg, nr.ridgeHeight, polyKey],
-  )
-
-  // Flat terrace: extruded prism
-  const flatH = Math.max(0.15, pitchedRidgeHeight(nr))
-  const flatPoly = nr.mode === 'terrasse' ? nr.polygon : nr.polygon.slice(0, 0)
-  const flatGeo = usePolygonExtrude(flatPoly, flatH)
-
-  const pitchedGeo = useMemo(() => {
-    if (nr.mode === 'terrasse' || geom.faces.length === 0) return null
-    return facesToGeometry(geom.faces)
-  }, [geom, nr.mode])
-
-  useEffect(() => {
-    return () => {
-      pitchedGeo?.dispose()
-    }
-  }, [pitchedGeo])
-
-  if (nr.mode === 'terrasse') {
-    if (!flatGeo) {
-      const b = bbox(nr.polygon)
-      if (b.w < 0.05 || b.d < 0.05) return null
-      return (
-        <mesh
-          geometry={boxGeo}
-          position={[b.cx, elevation + flatH / 2, b.cz]}
-          scale={[b.w, flatH, b.d]}
-          castShadow
-          receiveShadow
-        >
-          <meshStandardMaterial color={m.color} map={m.map} roughness={m.roughness} metalness={m.metalness} />
+    <group position={[cx, 0, cz]}>
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, -0.05, 0]}
+        material={grass}
+        receiveShadow={shadows}
+        raycast={skipRaycast}
+      >
+        <planeGeometry args={[size, size, 1, 1]} />
+      </mesh>
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, -0.02, 0]}
+        material={earth}
+        receiveShadow={shadows}
+        raycast={skipRaycast}
+      >
+        <planeGeometry args={[Math.max(14, parcel * 0.42), Math.max(14, parcel * 0.42), 1, 1]} />
+      </mesh>
+      {(
+        [
+          [0, parcel / 2, parcel, 0.12],
+          [0, -parcel / 2, parcel, 0.12],
+          [parcel / 2, 0, 0.12, parcel],
+          [-parcel / 2, 0, 0.12, parcel],
+        ] as const
+      ).map(([x, z, sx, sz], i) => (
+        <mesh key={i} position={[x, 0.04, z]} raycast={skipRaycast} castShadow={shadows} receiveShadow={shadows}>
+          <boxGeometry args={[sx, 0.08, sz]} />
+          <meshStandardMaterial color="#8a8680" roughness={0.9} />
         </mesh>
-      )
-    }
-    return (
-      <mesh geometry={flatGeo} position={[0, elevation + flatH, 0]} castShadow receiveShadow>
-        <meshStandardMaterial color={m.color} map={m.map} roughness={m.roughness} metalness={m.metalness} side={THREE.DoubleSide} />
-      </mesh>
-    )
-  }
-
-  if (!pitchedGeo) return null
-  return (
-    <mesh geometry={pitchedGeo} position={[0, elevation, 0]} castShadow receiveShadow>
-      <meshStandardMaterial color={m.color} map={m.map} roughness={m.roughness} metalness={m.metalness} side={THREE.DoubleSide} />
-    </mesh>
-  )
-}
-
-function ColumnMesh({ col, elevation }: { col: Column; elevation: number }) {
-  const m = matFor('beton')
-  return (
-    <mesh
-      geometry={boxGeo}
-      position={[col.position.x, elevation + col.height / 2, col.position.y]}
-      scale={[col.width, col.height, col.depth]}
-      castShadow
-      receiveShadow
-    >
-      <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} />
-    </mesh>
-  )
-}
-
-
-function FlightMesh({
-  a,
-  b,
-  width,
-  rises,
-  startElev,
-  endElev,
-  baseElevation,
-}: {
-  a: { x: number; y: number }
-  b: { x: number; y: number }
-  width: number
-  rises: number
-  startElev: number
-  endElev: number
-  baseElevation: number
-}) {
-  const dx = b.x - a.x
-  const dz = b.y - a.y
-  const len = Math.hypot(dx, dz)
-  if (len < 0.05 || rises < 1) return null
-  const angle = Math.atan2(dz, dx)
-  const totalH = Math.max(0.05, endElev - startElev)
-  const riseH = totalH / rises
-  const tread = len / rises
-  const m = matFor('beton')
-  const steps = []
-  for (let i = 0; i < rises; i++) {
-    const along = tread * (i + 0.5)
-    const y = startElev + riseH * (i + 0.5)
-    steps.push(
-      <mesh
-        key={i}
-        geometry={boxGeo}
-        position={[along - len / 2, y, 0]}
-        scale={[Math.max(0.08, tread * 0.95), riseH, width]}
-        castShadow
-        receiveShadow
-      >
-        <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} />
-      </mesh>,
-    )
-  }
-  return (
-    <group
-      position={[(a.x + b.x) / 2, baseElevation, (a.y + b.y) / 2]}
-      rotation={[0, -angle, 0]}
-    >
-      {steps}
-    </group>
-  )
-}
-
-function LandingMesh({
-  polygon,
-  elevation,
-  thickness,
-  baseElevation,
-}: {
-  polygon: { x: number; y: number }[]
-  elevation: number
-  thickness: number
-  baseElevation: number
-}) {
-  const geo = usePolygonExtrude(polygon, thickness)
-  const m = matFor('beton')
-  if (!geo) {
-    const b = bbox(polygon)
-    if (b.w < 0.05 || b.d < 0.05) return null
-    return (
-      <mesh
-        geometry={boxGeo}
-        position={[b.cx, baseElevation + elevation - thickness / 2, b.cz]}
-        scale={[b.w, thickness, b.d]}
-        castShadow
-        receiveShadow
-      >
-        <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} />
-      </mesh>
-    )
-  }
-  return (
-    <mesh geometry={geo} position={[0, baseElevation + elevation, 0]} castShadow receiveShadow>
-      <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} side={THREE.DoubleSide} />
-    </mesh>
-  )
-}
-
-function RailingRunMesh({
-  run,
-  baseElevation,
-  materialId = 'acier',
-}: {
-  run: RailingRun
-  baseElevation: number
-  materialId?: string
-}) {
-  const m = matFor(materialId, 'acier')
-  const samples = run.samples
-  if (samples.length < 2) return null
-  const posts = []
-  const rails = []
-  for (let i = 0; i < samples.length; i++) {
-    const s = samples[i]!
-    const y0 = baseElevation + s.elev
-    posts.push(
-      <mesh
-        key={`p-${i}`}
-        geometry={boxGeo}
-        position={[s.x, y0 + run.height / 2, s.y]}
-        scale={[RAILING_POST_SIZE, run.height, RAILING_POST_SIZE]}
-        castShadow
-      >
-        <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} />
-      </mesh>,
-    )
-    if (i < samples.length - 1) {
-      const n = samples[i + 1]!
-      const dx = n.x - s.x
-      const dz = n.y - s.y
-      const L = Math.hypot(dx, dz)
-      if (L < 1e-4) continue
-      const angle = Math.atan2(dz, dx)
-      const midX = (s.x + n.x) / 2
-      const midZ = (s.y + n.y) / 2
-      const elevA = s.elev
-      const elevB = n.elev
-      const midElev = (elevA + elevB) / 2
-      const pitch = Math.atan2(elevB - elevA, L)
-      // top rail
-      rails.push(
-        <mesh
-          key={`rt-${i}`}
-          geometry={boxGeo}
-          position={[midX, baseElevation + midElev + run.height, midZ]}
-          rotation={[0, -angle, pitch]}
-          scale={[L, RAILING_RAIL_SIZE, RAILING_RAIL_SIZE]}
-          castShadow
-        >
-          <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} />
-        </mesh>,
-      )
-      // mid rail
-      rails.push(
-        <mesh
-          key={`rm-${i}`}
-          geometry={boxGeo}
-          position={[midX, baseElevation + midElev + run.height * 0.5, midZ]}
-          rotation={[0, -angle, pitch]}
-          scale={[L, RAILING_RAIL_SIZE * 0.85, RAILING_RAIL_SIZE * 0.85]}
-          castShadow
-        >
-          <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} />
-        </mesh>,
-      )
-    }
-  }
-  return (
-    <group>
-      {posts}
-      {rails}
-    </group>
-  )
-}
-
-function StairMesh({ stair, elevation, storyHeight }: { stair: Stair; elevation: number; storyHeight: number }) {
-  const s = normalizeStair(stair)
-  const pathKey = s.path.map((p) => `${p.x},${p.y}`).join(';')
-  const geom = useMemo(
-    () => buildStairGeometry(s, storyHeight),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [pathKey, s.width, s.rises, s.rise, s.mode, storyHeight],
-  )
-  const railRuns = useMemo(
-    () => buildStairRailingRuns(stair, storyHeight),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [pathKey, s.width, s.rises, s.rise, stair.railings, stair.railingHeight, storyHeight],
-  )
-  if (geom.flights.length === 0) return null
-  return (
-    <group>
-      {geom.flights.map((f, i) => (
-        <FlightMesh
-          key={`f-${i}`}
-          a={f.a}
-          b={f.b}
-          width={s.width}
-          rises={f.rises}
-          startElev={f.startElev}
-          endElev={f.endElev}
-          baseElevation={elevation}
-        />
-      ))}
-      {geom.landings.map((l, i) => (
-        <LandingMesh
-          key={`l-${i}`}
-          polygon={l.polygon}
-          elevation={l.elevation}
-          thickness={l.thickness}
-          baseElevation={elevation}
-        />
-      ))}
-      {railRuns.map((run, i) => (
-        <RailingRunMesh key={`rail-${i}`} run={run} baseElevation={elevation} materialId="acier" />
       ))}
     </group>
-  )
+  );
 }
 
-function StandaloneRailingMesh({ railing, elevation }: { railing: Railing; elevation: number }) {
-  const run = useMemo(() => buildPathRailingRun(railing), [railing])
-  if (!run) return null
-  return (
-    <RailingRunMesh
-      run={run}
-      baseElevation={elevation}
-      materialId={railing.materialId ?? 'acier'}
-    />
-  )
+export function sunPosition(
+  hour: number,
+  radius = 46,
+  north = 0,
+  latitude = 45,
+  month = 6,
+): [number, number, number] {
+  const t = Math.min(1, Math.max(0, (hour - 6) / 14));
+  const decl = 23.4 * Math.sin(((month - 3.2) / 12) * Math.PI * 2);
+  const azimuth = Math.PI * (0.12 + t * 0.76) + (north * Math.PI) / 180;
+  const latK = Math.cos(((latitude - decl * 0.45) * Math.PI) / 180);
+  const peak = 0.22 + 0.62 * Math.max(0.08, latK);
+  const elev = Math.sin(t * Math.PI) * peak + 0.04;
+  const y = Math.max(0.35, Math.sin(elev) * radius);
+  return [
+    Math.cos(azimuth) * Math.cos(elev) * radius,
+    y,
+    Math.sin(azimuth) * Math.cos(elev) * radius,
+  ];
 }
-
-function FurnitureMesh({ item, elevation }: { item: Furniture; elevation: number }) {
-  const preset = FURNITURE_PRESETS[item.kind]
-  const color = preset?.color ?? '#666'
-  const isCore = item.kind === 'elevator' || item.kind === 'staircore'
-  const wood = woodMap(256)
-  const w = item.width
-  const d = item.depth
-  const h = item.height
-
-  return (
-    <group position={[item.position.x, elevation, item.position.y]} rotation={[0, item.rotation, 0]}>
-      {item.kind === 'sofa' && (
-        <>
-          <mesh geometry={boxGeo} position={[0, h * 0.28, 0]} scale={[w, h * 0.45, d]} castShadow receiveShadow>
-            <meshStandardMaterial color={color} roughness={0.72} metalness={0} />
-          </mesh>
-          <mesh geometry={boxGeo} position={[0, h * 0.72, -d * 0.38]} scale={[w, h * 0.7, d * 0.22]} castShadow>
-            <meshStandardMaterial color={color} roughness={0.7} metalness={0} />
-          </mesh>
-          <mesh geometry={boxGeo} position={[-w * 0.42, h * 0.55, 0]} scale={[w * 0.12, h * 0.55, d * 0.9]} castShadow>
-            <meshStandardMaterial color={color} roughness={0.7} metalness={0} />
-          </mesh>
-          <mesh geometry={boxGeo} position={[w * 0.42, h * 0.55, 0]} scale={[w * 0.12, h * 0.55, d * 0.9]} castShadow>
-            <meshStandardMaterial color={color} roughness={0.7} metalness={0} />
-          </mesh>
-        </>
-      )}
-      {item.kind === 'table' && (
-        <>
-          <mesh geometry={boxGeo} position={[0, h * 0.92, 0]} scale={[w, h * 0.08, d]} castShadow receiveShadow>
-            <meshStandardMaterial color={color} map={wood} roughness={0.5} metalness={0} />
-          </mesh>
-          {[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz], i) => (
-            <mesh key={i} geometry={boxGeo} position={[sx * w * 0.4, h * 0.42, sz * d * 0.38]} scale={[0.07, h * 0.84, 0.07]} castShadow>
-              <meshStandardMaterial color="#4a3420" roughness={0.65} />
-            </mesh>
-          ))}
-        </>
-      )}
-      {item.kind === 'bed' && (
-        <>
-          <mesh geometry={boxGeo} position={[0, h * 0.35, 0]} scale={[w, h * 0.45, d]} castShadow receiveShadow>
-            <meshStandardMaterial color="#5a6574" roughness={0.75} />
-          </mesh>
-          <mesh geometry={boxGeo} position={[0, h * 0.72, 0]} scale={[w * 0.95, h * 0.28, d * 0.92]} castShadow>
-            <meshStandardMaterial color="#d7dde6" roughness={0.85} />
-          </mesh>
-          <mesh geometry={boxGeo} position={[0, h * 0.85, -d * 0.38]} scale={[w * 0.9, h * 0.35, d * 0.18]} castShadow>
-            <meshStandardMaterial color="#eef2f7" roughness={0.8} />
-          </mesh>
-        </>
-      )}
-      {item.kind === 'chair' && (
-        <>
-          <mesh geometry={boxGeo} position={[0, h * 0.42, 0]} scale={[w, 0.06, d]} castShadow>
-            <meshStandardMaterial color={color} roughness={0.6} />
-          </mesh>
-          <mesh geometry={boxGeo} position={[0, h * 0.72, -d * 0.4]} scale={[w, h * 0.5, 0.05]} castShadow>
-            <meshStandardMaterial color={color} roughness={0.6} />
-          </mesh>
-          {[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz], i) => (
-            <mesh key={i} geometry={boxGeo} position={[sx * w * 0.35, h * 0.2, sz * d * 0.35]} scale={[0.04, h * 0.4, 0.04]} castShadow>
-              <meshStandardMaterial color={color} roughness={0.55} />
-            </mesh>
-          ))}
-        </>
-      )}
-      {item.kind === 'kitchen' && (
-        <>
-          <mesh geometry={boxGeo} position={[0, h * 0.45, 0]} scale={[w, h * 0.9, d]} castShadow receiveShadow>
-            <meshStandardMaterial color="#e8edf2" roughness={0.45} metalness={0.1} />
-          </mesh>
-          <mesh geometry={boxGeo} position={[0, h * 0.92, 0]} scale={[w * 1.02, 0.04, d * 1.05]} castShadow>
-            <meshStandardMaterial color="#c5ccd4" roughness={0.35} metalness={0.35} />
-          </mesh>
-        </>
-      )}
-      {item.kind === 'desk' && (
-        <>
-          <mesh geometry={boxGeo} position={[0, h * 0.92, 0]} scale={[w, 0.05, d]} castShadow>
-            <meshStandardMaterial color={color} map={wood} roughness={0.5} />
-          </mesh>
-          <mesh geometry={boxGeo} position={[-w * 0.42, h * 0.45, 0]} scale={[0.06, h * 0.9, d * 0.9]} castShadow>
-            <meshStandardMaterial color={color} roughness={0.55} />
-          </mesh>
-          <mesh geometry={boxGeo} position={[w * 0.42, h * 0.45, 0]} scale={[0.06, h * 0.9, d * 0.9]} castShadow>
-            <meshStandardMaterial color={color} roughness={0.55} />
-          </mesh>
-        </>
-      )}
-      {item.kind === 'tree' && (
-        <>
-          <mesh geometry={boxGeo} position={[0, h * 0.28, 0]} scale={[0.22, h * 0.55, 0.22]} castShadow>
-            <meshStandardMaterial color="#5a3a1a" map={wood} roughness={0.9} />
-          </mesh>
-          <mesh geometry={boxGeo} position={[0, h * 0.72, 0]} scale={[w * 0.85, h * 0.45, d * 0.85]} castShadow>
-            <meshStandardMaterial color="#2f5d2e" roughness={0.95} />
-          </mesh>
-          <mesh geometry={boxGeo} position={[0.25, h * 0.88, 0.15]} scale={[w * 0.55, h * 0.28, d * 0.55]} castShadow>
-            <meshStandardMaterial color="#3a6e38" roughness={0.95} />
-          </mesh>
-        </>
-      )}
-      {item.kind === 'car' && (
-        <>
-          <mesh geometry={boxGeo} position={[0, h * 0.35, 0]} scale={[w, h * 0.45, d]} castShadow>
-            <meshStandardMaterial color={color} roughness={0.35} metalness={0.55} />
-          </mesh>
-          <mesh geometry={boxGeo} position={[0, h * 0.7, -d * 0.05]} scale={[w * 0.7, h * 0.35, d * 0.7]} castShadow>
-            <meshStandardMaterial color="#9ec4d8" roughness={0.15} metalness={0.2} transparent opacity={0.65} />
-          </mesh>
-        </>
-      )}
-      {(isCore || !['sofa', 'table', 'bed', 'chair', 'kitchen', 'desk', 'tree', 'car'].includes(item.kind)) && (
-        <mesh geometry={boxGeo} position={[0, h / 2, 0]} scale={[w, h, d]} castShadow receiveShadow>
-          <meshStandardMaterial color={color} roughness={isCore ? 0.45 : 0.7} metalness={isCore ? 0.45 : 0.05} />
-        </mesh>
-      )}
-    </group>
-  )
-}
-
-const FurnitureMeshMemo = memo(FurnitureMesh)
-
-type Props = {
-  project: Project
-  activeStoryId: string | null
-  visiting?: boolean
-}
-
-export default function BuildingScene({ project, activeStoryId, visiting = false }: Props) {
-  const quality = useMemo(() => detectQuality(), [])
-  const layers = useProjectStore((s) => s.layers)
-  const phase4d = useProjectStore((s) => s.phase4d)
-  const storyVisible = (storyIndex: number, total: number) => {
-    if (total <= 0) return true
-    const built = Math.max(1, Math.round(phase4d * total))
-    return storyIndex < built
-  }
-  const storyMap = useMemo(() => {
-    const m = new Map<string, (typeof project.stories)[0]>()
-    for (const s of project.stories) m.set(s.id, s)
-    return m
-  }, [project.stories])
-
-  const openingsByWall = useMemo(() => {
-    const map = new Map<string, Opening[]>()
-    for (const o of project.openings) {
-      const list = map.get(o.wallId)
-      if (list) list.push(o)
-      else map.set(o.wallId, [o])
-    }
-    return map
-  }, [project.openings])
-
-  const sunAngle = ((project.meta.lightHour - 6) / 12) * Math.PI
-  const sunX = Math.cos(sunAngle) * 40
-  const sunY = Math.sin(sunAngle) * 35 + 10
-  const sunZ = 20
-
-  const focusStory = activeStoryId ? storyMap.get(activeStoryId) : null
-
-  // Visite: fill interiors (solid walls block sun) without dropping PBR quality
-  const ambientI = visiting ? 0.62 : 0.28
-  const hemiI = visiting ? 0.58 : 0.42
-  const sunI = visiting ? 1.2 : 1.55
-  const grass = useMemo(() => {
-    const t = grassMap(quality.texSize)
-    t.repeat.set(quality.groundSize / 8, quality.groundSize / 8)
-    return t
-  }, [quality.texSize, quality.groundSize])
-  const grid = useMemo(() => {
-    const t = gridOverlayMap(512)
-    t.repeat.set(quality.groundSize / 20, quality.groundSize / 20)
-    return t
-  }, [quality.groundSize])
-  const blob = useMemo(() => softShadowMap(256), [])
-  const footprint = useMemo(() => {
-    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity
-    for (const w of project.walls) {
-      minX = Math.min(minX, w.a.x, w.b.x)
-      maxX = Math.max(maxX, w.a.x, w.b.x)
-      minZ = Math.min(minZ, w.a.y, w.b.y)
-      maxZ = Math.max(maxZ, w.a.y, w.b.y)
-    }
-    if (!Number.isFinite(minX)) return { cx: 0, cz: 0, sx: 18, sz: 18 }
-    return {
-      cx: (minX + maxX) / 2,
-      cz: (minZ + maxZ) / 2,
-      sx: Math.max(8, (maxX - minX) * 1.35),
-      sz: Math.max(8, (maxZ - minZ) * 1.35),
-    }
-  }, [project.walls])
-
-  return (
-    <group>
-      <Sky
-        distance={450000}
-        sunPosition={[sunX, Math.max(12, sunY), sunZ]}
-        inclination={0.52}
-        azimuth={0.22}
-        mieCoefficient={0.004}
-        mieDirectionalG={0.85}
-        rayleigh={1.1}
-        turbidity={4.5}
-      />
-      <ambientLight intensity={ambientI} color="#e8f2f6" />
-      <directionalLight
-        castShadow={quality.shadows}
-        intensity={sunI}
-        position={[sunX, Math.max(10, sunY), sunZ]}
-        color="#fff2df"
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-        shadow-camera-far={140}
-        shadow-camera-left={-45}
-        shadow-camera-right={45}
-        shadow-camera-top={45}
-        shadow-camera-bottom={-45}
-        shadow-bias={-0.00015}
-        shadow-normalBias={0.03}
-      />
-      <directionalLight intensity={0.28} position={[-sunX * 0.4, 18, -sunZ * 0.5]} color="#a8c8e8" />
-      <hemisphereLight args={['#c8dff0', '#3d4a34', hemiI]} />
-      {visiting && (
-        <pointLight
-          intensity={0.9}
-          distance={30}
-          decay={2}
-          color="#d8efe8"
-          position={[0, (focusStory?.elevation ?? 0) + 2.25, 0]}
-        />
-      )}
-
-      {/* Landscape ground */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.04, 0]} receiveShadow>
-        <planeGeometry args={[quality.groundSize, quality.groundSize]} />
-        <meshStandardMaterial color="#3a5236" map={grass} roughness={0.96} metalness={0} />
-      </mesh>
-
-      {/* Subtle grid overlay (non-shadow) */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
-        <planeGeometry args={[quality.groundSize, quality.groundSize]} />
-        <meshBasicMaterial map={grid} transparent opacity={0.55} depthWrite={false} />
-      </mesh>
-
-      {/* Parcel lawn */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 0]} receiveShadow>
-        <planeGeometry args={[project.meta.parcelWidth, project.meta.parcelDepth]} />
-        <meshStandardMaterial color="#2f4630" roughness={0.92} metalness={0} />
-      </mesh>
-
-      {/* Soft contact shadow blob — ground only, avoids wall artifacts */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[footprint.cx, 0.02, footprint.cz]}>
-        <planeGeometry args={[footprint.sx, footprint.sz]} />
-        <meshBasicMaterial map={blob} transparent opacity={0.85} depthWrite={false} />
-      </mesh>
-
-      {layers.slabs &&
-        project.slabs.map((s) => {
-          const st = storyMap.get(s.storyId)
-          if (!st || !storyVisible(st.index, project.stories.length)) return null
-          return <SlabMesh key={s.id} slab={s} />
-        })}
-
-      {layers.walls &&
-        project.walls.map((w) => {
-          const st = storyMap.get(w.storyId)
-          if (!st || !storyVisible(st.index, project.stories.length)) return null
-          return (
-            <group key={w.id}>
-              <WallMesh
-                wall={w}
-                openings={layers.openings ? openingsByWall.get(w.id) ?? EMPTY_OPENINGS : EMPTY_OPENINGS}
-                elevation={st.elevation}
-                visitMode={visiting}
-              />
-            </group>
-          )
-        })}
-
-      {layers.columns &&
-        project.columns.map((c) => {
-          const st = storyMap.get(c.storyId)
-          if (!st || !storyVisible(st.index, project.stories.length)) return null
-          return <ColumnMesh key={c.id} col={c} elevation={st.elevation} />
-        })}
-
-      {layers.stairs &&
-        project.stairs.map((s) => {
-          const st = storyMap.get(s.storyId)
-          if (!st || !storyVisible(st.index, project.stories.length)) return null
-          return (
-            <StairMesh
-              key={s.id}
-              stair={s}
-              elevation={st.elevation}
-              storyHeight={st.height}
-            />
-          )
-        })}
-
-      {layers.furniture &&
-        project.furniture.map((f) => {
-          const st = storyMap.get(f.storyId)
-          if (!st || !storyVisible(st.index, project.stories.length)) return null
-          return <FurnitureMeshMemo key={f.id} item={f} elevation={st.elevation} />
-        })}
-
-      {layers.roofs &&
-        project.roofs.map((r) => {
-          const st = storyMap.get(r.storyId)
-          if (!st || !storyVisible(st.index, project.stories.length)) return null
-          return <RoofMesh key={r.id} roof={r} elevation={st.elevation + st.height} />
-        })}
-
-      {layers.railings &&
-        (project.railings ?? []).map((r) => {
-          const st = storyMap.get(r.storyId)
-          if (!st || !storyVisible(st.index, project.stories.length)) return null
-          return <StandaloneRailingMesh key={r.id} railing={r} elevation={st.elevation} />
-        })}
-    </group>
-  )
-}
-

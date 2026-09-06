@@ -1,275 +1,601 @@
-export type Vec2 = { x: number; y: number }
+export type TextureKind =
+  | "smooth"
+  | "plaster"
+  | "concrete"
+  | "wood"
+  | "brick"
+  | "stone"
+  | "terracotta"
+  | "metal"
+  | "water"
+  | "vegetation"
+  | "glass";
 
-export type Story = {
-  id: string
-  name: string
-  elevation: number
-  height: number
-  index: number
+export interface MaterialStyle {
+  color: string;
+  roughness: number;
+  metalness: number;
+  opacity: number;
+  transparent: boolean;
+  texture: TextureKind;
+  scale: number;
 }
 
-export type WallTypology = 'exterior' | 'interior' | 'curtain' | 'core'
+export type MaterialStyles = Partial<Record<MaterialId, Partial<MaterialStyle>>>;
 
-export type Wall = {
-  id: string
-  storyId: string
-  a: Vec2
-  b: Vec2
-  thickness: number
-  height: number
-  typology: WallTypology
-  materialId?: string
-}
+export type Vec2 = { x: number; y: number };
 
-export type OpeningKind = 'door' | 'window' | 'opening'
+export type MaterialId =
+  | "plaster"
+  | "concrete"
+  | "wood"
+  | "glass"
+  | "brick"
+  | "metal"
+  | "terracotta"
+  | "stone"
+  | "water"
+  | "vegetation"
+  | "darkwood"
+  | "white"
+  | "marble"
+  | "zinc"
+  | "parquet"
+  | "lime"
+  | "corten"
+  | "copper"
+  | "slate"
+  | "gravel"
+  | "clt"
+  | "polycarb"
+  | "travertine"
+  | "stucco";
 
-export type Opening = {
-  id: string
-  wallId: string
-  kind: OpeningKind
-  t: number
-  width: number
-  height: number
-  sill: number
-}
-
-export type Room = {
-  id: string
-  storyId: string
-  name: string
-  polygon: Vec2[]
-  floorFinish?: string
-}
-
-export type SlabKind = 'floor' | 'roof' | 'terrace' | 'pool' | 'ground'
-
-export type Slab = {
-  id: string
-  storyId: string
-  kind: SlabKind
-  polygon: Vec2[]
-  thickness: number
-  elevation: number
-  materialId?: string
-}
-
-export type RoofMode = 'terrasse' | '2pentes' | 'croupe'
-
-export type Roof = {
-  id: string
-  storyId: string
-  polygon: Vec2[]
-  /** Flat thickness (terrasse) or legacy ridge hint */
-  ridgeHeight: number
-  overhang: number
-  /** Default terrasse for legacy saves */
-  mode?: RoofMode
-  /** Pitch angle in degrees (pitched modes); default ~30 */
-  pitchDeg?: number
-}
-
-export type Column = {
-  id: string
-  storyId: string
-  position: Vec2
-  width: number
-  depth: number
-  height: number
-}
-
-export type StairMode = 'droit' | 'quart' | 'demi'
-
-export type Stair = {
-  id: string
-  storyId: string
-  /** Waypoints: depart → paliers / angles → arrivee (optional on legacy saves) */
-  path?: Vec2[]
-  width: number
-  rises: number
-  mode?: StairMode
-  /** Optional explicit total rise (m); default = story height */
-  rise?: number
-  /** Auto garde-corps (default true) */
-  railings?: boolean
-  /** Garde-corps height in m (default 1.0) */
-  railingHeight?: number
-  /** Legacy first/last path points (kept for IFC / older saves) */
-  a: Vec2
-  b: Vec2
-}
-
-export type Railing = {
-  id: string
-  storyId: string
-  path: Vec2[]
-  height: number
-  materialId?: string
-}
+export type RoomFunction =
+  | "living"
+  | "kitchen"
+  | "bedroom"
+  | "bath"
+  | "wc"
+  | "entry"
+  | "corridor"
+  | "office"
+  | "dining"
+  | "storage"
+  | "laundry"
+  | "terrace"
+  | "patio"
+  | "garage"
+  | "studio"
+  | "dressing"
+  | "cellar"
+  | "gym"
+  | "other";
 
 export type FurnitureKind =
-  | 'sofa'
-  | 'table'
-  | 'bed'
-  | 'desk'
-  | 'chair'
-  | 'kitchen'
-  | 'tree'
-  | 'car'
-  | 'elevator'
-  | 'staircore'
-  | 'balcony'
-  | 'curtain'
-  | 'lamp'
-  | 'shelf'
-  | 'bathtub'
-  | 'plant'
-  | 'parking'
+  | "sofa"
+  | "armchair"
+  | "chair"
+  | "table"
+  | "coffee"
+  | "ottoman"
+  | "sideboard"
+  | "rug"
+  | "fireplace"
+  | "piano"
+  | "bed"
+  | "nightstand"
+  | "dresser"
+  | "wardrobe"
+  | "shelf"
+  | "bookshelf"
+  | "kitchen"
+  | "counter"
+  | "island"
+  | "desk"
+  | "fridge"
+  | "stove"
+  | "oven"
+  | "sink"
+  | "dishwasher"
+  | "hood"
+  | "bath"
+  | "toilet"
+  | "shower"
+  | "basin"
+  | "bidet"
+  | "washer"
+  | "lamp"
+  | "tv"
+  | "radiator"
+  | "ac"
+  | "solar"
+  | "chimney"
+  | "skylight"
+  | "plant"
+  | "tree"
+  | "hedge"
+  | "fence"
+  | "pergola"
+  | "bench"
+  | "barbecue"
+  | "umbrella"
+  | "lamppost"
+  | "gate"
+  | "planter"
+  | "car"
+  | "bike"
+  | "parking"
+  | "pool"
+  | "people"
+  | "kingbed"
+  | "crib"
+  | "console"
+  | "millwork"
+  | "officechair"
+  | "dryer"
+  | "freezer"
+  | "microwave"
+  | "evcharger"
+  | "jacuzzi"
+  | "mailbox"
+  | "printer"
+  | "olive"
+  | "cypress"
+  | "fountain"
+  | "firepit"
+  | "elevator"
+  | "staircore"
+  | "balcony"
+  | "curtain";
 
-export type Furniture = {
-  id: string
-  storyId: string
-  kind: FurnitureKind
-  position: Vec2
-  rotation: number
-  width: number
-  depth: number
-  height: number
+export type Tool =
+  | "select"
+  | "wall"
+  | "door"
+  | "window"
+  | "slab"
+  | "roof"
+  | "column"
+  | "stair"
+  | "room"
+  | "furniture"
+  | "measure"
+  | "delete"
+  | "pen"
+  | "survey"
+  | "rect";
+
+export type ViewMode = "plan" | "3d" | "visite" | "coupe" | "ar";
+export type WorkspaceMode = "esquisse" | "modele" | "releve";
+
+export type FireRating = "none" | "EI30" | "EI60" | "EI90" | "EI120";
+export type WallAlign = "center" | "interior" | "exterior";
+export type WallRole = "exterior" | "interior" | "party";
+export type OpeningVariant = "single" | "double" | "sliding" | "fixed" | "casement" | "french";
+export type Glazing = "single" | "double" | "triple";
+export type Swing = "left" | "right";
+export type RoofKind = "flat" | "gable" | "shed" | "hip";
+export type ColumnShape = "rect" | "round";
+export type StairKind = "straight" | "spiral";
+export type Typology = "house" | "villa" | "collective" | "office" | "atelier";
+export type EnergyClass = "A" | "B" | "C" | "D" | "E" | "F";
+export type SeismicZone = "1" | "2" | "3" | "4" | "5";
+export type WindRegion = "1" | "2" | "3" | "4" | "5";
+export type ClimateZone = "H1" | "H2" | "H3";
+
+export interface Story {
+  id: string;
+  name: string;
+  elevation: number;
+  height: number;
+  finishFloor?: number;
 }
 
-export type Meta = {
-  name: string
-  city: string
-  latitude: number
-  longitude: number
-  north: number
-  parcelWidth: number
-  parcelDepth: number
-  typology: string
-  climate?: string
-  lightHour: number
-  /** Coefficient d'emprise au sol (0–1) */
-  ces?: number
-  /** Coefficient d'occupation des sols */
-  cos?: number
-  /** Zone sismique (ex. "2", "3", "4") */
-  sismo?: string
+export interface Wall {
+  id: string;
+  storyId: string;
+  a: Vec2;
+  b: Vec2;
+  thickness: number;
+  height: number;
+  materialId: MaterialId;
+  baseOffset?: number;
+  loadBearing?: boolean;
+  partition?: boolean;
+  insulationMm?: number;
+  uValue?: number;
+  fireRating?: FireRating;
+  alignment?: WallAlign;
+  role?: WallRole;
+  acousticRw?: number;
+  exteriorFinish?: MaterialId;
+  interiorFinish?: MaterialId;
 }
 
-export type Project = {
-  id: string
-  meta: Meta
-  stories: Story[]
-  walls: Wall[]
-  openings: Opening[]
-  rooms: Room[]
-  slabs: Slab[]
-  roofs: Roof[]
-  columns: Column[]
-  stairs: Stair[]
-  railings: Railing[]
-  furniture: Furniture[]
-  /** Per-project layer visibility (optional; store also keeps UI defaults) */
-  layers?: LayerFlags
-  /** Releve / survey stub */
-  survey?: SurveyStub
-  /** Revision history stub */
-  revisions?: RevisionStub[]
-  updatedAt: number
-  createdAt: number
+export interface Opening {
+  id: string;
+  kind: "door" | "window";
+  wallId: string;
+  t: number;
+  width: number;
+  height: number;
+  sill: number;
+  materialId: MaterialId;
+  variant?: OpeningVariant;
+  glazing?: Glazing;
+  uValue?: number;
+  frame?: number;
+  fireRating?: FireRating;
+  acousticRw?: number;
+  shutter?: boolean;
+  swing?: Swing;
+  reveal?: number;
 }
 
-
-export type WorkspaceMode = 'esquisse' | 'modele' | 'releve'
-
-export type StudioPanelId =
-  | 'materiaux'
-  | 'bibliotheque'
-  | 'structure'
-  | 'copilote'
-  | '4d'
-  | 'calques'
-  | 'guide'
-
-export type LayerFlags = {
-  walls: boolean
-  furniture: boolean
-  slabs: boolean
-  openings: boolean
-  roofs: boolean
-  columns: boolean
-  stairs: boolean
-  railings: boolean
-  sketch: boolean
+export interface Slab {
+  id: string;
+  storyId: string;
+  polygon: Vec2[];
+  thickness: number;
+  materialId: MaterialId;
+  outdoor?: boolean;
+  insulationMm?: number;
+  finishId?: MaterialId;
+  liveLoad?: number;
+  structural?: boolean;
+  ceilingFinish?: MaterialId;
 }
 
-export type SurveyStub = {
-  notes: string
-  points: Vec2[]
+export interface Roof {
+  id: string;
+  storyId: string;
+  polygon: Vec2[];
+  kind: RoofKind;
+  pitch: number;
+  overhang: number;
+  thickness: number;
+  materialId: MaterialId;
+  gutter?: boolean;
+  insulationMm?: number;
+  fascia?: boolean;
 }
 
-export type RevisionStub = {
-  id: string
-  label: string
-  at: number
+export interface Column {
+  id: string;
+  storyId: string;
+  position: Vec2;
+  width: number;
+  depth: number;
+  height: number;
+  materialId: MaterialId;
+  shape?: ColumnShape;
+  rotation?: number;
+  structural?: boolean;
 }
 
-export const DEFAULT_LAYERS: LayerFlags = {
-  walls: true,
-  furniture: true,
-  slabs: true,
-  openings: true,
-  roofs: true,
-  columns: true,
-  stairs: true,
-  railings: true,
-  sketch: true,
+export interface Stair {
+  id: string;
+  storyId: string;
+  origin: Vec2;
+  direction: number;
+  width: number;
+  run: number;
+  rise: number;
+  steps: number;
+  railing?: boolean;
+  kind?: StairKind;
+  nosing?: number;
+  materialId?: MaterialId;
 }
 
-export type ViewMode = 'plan' | '3d' | 'visite' | 'coupe' | 'ar'
-export type SkillLevel = 'simple' | 'pro'
-export type InspectorTab = 'ouvrage' | 'etages' | 'site' | 'vue'
-export type ToolMode =
-  | 'select'
-  | 'wall'
-  | 'rect'
-  | 'objects'
-  | 'trim'
-  | 'extend'
-  | 'door'
-  | 'window'
-  | 'slab'
-  | 'column'
-  | 'stair'
-  | 'roof'
-  | 'railing'
-
-export type Selection =
-  | { kind: 'wall'; id: string }
-  | { kind: 'room'; id: string }
-  | { kind: 'furniture'; id: string }
-  | { kind: 'slab'; id: string }
-  | { kind: 'story'; id: string }
-  | { kind: 'column'; id: string }
-  | { kind: 'stair'; id: string }
-  | { kind: 'opening'; id: string }
-  | { kind: 'roof'; id: string }
-  | { kind: 'railing'; id: string }
-  | null
-
-export function uid(prefix = 'id'): string {
-  return `${prefix}_${Math.random().toString(36).slice(2, 10)}`
+export interface Furniture {
+  id: string;
+  storyId: string;
+  kind: FurnitureKind;
+  position: Vec2;
+  rotation: number;
+  w: number;
+  d: number;
+  h: number;
 }
 
-export function wallLength(w: Wall): number {
-  const dx = w.b.x - w.a.x
-  const dy = w.b.y - w.a.y
-  return Math.hypot(dx, dy)
+export interface Room {
+  id: string;
+  storyId: string;
+  name: string;
+  function: RoomFunction;
+  polygon: Vec2[];
+  floorFinish?: MaterialId;
+  occupancy?: number;
+  wallFinish?: MaterialId;
+  ceilingFinish?: MaterialId;
+  clearHeight?: number;
+  heated?: boolean;
 }
 
-export function wallCenter(w: Wall): Vec2 {
-  return { x: (w.a.x + w.b.x) / 2, y: (w.a.y + w.b.y) / 2 }
+export interface ProjectMeta {
+  client: string;
+  location: string;
+  latitude: number;
+  longitude: number;
+  north: number;
+  brief: string;
+  altitude?: number;
+  typology?: Typology;
+  climate?: ClimateZone | string;
+  plotM2?: number;
+  ces?: number;
+  cos?: number;
+  energyClass?: EnergyClass;
+  year?: number;
+  seismic?: SeismicZone;
+  wind?: WindRegion;
 }
 
-export function wallAngle(w: Wall): number {
-  return Math.atan2(w.b.y - w.a.y, w.b.x - w.a.x)
+export interface Revision {
+  id: string;
+  at: string;
+  note: string;
 }
+
+export interface SketchLayer {
+  id: string;
+  name: string;
+  visible: boolean;
+  locked: boolean;
+  opacity: number;
+}
+
+export interface Stroke {
+  id: string;
+  layerId: string;
+  storyId: string;
+  points: Vec2[];
+  width: number;
+  color: string;
+}
+
+export interface SurveyPoint {
+  id: string;
+  storyId: string;
+  position: Vec2;
+  label?: string;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  meta: ProjectMeta;
+  stories: Story[];
+  walls: Wall[];
+  openings: Opening[];
+  slabs: Slab[];
+  roofs: Roof[];
+  columns: Column[];
+  stairs: Stair[];
+  furniture: Furniture[];
+  rooms: Room[];
+  materials?: MaterialStyles;
+  layers?: SketchLayer[];
+  strokes?: Stroke[];
+  survey?: SurveyPoint[];
+  revisions?: Revision[];
+}
+
+export const MATERIAL_LABELS: Record<MaterialId, string> = {
+  plaster: "Enduit",
+  concrete: "Béton",
+  wood: "Bois",
+  glass: "Verre",
+  brick: "Brique",
+  metal: "Métal",
+  terracotta: "Terre cuite",
+  stone: "Pierre",
+  water: "Eau",
+  vegetation: "Végétal",
+  darkwood: "Chêne foncé",
+  white: "Blanc mat",
+  marble: "Marbre",
+  zinc: "Zinc",
+  parquet: "Parquet",
+  lime: "Chaux",
+  corten: "Corten",
+  copper: "Cuivre",
+  slate: "Ardoise",
+  gravel: "Gravillon",
+  clt: "CLT",
+  polycarb: "Polycarbonate",
+  travertine: "Travertin",
+  stucco: "Stuc",
+};
+
+export const ROOM_LABELS: Record<RoomFunction, string> = {
+  living: "Salon",
+  kitchen: "Cuisine",
+  bedroom: "Chambre",
+  bath: "Salle de bain",
+  wc: "WC",
+  entry: "Entrée",
+  corridor: "Dégagement",
+  office: "Bureau",
+  dining: "Salle à manger",
+  storage: "Rangement",
+  laundry: "Buanderie",
+  terrace: "Terrasse",
+  patio: "Patio",
+  garage: "Garage",
+  studio: "Atelier",
+  dressing: "Dressing",
+  cellar: "Cave",
+  gym: "Salle sport",
+  other: "Pièce",
+};
+
+export const FURNITURE_LABELS: Record<FurnitureKind, string> = {
+  sofa: "Canapé 3 pl.",
+  armchair: "Fauteuil",
+  chair: "Chaise",
+  table: "Table repas",
+  coffee: "Table basse",
+  ottoman: "Pouf",
+  sideboard: "Enfilade",
+  rug: "Tapis",
+  fireplace: "Cheminée",
+  piano: "Piano",
+  bed: "Lit 160",
+  nightstand: "Chevet",
+  dresser: "Commode",
+  wardrobe: "Armoire",
+  shelf: "Étagère",
+  bookshelf: "Bibliothèque",
+  kitchen: "Linéaire cuisine",
+  counter: "Plan de travail",
+  island: "Îlot",
+  desk: "Bureau",
+  fridge: "Réfrigérateur",
+  stove: "Plaque",
+  oven: "Four",
+  sink: "Évier",
+  dishwasher: "Lave-vaisselle",
+  hood: "Hotte",
+  bath: "Baignoire",
+  toilet: "WC",
+  shower: "Douche 90",
+  basin: "Lavabo",
+  bidet: "Bidet",
+  washer: "Lave-linge",
+  lamp: "Lampadaire",
+  tv: "Téléviseur",
+  radiator: "Radiateur",
+  ac: "Climatisation",
+  solar: "Panneau PV",
+  chimney: "Souche",
+  skylight: "Velux",
+  plant: "Plante",
+  tree: "Arbre",
+  hedge: "Haie",
+  fence: "Clôture",
+  pergola: "Pergola",
+  bench: "Banc",
+  barbecue: "Barbecue",
+  umbrella: "Voile d’ombre",
+  lamppost: "Candélabre",
+  gate: "Portail",
+  planter: "Jardinière",
+  car: "Voiture",
+  bike: "Vélo",
+  parking: "Place 5×2,5",
+  pool: "Piscine 8×3,5",
+  people: "Silhouette",
+  kingbed: "Lit 180",
+  crib: "Lit bébé",
+  console: "Console",
+  millwork: "Placard",
+  officechair: "Siège bureau",
+  dryer: "Sèche-linge",
+  freezer: "Congélateur",
+  microwave: "Micro-ondes",
+  evcharger: "Borne VE",
+  jacuzzi: "Jacuzzi",
+  mailbox: "Boîte aux lettres",
+  printer: "Imprimante",
+  olive: "Olivier",
+  cypress: "Cyprès",
+  fountain: "Fontaine",
+  firepit: "Brasero",
+  elevator: "Ascenseur",
+  staircore: "Cage d’escalier",
+  balcony: "Balcon",
+  curtain: "Mur rideau",
+};
+
+export const TOOL_LABELS: Record<Tool, string> = {
+  select: "Sélection",
+  wall: "Mur",
+  door: "Porte",
+  window: "Fenêtre",
+  slab: "Dalle",
+  roof: "Toiture",
+  column: "Poteau",
+  stair: "Escalier",
+  room: "Pièce",
+  furniture: "Objets",
+  measure: "Cote",
+  delete: "Effacer",
+  pen: "Trait",
+  survey: "Relevé",
+  rect: "Rectangle",
+};
+
+export const FIRE_LABELS: Record<FireRating, string> = {
+  none: "Sans",
+  EI30: "EI 30",
+  EI60: "EI 60",
+  EI90: "EI 90",
+  EI120: "EI 120",
+};
+
+export const ALIGN_LABELS: Record<WallAlign, string> = {
+  center: "Axe",
+  interior: "Nu int.",
+  exterior: "Nu ext.",
+};
+
+export const ROLE_LABELS: Record<WallRole, string> = {
+  exterior: "Façade",
+  interior: "Intérieur",
+  party: "Mitoyen",
+};
+
+export const GLAZING_LABELS: Record<Glazing, string> = {
+  single: "Simple",
+  double: "Double",
+  triple: "Triple",
+};
+
+export const SWING_LABELS: Record<Swing, string> = {
+  left: "Gauche",
+  right: "Droite",
+};
+
+export const TYPOLOGY_LABELS: Record<Typology, string> = {
+  house: "Maison",
+  villa: "Villa",
+  collective: "Collectif",
+  office: "Tertiaire",
+  atelier: "Atelier",
+};
+
+export const ENERGY_LABELS: Record<EnergyClass, string> = {
+  A: "A",
+  B: "B",
+  C: "C",
+  D: "D",
+  E: "E",
+  F: "F",
+};
+
+export const CLIMATE_LABELS: Record<ClimateZone, string> = {
+  H1: "H1 — Nord",
+  H2: "H2 — Océan",
+  H3: "H3 — Méditerranée",
+};
+
+export const SEISMIC_LABELS: Record<SeismicZone, string> = {
+  "1": "Très faible",
+  "2": "Faible",
+  "3": "Modéré",
+  "4": "Moyen",
+  "5": "Fort",
+};
+
+export const WIND_LABELS: Record<WindRegion, string> = {
+  "1": "1",
+  "2": "2",
+  "3": "3",
+  "4": "4",
+  "5": "5",
+};

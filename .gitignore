@@ -1,7 +1,16 @@
 node_modules/
 dist/
+.output/
+.vinxi/
+.nitro/
+.tanstack/
+.vercel/
 .DS_Store
-*.local
+*.log
 .env
 .env.*
 !.env.example
+.grok/preview.log
+.grok/status
+.grok/skills/
+.grok/references/

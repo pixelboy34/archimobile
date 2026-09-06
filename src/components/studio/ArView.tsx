@@ -1,472 +1,396 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Project } from '../../lib/bim/types'
-import { wallLength, wallAngle, wallCenter } from '../../lib/bim/types'
-import { useProjectStore } from '../../lib/store/project-store'
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Scan, Smartphone, Box, Ruler } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import * as THREE from "three";
+import { orientationToQuat, probeAr, requestMotion, startCamera, type ArCaps } from "@/lib/ar/device";
+import { ghostParts } from "@/lib/ar/parts";
+import { exportUsdz, openQuickLook } from "@/lib/ar/usdz";
+import { dist, projectBounds } from "@/lib/bim/geometry";
+import { formatMeters } from "@/lib/utils";
+import type { Project, Vec2 } from "@/lib/bim/types";
+import { useStudio } from "@/lib/store/project-store";
 
-type Props = {
-  project: Project
-  onClose?: () => void
-}
+type ArMode = "pose" | "releve" | "mesure";
 
-type CamStatus = 'idle' | 'requesting' | 'live' | 'denied' | 'unsupported'
+const noop = () => {};
 
-const SCALE_POSER = 1 / 50
+export function ArView({ project }: { project: Project }) {
+  const storyId = useStudio((s) => s.storyId);
+  const addSurveyPoint = useStudio((s) => s.addSurveyPoint);
+  const isolateStory = useStudio((s) => s.isolateStory);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [caps, setCaps] = useState<ArCaps | null>(null);
+  const [live, setLive] = useState(false);
+  const [mode, setMode] = useState<ArMode>("pose");
+  const [scale, setScale] = useState(0.04);
+  const [origin, setOrigin] = useState<[number, number, number]>([0, 0, 0]);
+  const [heading, setHeading] = useState(0);
+  const [measure, setMeasure] = useState<{ a: Vec2 | null }>({ a: null });
+  const [lastDist, setLastDist] = useState<number | null>(null);
+  const look = useRef({ yaw: 0, pitch: -0.08, gyro: false, q: new THREE.Quaternion() });
 
-function projectBounds(project: Project) {
-  let minX = 0,
-    maxX = 0,
-    minZ = 0,
-    maxZ = 0,
-    maxY = 3
-  for (const w of project.walls) {
-    minX = Math.min(minX, w.a.x, w.b.x)
-    maxX = Math.max(maxX, w.a.x, w.b.x)
-    minZ = Math.min(minZ, w.a.y, w.b.y)
-    maxZ = Math.max(maxZ, w.a.y, w.b.y)
-  }
-  for (const s of project.stories) {
-    maxY = Math.max(maxY, s.elevation + s.height)
-  }
-  return {
-    cx: (minX + maxX) / 2,
-    cz: (minZ + maxZ) / 2,
-    w: Math.max(4, maxX - minX),
-    d: Math.max(4, maxZ - minZ),
-    h: maxY,
-  }
-}
-
-/** Minimal USDZ (USD ASCII in a zip) for iOS Quick Look — box footprint placeholder. */
-async function buildUsdzBlob(project: Project): Promise<Blob> {
-  const b = projectBounds(project)
-  const sx = Math.max(0.05, b.w * SCALE_POSER)
-  const sy = Math.max(0.05, b.h * SCALE_POSER)
-  const sz = Math.max(0.05, b.d * SCALE_POSER)
-  const usda = `#usda 1.0
-(
-    defaultPrim = "FORMA"
-    metersPerUnit = 1
-    upAxis = "Y"
-)
-
-def Xform "FORMA" (
-    kind = "component"
-)
-{
-    def Cube "Maquette" {
-        double size = 1
-        float3 xformOp:scale = (${sx.toFixed(4)}, ${sy.toFixed(4)}, ${sz.toFixed(4)})
-        uniform token[] xformOpOrder = ["xformOp:scale"]
-        color3f[] primvars:displayColor = [(0.43, 0.816, 0.765)]
-    }
-}
-`
-  // Pack as uncompressed zip (USDZ = zip of .usdc/.usda)
-  const name = 'model.usda'
-  const data = new TextEncoder().encode(usda)
-  const fileName = new TextEncoder().encode(name)
-  const localHeaderSize = 30 + fileName.length
-  const centralSize = 46 + fileName.length
-  const buf = new ArrayBuffer(localHeaderSize + data.length + centralSize + 22)
-  const view = new DataView(buf)
-  const bytes = new Uint8Array(buf)
-  let o = 0
-  // Local file header
-  view.setUint32(o, 0x04034b50, true); o += 4
-  view.setUint16(o, 20, true); o += 2
-  view.setUint16(o, 0, true); o += 2
-  view.setUint16(o, 0, true); o += 2 // store
-  view.setUint16(o, 0, true); o += 2
-  view.setUint16(o, 0, true); o += 2
-  view.setUint32(o, 0, true); o += 4 // crc optional 0 for store in some readers — compute
-  const crc = crc32(data)
-  view.setUint32(o - 4, crc, true)
-  view.setUint32(o, data.length, true); o += 4
-  view.setUint32(o, data.length, true); o += 4
-  view.setUint16(o, fileName.length, true); o += 2
-  view.setUint16(o, 0, true); o += 2
-  bytes.set(fileName, o); o += fileName.length
-  bytes.set(data, o); o += data.length
-  const centralOffset = o
-  // Central directory
-  view.setUint32(o, 0x02014b50, true); o += 4
-  view.setUint16(o, 20, true); o += 2
-  view.setUint16(o, 20, true); o += 2
-  view.setUint16(o, 0, true); o += 2
-  view.setUint16(o, 0, true); o += 2
-  view.setUint16(o, 0, true); o += 2
-  view.setUint16(o, 0, true); o += 2
-  view.setUint32(o, crc, true); o += 4
-  view.setUint32(o, data.length, true); o += 4
-  view.setUint32(o, data.length, true); o += 4
-  view.setUint16(o, fileName.length, true); o += 2
-  view.setUint16(o, 0, true); o += 2
-  view.setUint16(o, 0, true); o += 2
-  view.setUint16(o, 0, true); o += 2
-  view.setUint16(o, 0, true); o += 2
-  view.setUint32(o, 0, true); o += 4
-  view.setUint32(o, 0, true); o += 4 // local header offset
-  bytes.set(fileName, o); o += fileName.length
-  // EOCD
-  view.setUint32(o, 0x06054b50, true); o += 4
-  view.setUint16(o, 0, true); o += 2
-  view.setUint16(o, 0, true); o += 2
-  view.setUint16(o, 1, true); o += 2
-  view.setUint16(o, 1, true); o += 2
-  view.setUint32(o, centralSize, true); o += 4
-  view.setUint32(o, centralOffset, true); o += 4
-  view.setUint16(o, 0, true)
-  return new Blob([buf], { type: 'model/vnd.usdz+zip' })
-}
-
-function crc32(buf: Uint8Array): number {
-  let c = ~0
-  for (let i = 0; i < buf.length; i++) {
-    c ^= buf[i]
-    for (let k = 0; k < 8; k++) c = c & 1 ? (c >>> 1) ^ 0xedb88320 : c >>> 1
-  }
-  return ~c >>> 0
-}
-
-function MaquetteSvg({
-  project,
-  yaw,
-  pitch,
-  scale,
-  measure,
-}: {
-  project: Project
-  yaw: number
-  pitch: number
-  scale: number
-  measure: { a: { x: number; y: number } | null; b: { x: number; y: number } | null }
-}) {
-  const b = useMemo(() => projectBounds(project), [project])
-  const walls = project.walls.slice(0, 200)
-
-  return (
-    <svg
-      viewBox="-60 -50 120 100"
-      className="w-full h-full"
-      style={{
-        transform: `perspective(600px) rotateX(${12 + pitch * 40}deg) rotateY(${yaw * 57.3}deg) scale(${scale})`,
-        transformOrigin: '50% 60%',
-        willChange: 'transform',
-      }}
-    >
-      <rect
-        x={-b.w / 2}
-        y={-b.d / 2}
-        width={b.w}
-        height={b.d}
-        fill="#1a2a22"
-        stroke="#6ed0c3"
-        strokeWidth={0.15}
-        opacity={0.85}
-        transform={`translate(${-b.cx}, ${-b.cz})`}
-      />
-      {walls.map((w) => {
-        const len = wallLength(w)
-        const ang = wallAngle(w)
-        const c = wallCenter(w)
-        return (
-          <rect
-            key={w.id}
-            x={-len / 2}
-            y={-w.thickness / 2}
-            width={len}
-            height={w.thickness}
-            fill="#e8e4dc"
-            opacity={0.9}
-            transform={`translate(${c.x - b.cx}, ${c.y - b.cz}) rotate(${(ang * 180) / Math.PI})`}
-          />
-        )
-      })}
-      {measure.a && (
-        <circle cx={measure.a.x} cy={measure.a.y} r={0.35} fill="#6ed0c3" />
-      )}
-      {measure.b && (
-        <circle cx={measure.b.x} cy={measure.b.y} r={0.35} fill="#6ed0c3" />
-      )}
-      {measure.a && measure.b && (
-        <line
-          x1={measure.a.x}
-          y1={measure.a.y}
-          x2={measure.b.x}
-          y2={measure.b.y}
-          stroke="#6ed0c3"
-          strokeWidth={0.2}
-        />
-      )}
-    </svg>
-  )
-}
-
-export default function ArView({ project }: Props) {
-  const arMode = useProjectStore((s) => s.arMode)
-  const setArMode = useProjectStore((s) => s.setArMode)
-  const setView = useProjectStore((s) => s.setView)
-
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const streamRef = useRef<MediaStream | null>(null)
-  const [camStatus, setCamStatus] = useState<CamStatus>('idle')
-  const [yaw, setYaw] = useState(0.4)
-  const [pitch, setPitch] = useState(0.15)
-  const [xrSupported, setXrSupported] = useState(false)
-  const [xrMessage, setXrMessage] = useState<string | null>(null)
-  const [iosHint, setIosHint] = useState(false)
-  const [measureDist, setMeasureDist] = useState<number | null>(null)
-  const [measurePts, setMeasurePts] = useState<{
-    a: { x: number; y: number } | null
-    b: { x: number; y: number } | null
-  }>({ a: null, b: null })
-
-  const drag = useRef<{ x: number; y: number; yaw: number; pitch: number } | null>(null)
-  const overlayRef = useRef<HTMLDivElement>(null)
+  const b = projectBounds(project, isolateStory ? (storyId ?? undefined) : undefined);
+  const cx = (b.min.x + b.max.x) / 2;
+  const cz = (b.min.y + b.max.y) / 2;
+  const span = Math.max(b.max.x - b.min.x, b.max.y - b.min.y, 8);
+  const north = (project.meta.north * Math.PI) / 180;
+  const story = storyId ?? project.stories[0]?.id ?? null;
 
   useEffect(() => {
-    const xr = (navigator as Navigator & { xr?: { isSessionSupported?: (m: string) => Promise<boolean> } }).xr
-    if (xr?.isSessionSupported) {
-      xr.isSessionSupported('immersive-ar')
-        .then((ok) => setXrSupported(!!ok))
-        .catch(() => setXrSupported(false))
-    }
-    const ua = navigator.userAgent
-    setIosHint(/iPad|iPhone|iPod/.test(ua))
-  }, [])
+    void probeAr().then(setCaps);
+    return () => {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
 
-  const stopCamera = useCallback(() => {
-    streamRef.current?.getTracks().forEach((t) => t.stop())
-    streamRef.current = null
-    if (videoRef.current) videoRef.current.srcObject = null
-  }, [])
-
-  const startCamera = useCallback(async () => {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setCamStatus('unsupported')
-      return
+  const enable = async () => {
+    const motion = await requestMotion();
+    look.current.gyro = motion;
+    if (videoRef.current) {
+      streamRef.current = await startCamera(videoRef.current);
     }
-    setCamStatus('requesting')
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' } },
-        audio: false,
-      })
-      streamRef.current = stream
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        await videoRef.current.play().catch(() => undefined)
-      }
-      setCamStatus('live')
-    } catch {
-      setCamStatus('denied')
-    }
-  }, [])
+    if (!streamRef.current) toast("Caméra indisponible — mode viseur");
+    setLive(true);
+    setOrigin([cx, 0, cz + Math.max(6, span * 0.7)]);
+  };
 
   useEffect(() => {
-    void startCamera()
-    return () => stopCamera()
-  }, [startCamera, stopCamera])
-
-  // Device orientation when camera live
-  useEffect(() => {
-    if (camStatus !== 'live') return
+    if (!live) return;
     const onOrient = (e: DeviceOrientationEvent) => {
-      if (e.alpha != null) setYaw(((e.alpha - 180) * Math.PI) / 180)
-      if (e.beta != null) setPitch(Math.min(0.6, Math.max(-0.2, ((e.beta - 45) * Math.PI) / 180 / 2)))
-    }
-    window.addEventListener('deviceorientation', onOrient)
-    return () => window.removeEventListener('deviceorientation', onOrient)
-  }, [camStatus])
+      const alpha = THREE.MathUtils.degToRad(e.alpha ?? 0);
+      const beta = THREE.MathUtils.degToRad(e.beta ?? 0);
+      const gamma = THREE.MathUtils.degToRad(e.gamma ?? 0);
+      const orient = THREE.MathUtils.degToRad(Number((window as Window & { orientation?: number }).orientation ?? 0));
+      orientationToQuat(alpha, beta, gamma, orient, look.current.q);
+      look.current.gyro = true;
+      const compass =
+        "webkitCompassHeading" in e
+          ? Number((e as DeviceOrientationEvent & { webkitCompassHeading?: number }).webkitCompassHeading)
+          : ((e.alpha ?? 0) + 360) % 360;
+      setHeading(compass);
+    };
+    window.addEventListener("deviceorientation", onOrient);
+    return () => window.removeEventListener("deviceorientation", onOrient);
+  }, [live]);
 
-  const onPointerDown = (e: React.PointerEvent) => {
-    // Ignore UI chips above; only the overlay surface starts a drag
-    if ((e.target as HTMLElement).closest?.('button, a, .chip')) return
+  const onQuickLook = async () => {
     try {
-      ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
+      const blob = await exportUsdz(project, isolateStory ? story : null);
+      openQuickLook(blob, project.name);
+      toast.success("USDZ prêt — Quick Look AR sur iPhone");
     } catch {
-      /* ignore */
+      toast.error("Export AR impossible");
     }
-    drag.current = { x: e.clientX, y: e.clientY, yaw, pitch }
-  }
-  const onPointerMove = (e: React.PointerEvent) => {
-    if (!drag.current) return
-    const dx = e.clientX - drag.current.x
-    const dy = e.clientY - drag.current.y
-    // Dead-zone stabilizes Poser overlay / avoids jitter on tap
-    if (Math.hypot(dx, dy) < 3) return
-    setYaw(drag.current.yaw + dx * 0.005)
-    setPitch(Math.min(0.8, Math.max(-0.3, drag.current.pitch + dy * 0.004)))
-  }
-  const onPointerUp = () => {
-    drag.current = null
-  }
+  };
 
-  const onOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (arMode !== 'cote') return
-    const el = overlayRef.current
-    if (!el) return
-    const rect = el.getBoundingClientRect()
-    // Map click to SVG viewBox-ish coords roughly
-    const x = ((e.clientX - rect.left) / rect.width) * 120 - 60
-    const y = ((e.clientY - rect.top) / rect.height) * 100 - 50
-    setMeasurePts((prev) => {
-      if (!prev.a || (prev.a && prev.b)) {
-        setMeasureDist(null)
-        return { a: { x, y }, b: null }
-      }
-      const bpt = { x, y }
-      const distM = Math.hypot(bpt.x - prev.a.x, bpt.y - prev.a.y) // SVG units ≈ meters in our mapping
-      setMeasureDist(Math.round(distM * 100) / 100)
-      return { a: prev.a, b: bpt }
-    })
-  }
-
-  const startWebXr = async () => {
-    const nav = navigator as Navigator & {
-      xr?: { requestSession: (m: string, init?: object) => Promise<{ end: () => Promise<void>; addEventListener: (e: string, fn: () => void) => void }> }
-    }
-    if (!nav.xr) {
-      setXrMessage('WebXR indisponible sur cet appareil.')
-      return
-    }
+  const enterXr = async () => {
     try {
-      const session = await nav.xr.requestSession('immersive-ar', {
-        requiredFeatures: ['local-floor'],
-        optionalFeatures: ['dom-overlay', 'hit-test'],
-      })
-      setXrMessage('Session AR demarree — placez la maquette (session native).')
-      session.addEventListener('end', () => setXrMessage(null))
-      // Without a full WebGL XR loop we end quickly with a clear message
-      await session.end()
-      setXrMessage(
-        'WebXR detecte. Pour une session immersive complete, utilisez un navigateur AR compatible. Mode camera / viewer actif ci-dessous.',
-      )
+      if (!navigator.xr) throw new Error("no xr");
+      const session = await navigator.xr.requestSession("immersive-ar", {
+        optionalFeatures: ["hit-test", "dom-overlay", "local-floor"],
+      });
+      session.addEventListener("end", () => toast("Session AR terminée"));
+      toast.success("WebXR immersif");
     } catch {
-      setXrMessage('Impossible de demarrer WebXR. Utilisez le mode camera ou le viewer.')
+      toast("WebXR non disponible sur cet appareil — utilisez le viseur ou Quick Look");
     }
-  }
-
-  const downloadUsdz = async () => {
-    const blob = await buildUsdzBlob(project)
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${project.meta.name.replace(/[^\w\-]+/g, '_').slice(0, 40) || 'forma'}.usdz`
-    a.rel = 'ar'
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  const viewerOnly = camStatus === 'denied' || camStatus === 'unsupported'
-  const scale = arMode === 'poser' ? 1.15 : 1
+  };
 
   return (
-    <div className="absolute inset-0 z-[15] bg-[#04080c] overflow-hidden">
-      {!viewerOnly && (
-        <video
-          ref={videoRef}
-          className="absolute inset-0 w-full h-full object-cover"
-          playsInline
-          muted
-          autoPlay
-        />
+    <div className="relative h-full min-h-0 w-full overflow-hidden bg-bg">
+      <video
+        ref={videoRef}
+        className="absolute inset-0 size-full object-cover"
+        playsInline
+        muted
+        autoPlay
+      />
+      {!live && (
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,#1a1a16,transparent_70%)]" />
       )}
-      {viewerOnly && (
-        <div className="absolute inset-0 bg-gradient-to-b from-[#0a1218] to-[#04080c]" />
-      )}
-
-      <div
-        ref={overlayRef}
-        className="absolute inset-0 flex items-center justify-center touch-none select-none"
-        style={{ touchAction: 'none', contain: 'layout paint' }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        onClick={onOverlayClick}
+      <Canvas
+        className="absolute inset-0"
+        frameloop="always"
+        dpr={[1, 1.25]}
+        gl={{ alpha: true, antialias: false, powerPreference: "high-performance", stencil: false }}
+        camera={{ fov: 60, near: 0.12, far: 80, position: [0, 1.55, 8] }}
+        onCreated={({ gl }) => {
+          gl.setClearColor(0x000000, 0);
+        }}
       >
-        <div className="w-[min(90vw,28rem)] h-[min(55vh,22rem)] pointer-events-none opacity-95 drop-shadow-[0_8px_24px_rgba(0,0,0,0.45)]">
-          <MaquetteSvg
-            project={project}
-            yaw={yaw}
-            pitch={pitch}
-            scale={scale}
-            measure={measurePts}
-          />
-        </div>
-      </div>
+        <ArRig look={look} origin={origin} />
+        <ambientLight intensity={1.1} />
+        <hemisphereLight args={["#f2f0ea", "#3a3a34", 0.6]} />
+        <group position={[cx, 0, cz]} rotation={[0, north, 0]} scale={scale}>
+          <group position={[-cx, 0, -cz]}>
+            <GhostMeshes project={project} storyId={isolateStory ? story : null} />
+          </group>
+        </group>
+        <gridHelper args={[Math.max(8, span * scale * 2.4), 12, "#2a2a26", "#1e1e1a"]} position={[cx, 0.01, cz]} />
+      </Canvas>
 
-      <div className="absolute top-[4.5rem] left-0 right-0 z-20 flex flex-col items-center gap-2 px-3 pointer-events-none">
-        <div className="pointer-events-auto flex gap-1 flex-wrap justify-center">
-          <button
-            type="button"
-            className="chip"
-            data-active={arMode === 'poser'}
-            onClick={() => setArMode('poser')}
-          >
-            Poser 1:50
-          </button>
-          <button
-            type="button"
-            className="chip"
-            data-active={arMode === 'cote'}
-            onClick={() => {
-              setArMode('cote')
-              setMeasurePts({ a: null, b: null })
-              setMeasureDist(null)
-            }}
-          >
-            Cote
-          </button>
-          {xrSupported && (
-            <button type="button" className="chip" onClick={() => void startWebXr()}>
-              WebXR
-            </button>
-          )}
-          {iosHint && (
-            <button type="button" className="chip" onClick={() => void downloadUsdz()}>
-              Quick Look USDZ
-            </button>
-          )}
-          <button type="button" className="chip" onClick={() => setView('3d')}>
-            Quitter AR
-          </button>
-        </div>
-
-        {viewerOnly && (
-          <div className="pointer-events-auto flex flex-col items-center gap-2 max-w-[92vw]">
-            <p className="chip text-xs text-center bg-[#0a1218]/95 border border-[#6ed0c3]/35 text-[#cfe8e4]">
-              {camStatus === 'denied'
-                ? 'Acces camera refuse. Autorisez la camera dans les reglages du navigateur, ou continuez en mode viewer (glisser pour orienter la maquette Poser 1:50).'
-                : 'Camera non disponible sur cet appareil ou ce navigateur. Mode viewer actif : glissez pour orienter la maquette Poser 1:50.'}
-            </p>
-            {camStatus === 'denied' && (
-              <button type="button" className="chip border-[#6ed0c3]/50 text-[#6ed0c3]" onClick={() => void startCamera()}>
-                Reessayer la camera
+      <div className="pointer-events-none absolute inset-0 z-20">
+        <div className="absolute top-3 right-3 left-3 flex items-start justify-between gap-2">
+          <div className="pointer-events-auto flex overflow-hidden rounded-full border border-border bg-surface/90">
+            {(
+              [
+                ["pose", "Poser", Box],
+                ["releve", "Relevé", Scan],
+                ["mesure", "Cote", Ruler],
+              ] as const
+            ).map(([id, label, Icon]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setMode(id)}
+                className={`flex h-10 items-center gap-1.5 px-3 text-[11px] ${
+                  mode === id ? "bg-primary text-primary-fg" : "text-muted"
+                }`}
+              >
+                <Icon className="size-3.5" />
+                {label}
               </button>
-            )}
+            ))}
+          </div>
+          <div className="rounded-full border border-border bg-surface/90 px-3 py-2 font-mono text-[11px] tabular">
+            N {Math.round(heading)}°
+          </div>
+        </div>
+
+        {!live && (
+          <div className="pointer-events-auto absolute inset-x-4 top-1/2 flex -translate-y-1/2 flex-col items-center gap-3 text-center">
+            <Smartphone className="size-8 text-accent" />
+            <p className="font-display text-lg font-semibold">Réalité augmentée</p>
+            <p className="max-w-sm text-sm text-muted">
+              Posez la maquette sur la table, relevez un terrain existant, ou ouvrez Quick Look
+              AR sur iPhone.
+            </p>
+            <button
+              type="button"
+              onClick={() => void enable()}
+              className="flex h-12 items-center rounded-full bg-primary px-5 text-sm font-medium text-primary-fg"
+            >
+              Activer caméra et gyroscope
+            </button>
+            <button type="button" onClick={() => void onQuickLook()} className="text-xs text-accent">
+              Ouvrir dans AR Quick Look (iPhone)
+            </button>
           </div>
         )}
-        {camStatus === 'live' && (
-          <p className="chip text-[11px] text-[#7a8f9c] bg-[#0a1218]/85">
-            {arMode === 'poser'
-              ? 'Poser : maquette echelle 1:50. Orientez l appareil ou glissez.'
-              : 'Cote : touchez deux points pour mesurer une distance.'}
-          </p>
-        )}
-        {camStatus === 'requesting' && (
-          <p className="chip text-xs">Demande d acces a la camera…</p>
-        )}
-        {xrMessage && (
-          <p className="pointer-events-auto chip text-xs max-w-[92vw] text-center">{xrMessage}</p>
-        )}
-        {arMode === 'cote' && measureDist != null && (
-          <p className="chip font-mono text-sm text-[#6ed0c3]">
-            Distance ≈ {measureDist.toFixed(2)} m
-          </p>
+
+        {live && (
+          <div className="pointer-events-auto absolute right-3 bottom-3 left-3 flex flex-col gap-2">
+            <p className="rounded-lg border border-border bg-surface/90 px-3 py-2 text-xs text-muted">
+              {mode === "pose"
+                ? "Glissez pour déplacer · pincez l’échelle · le nord suit la boussole"
+                : mode === "releve"
+                  ? "Tapez les angles du bâtiment réel — les points vont au relevé"
+                  : lastDist
+                    ? `Dernière cote ${formatMeters(lastDist)} — tapez deux points`
+                    : "Tapez deux points au sol"}
+            </p>
+            <label className="flex items-center gap-3 rounded-lg border border-border bg-surface/90 px-3 py-2 text-[11px] text-muted">
+              Échelle 1:{Math.round(1 / scale)}
+              <input
+                type="range"
+                min={0.02}
+                max={1}
+                step={0.01}
+                value={scale}
+                onChange={(e) => setScale(Number(e.target.value))}
+                className="flex-1 accent-accent"
+              />
+              <span className="font-mono text-fg">{scale >= 0.95 ? "1:1" : `1:${Math.round(1 / scale)}`}</span>
+            </label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setOrigin([cx, 0, cz + Math.max(6, span * 0.7)])}
+                className="h-11 flex-1 rounded-full bg-elevated text-xs"
+              >
+                Recentrer
+              </button>
+              <button
+                type="button"
+                onClick={() => void onQuickLook()}
+                className="h-11 flex-1 rounded-full bg-primary text-xs font-medium text-primary-fg"
+              >
+                Quick Look iPhone
+              </button>
+              {caps?.webxr && (
+                <button type="button" onClick={() => void enterXr()} className="h-11 rounded-full bg-elevated px-3 text-xs">
+                  WebXR
+                </button>
+              )}
+            </div>
+          </div>
         )}
       </div>
+      <LookPad
+        look={look}
+        origin={origin}
+        setOrigin={setOrigin}
+        live={live}
+        onTap={
+          mode === "pose"
+            ? undefined
+            : (p) => {
+                if (mode === "releve") addSurveyPoint(p);
+                if (mode === "mesure") {
+                  if (!measure.a) setMeasure({ a: p });
+                  else {
+                    setLastDist(dist(measure.a, p));
+                    setMeasure({ a: null });
+                  }
+                }
+              }
+        }
+      />
     </div>
-  )
+  );
+}
+
+function GhostMeshes({ project, storyId }: { project: Project; storyId: string | null }) {
+  const parts = useMemo(() => ghostParts(project, storyId), [project, storyId]);
+  const box = useMemo(() => new THREE.BoxGeometry(1, 1, 1), []);
+  const mats = useMemo(() => {
+    const m = new Map<string, THREE.MeshLambertMaterial>();
+    for (const p of parts) {
+      if (!m.has(p.color)) {
+        m.set(
+          p.color,
+          new THREE.MeshLambertMaterial({
+            color: p.color,
+            transparent: true,
+            opacity: 0.78,
+            depthWrite: true,
+          }),
+        );
+      }
+    }
+    return m;
+  }, [parts]);
+  useEffect(
+    () => () => {
+      box.dispose();
+      for (const m of mats.values()) m.dispose();
+    },
+    [box, mats],
+  );
+  return (
+    <group>
+      {parts.map((p) => (
+        <mesh
+          key={p.id}
+          geometry={box}
+          material={mats.get(p.color)}
+          position={p.pos}
+          rotation={p.rot}
+          scale={p.scale}
+          raycast={noop}
+        />
+      ))}
+    </group>
+  );
+}
+
+function ArRig({
+  look,
+  origin,
+}: {
+  look: React.MutableRefObject<{ yaw: number; pitch: number; gyro: boolean; q: THREE.Quaternion }>;
+  origin: [number, number, number];
+}) {
+  const camera = useThree((s) => s.camera);
+  useFrame(() => {
+    camera.position.set(origin[0], origin[1] + 1.55, origin[2]);
+    if (look.current.gyro) camera.quaternion.copy(look.current.q);
+    else camera.rotation.set(look.current.pitch, look.current.yaw, 0, "YXZ");
+  });
+  return null;
+}
+
+function LookPad({
+  look,
+  origin,
+  setOrigin,
+  live,
+  onTap,
+}: {
+  look: React.MutableRefObject<{ yaw: number; pitch: number; gyro: boolean; q: THREE.Quaternion }>;
+  origin: [number, number, number];
+  setOrigin: (o: [number, number, number]) => void;
+  live: boolean;
+  onTap?: (p: Vec2) => void;
+}) {
+  const start = useRef<{ x: number; y: number; ox: number; oz: number; yaw: number; pitch: number } | null>(
+    null,
+  );
+  const moved = useRef(0);
+  const fwd = useRef(new THREE.Vector3());
+  const right = useRef(new THREE.Vector3());
+  if (!live) return null;
+  return (
+    <div
+      className="absolute inset-x-0 top-14 bottom-36 z-[1]"
+      onPointerDown={(e) => {
+        moved.current = 0;
+        start.current = {
+          x: e.clientX,
+          y: e.clientY,
+          ox: origin[0],
+          oz: origin[2],
+          yaw: look.current.yaw,
+          pitch: look.current.pitch,
+        };
+        e.currentTarget.setPointerCapture(e.pointerId);
+      }}
+      onPointerMove={(e) => {
+        const s = start.current;
+        if (!s) return;
+        const dx = e.clientX - s.x;
+        const dy = e.clientY - s.y;
+        moved.current += Math.hypot(e.movementX, e.movementY);
+        if (!look.current.gyro) {
+          look.current.yaw = s.yaw - dx * 0.005;
+          look.current.pitch = Math.max(-1.1, Math.min(0.6, s.pitch - dy * 0.004));
+          return;
+        }
+        fwd.current.set(0, 0, -1).applyQuaternion(look.current.q);
+        fwd.current.y = 0;
+        fwd.current.normalize();
+        right.current.set(1, 0, 0).applyQuaternion(look.current.q);
+        right.current.y = 0;
+        right.current.normalize();
+        setOrigin([
+          s.ox - right.current.x * dx * 0.018 + fwd.current.x * dy * 0.018,
+          origin[1],
+          s.oz - right.current.z * dx * 0.018 + fwd.current.z * dy * 0.018,
+        ]);
+      }}
+      onPointerUp={(e) => {
+        const s = start.current;
+        start.current = null;
+        if (!s || moved.current > 14 || !onTap) return;
+        const host = e.currentTarget.parentElement;
+        if (!host) return;
+        const r = host.getBoundingClientRect();
+        const ndcX = ((e.clientX - r.left) / r.width) * 2 - 1;
+        const ndcY = -(((e.clientY - r.top) / r.height) * 2 - 1);
+        const cam = new THREE.PerspectiveCamera(60, r.width / Math.max(1, r.height), 0.1, 80);
+        cam.position.set(origin[0], origin[1] + 1.55, origin[2]);
+        if (look.current.gyro) cam.quaternion.copy(look.current.q);
+        else cam.rotation.set(look.current.pitch, look.current.yaw, 0, "YXZ");
+        cam.updateMatrixWorld();
+        const ray = new THREE.Raycaster();
+        ray.setFromCamera(new THREE.Vector2(ndcX, ndcY), cam);
+        const hit = new THREE.Vector3();
+        if (ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit)) {
+          onTap({ x: hit.x, y: hit.z });
+        }
+      }}
+    />
+  );
 }

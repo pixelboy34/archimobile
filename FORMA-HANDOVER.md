@@ -1,11 +1,14 @@
-# FORMA — handover 1 page
+# FORMA — passation
 
-PWA BIM mobile (React 19 + Three/R3F + Zustand). UI FR, accent `#6ed0c3`.
+Le brief opérationnel pour Claude Code est **`CLAUDE.md`** (racine). Le relire en entier avant de coder.
 
-État: jouable. Ne pas recréer. Ne pas baisser la qualité 3D.
+Résumé une page :
 
-Priorité A: trim/extend, T-joints, murs courbes, étage type lié, noyau vertical, dock redimensionnable, instancing R+40.
+- Produit : PWA BIM/CAD mobile-first, UI française, persist Zustand `forma-studio-v9` (pas d’auth).
+- Ne **jamais** dégrader le rendu 3D, ne **jamais** remettre les params en sheet plein écran, orbit **maquette** (grab).
+- Gros fichiers : `BuildingScene.tsx` (1064), `project-store.ts` (887), `PropertiesPanel.tsx` (614), `types.ts` (601), `seed.ts` (595), `Plan2D.tsx` (574), `StudioShell.tsx` (495).
+- Massing immeuble : `src/lib/cad/massing.ts` + onglet Étages. Caps 80 étages.
+- Inspecteur : `InspectorDock` 46 dvh, onglets Ouvrage | Étages | Site | Vue.
+- Vérif : `npx tsc --noEmit`, Tour Horizon + Villa Calanque, viewport 390×844.
 
-Stack: TanStack Start, `forma-studio-v9`, seeds Villa Calanque + Tour Horizon.
-
-Voir `CLAUDE.md` pour la carte complète et les contraintes.
+Ne pas recréer l’app. Parfaire.
