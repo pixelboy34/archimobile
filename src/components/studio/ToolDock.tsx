@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useProjectStore } from '../../lib/store/project-store'
-import type { ToolMode, SkillLevel } from '../../lib/bim/types'
+import type { ToolMode, SkillLevel, StairMode } from '../../lib/bim/types'
+import { labelForStairMode } from '../../lib/cad/stairs'
 import { FURNITURE_FAMILIES, FURNITURE_PRESETS } from '../../lib/bim/catalog'
 
 type ToolDef = { id: ToolMode; label: string; group: 'trace' | 'ouvrage' | 'cad'; amateur?: boolean }
@@ -28,10 +29,10 @@ function toolsForSkill(skill: SkillLevel): ToolDef[] {
 const HINTS: Partial<Record<ToolMode, string>> = {
   door: 'Porte : cliquez un mur (plan ou 3D) pour creer une ouverture',
   window: 'Fenetre : cliquez un mur (plan ou 3D) pour creer une ouverture',
-  slab: 'Dalle : deux clics pour un rectangle sur l etage actif',
+  slab: 'Dalle : polygone (clics + Terminer / Entree) ou mode Rectangle ; Maj = rectangle',
   column: 'Pilier : cliquez pour placer un poteau sur l etage actif',
-  stair: 'Escalier : cliquez depart puis arrivee (direction de la montee)',
-  roof: 'Toiture : deux clics pour un rectangle de toiture',
+  stair: 'Escalier : choisissez Droit / Quart / Demi puis cliquez le parcours (depart → angles → arrivee)',
+  roof: 'Toiture : polygone (clics + Terminer) ou mode Rectangle',
   trim: 'Couper : selectionnez un mur, puis cliquez le point de coupe',
   extend: 'Prolonger : selectionnez un mur, puis cliquez le mur cible',
 }
@@ -48,6 +49,10 @@ export default function ToolDock() {
   const rotatePlace = useProjectStore((s) => s.rotatePlace)
   const cadNote = useProjectStore((s) => s.cadNote)
   const clearCadNote = useProjectStore((s) => s.clearCadNote)
+  const stairMode = useProjectStore((s) => s.stairMode)
+  const setStairMode = useProjectStore((s) => s.setStairMode)
+  const polyDrawMode = useProjectStore((s) => s.polyDrawMode)
+  const setPolyDrawMode = useProjectStore((s) => s.setPolyDrawMode)
 
   useEffect(() => {
     if (!cadNote) return
@@ -97,6 +102,43 @@ export default function ToolDock() {
       {hint && tool !== 'objects' && (
         <div className="pointer-events-auto chip text-xs bg-[#0a1218]/95 max-w-[92vw]">
           {hint}
+        </div>
+      )}
+
+      {tool === 'stair' && (
+        <div className="pointer-events-auto flex gap-1 p-1 rounded-2xl bg-[#0a1218]/95 border border-[#1a2a35]">
+          {(['droit', 'quart', 'demi'] as StairMode[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              className="chip"
+              data-active={stairMode === m}
+              onClick={() => setStairMode(m)}
+            >
+              {labelForStairMode(m)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {(tool === 'slab' || tool === 'roof') && (
+        <div className="pointer-events-auto flex gap-1 p-1 rounded-2xl bg-[#0a1218]/95 border border-[#1a2a35]">
+          <button
+            type="button"
+            className="chip"
+            data-active={polyDrawMode === 'polygon'}
+            onClick={() => setPolyDrawMode('polygon')}
+          >
+            Polygone
+          </button>
+          <button
+            type="button"
+            className="chip"
+            data-active={polyDrawMode === 'rect'}
+            onClick={() => setPolyDrawMode('rect')}
+          >
+            Rectangle
+          </button>
         </div>
       )}
 

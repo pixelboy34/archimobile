@@ -70,13 +70,21 @@ export type Column = {
   height: number
 }
 
+export type StairMode = 'droit' | 'quart' | 'demi'
+
 export type Stair = {
   id: string
   storyId: string
-  a: Vec2
-  b: Vec2
+  /** Waypoints: depart → paliers / angles → arrivee (optional on legacy saves) */
+  path?: Vec2[]
   width: number
   rises: number
+  mode?: StairMode
+  /** Optional explicit total rise (m); default = story height */
+  rise?: number
+  /** Legacy first/last path points (kept for IFC / older saves) */
+  a: Vec2
+  b: Vec2
 }
 
 export type FurnitureKind =

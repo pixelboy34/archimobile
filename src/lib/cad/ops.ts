@@ -1,8 +1,9 @@
-import type { Project, Story, Wall, Slab, Opening, Room, Column, Furniture, Stair, Roof, Vec2 } from '../bim/types'
+import type { Project, Story, Wall, Slab, Opening, Room, Column, Furniture, Stair, StairMode, Roof, Vec2 } from '../bim/types'
 import { uid } from '../bim/types'
 import { FURNITURE_PRESETS, OPENING_DEFAULTS, COLUMN_DEFAULT_SIZE, SLAB_DEFAULT_THICKNESS, STAIR_DEFAULT_WIDTH, ROOF_DEFAULT_RIDGE } from '../bim/catalog'
 import { rectPolygon } from '../bim/builder'
 import { dist, lineIntersection, projectOnSegment, segmentIntersection, snapNearWall } from './geom'
+import { defaultRisesForHeight, normalizeStair, pointsNeededForMode } from './stairs'
 
 /** Clone a story and all its elements upward. Cap total stories at 80. */
 export function copyStory(project: Project, storyId: string): Project {
@@ -607,22 +608,110 @@ export function placeStairRun(
   a: Vec2,
   b: Vec2,
 ): { project: Project; stairId: string | null } {
+  return placeStairPath(project, storyId, [a, b], 'droit')
+}
+
+export function placeStairPath(
+  project: Project,
+  storyId: string,
+  path: Vec2[],
+  mode: StairMode = 'droit',
+  rise?: number,
+): { project: Project; stairId: string | null } {
   const story = project.stories.find((s) => s.id === storyId)
   if (!story) return { project, stairId: null }
-  const len = Math.hypot(b.x - a.x, b.y - a.y)
-  if (len < 0.4) return { project, stairId: null }
-  const rises = Math.max(3, Math.round(story.height / 0.175))
-  const stair: Stair = {
+  const needed = pointsNeededForMode(mode)
+  if (path.length < Math.min(2, needed)) return { project, stairId: null }
+  if (path.length < 2) return { project, stairId: null }
+  const pts = path.map((p) => snapGrid(p))
+  // Validate each segment length
+  for (let i = 0; i < pts.length - 1; i++) {
+    const L = Math.hypot(pts[i + 1]!.x - pts[i]!.x, pts[i + 1]!.y - pts[i]!.y)
+    if (L < 0.35) return { project, stairId: null }
+  }
+  const totalRise = rise ?? story.height
+  const rises = defaultRisesForHeight(totalRise)
+  const stair = normalizeStair({
     id: uid('stair'),
     storyId,
-    a: snapGrid(a),
-    b: snapGrid(b),
+    path: pts,
+    a: pts[0]!,
+    b: pts[pts.length - 1]!,
     width: STAIR_DEFAULT_WIDTH,
     rises,
-  }
+    mode,
+    rise: totalRise,
+  })
   return {
     project: { ...project, stairs: [...project.stairs, stair], updatedAt: Date.now() },
     stairId: stair.id,
+  }
+}
+
+export function placeSlabPolygon(
+  project: Project,
+  storyId: string,
+  polygon: Vec2[],
+  kind: Slab['kind'] = 'floor',
+): { project: Project; slabId: string | null } {
+  const story = project.stories.find((s) => s.id === storyId)
+  if (!story) return { project, slabId: null }
+  if (polygon.length < 3) return { project, slabId: null }
+  const pts = polygon.map((p) => snapGrid(p))
+  // Area proxy via bbox
+  const xs = pts.map((p) => p.x)
+  const ys = pts.map((p) => p.y)
+  if (Math.max(...xs) - Math.min(...xs) < 0.2 || Math.max(...ys) - Math.min(...ys) < 0.2) {
+    return { project, slabId: null }
+  }
+  const slab: Slab = {
+    id: uid('slab'),
+    storyId,
+    kind,
+    polygon: pts,
+    thickness: SLAB_DEFAULT_THICKNESS,
+    elevation: story.elevation,
+  }
+  return {
+    project: { ...project, slabs: [...project.slabs, slab], updatedAt: Date.now() },
+    slabId: slab.id,
+  }
+}
+
+export function placeRoofPolygon(
+  project: Project,
+  storyId: string,
+  polygon: Vec2[],
+): { project: Project; roofId: string | null } {
+  const story = project.stories.find((s) => s.id === storyId)
+  if (!story) return { project, roofId: null }
+  if (polygon.length < 3) return { project, roofId: null }
+  const pts = polygon.map((p) => snapGrid(p))
+  const xs = pts.map((p) => p.x)
+  const ys = pts.map((p) => p.y)
+  if (Math.max(...xs) - Math.min(...xs) < 0.4 || Math.max(...ys) - Math.min(...ys) < 0.4) {
+    return { project, roofId: null }
+  }
+  const overhang = 0.3
+  // Expand roughly from centroid for overhang
+  const cx = xs.reduce((a, b) => a + b, 0) / xs.length
+  const cy = ys.reduce((a, b) => a + b, 0) / ys.length
+  const expanded = pts.map((p) => {
+    const dx = p.x - cx
+    const dy = p.y - cy
+    const L = Math.hypot(dx, dy) || 1
+    return { x: p.x + (dx / L) * overhang, y: p.y + (dy / L) * overhang }
+  })
+  const roof: Roof = {
+    id: uid('roof'),
+    storyId,
+    polygon: expanded,
+    ridgeHeight: ROOF_DEFAULT_RIDGE,
+    overhang,
+  }
+  return {
+    project: { ...project, roofs: [...project.roofs, roof], updatedAt: Date.now() },
+    roofId: roof.id,
   }
 }
 

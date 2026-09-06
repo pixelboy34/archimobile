@@ -105,8 +105,28 @@ export function rectPolygon(x: number, z: number, w: number, d: number): Vec2[] 
   ]
 }
 
-export function makeStair(storyId: string, a: Vec2, b: Vec2, rises: number, width = 1.0): Stair {
-  return { id: uid('stair'), storyId, a, b, width, rises }
+export function makeStair(
+  storyId: string,
+  a: Vec2,
+  b: Vec2,
+  rises: number,
+  width = 1.0,
+  mode: Stair['mode'] = 'droit',
+  path?: Vec2[],
+  rise?: number,
+): Stair {
+  const pts = path && path.length >= 2 ? path : [a, b]
+  return {
+    id: uid('stair'),
+    storyId,
+    path: pts.map((p) => ({ ...p })),
+    a: { ...pts[0]! },
+    b: { ...pts[pts.length - 1]! },
+    width,
+    rises,
+    mode,
+    rise,
+  }
 }
 
 export function makeRoof(storyId: string, polygon: Vec2[], ridgeHeight = 1.0, overhang = 0.3): Roof {

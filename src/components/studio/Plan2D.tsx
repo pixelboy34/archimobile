@@ -3,6 +3,14 @@ import type { Project, Vec2 } from '../../lib/bim/types'
 import { useProjectStore } from '../../lib/store/project-store'
 import { FURNITURE_PRESETS, OPENING_DEFAULTS } from '../../lib/bim/catalog'
 import { nearestWallHit } from '../../lib/cad/ops'
+import {
+  labelForStairMode,
+  normalizeStair,
+  pointsNeededForMode,
+  stairHitDist,
+  stairPlanOutlines,
+} from '../../lib/cad/stairs'
+import type { StairMode } from '../../lib/bim/types'
 
 type Props = {
   project: Project
@@ -25,15 +33,23 @@ export default function Plan2D({ project, storyId }: Props) {
   const setInspectorTab = useProjectStore((s) => s.setInspectorTab)
   const addOpeningAtWall = useProjectStore((s) => s.addOpeningAtWall)
   const addSlab = useProjectStore((s) => s.addSlab)
+  const addSlabPolygon = useProjectStore((s) => s.addSlabPolygon)
   const addColumn = useProjectStore((s) => s.addColumn)
-  const addStair = useProjectStore((s) => s.addStair)
+  const addStairPath = useProjectStore((s) => s.addStairPath)
   const addRoof = useProjectStore((s) => s.addRoof)
+  const addRoofPolygon = useProjectStore((s) => s.addRoofPolygon)
+  const stairMode = useProjectStore((s) => s.stairMode)
+  const setStairMode = useProjectStore((s) => s.setStairMode)
+  const polyDrawMode = useProjectStore((s) => s.polyDrawMode)
+  const setPolyDrawMode = useProjectStore((s) => s.setPolyDrawMode)
 
   const [draft, setDraft] = useState<Vec2 | null>(null)
+  const [polyDraft, setPolyDraft] = useState<Vec2[]>([])
   const [hover, setHover] = useState<Vec2 | null>(null)
   /** For trim/extend: first selected wall id awaiting second click */
   const [cadWallId, setCadWallId] = useState<string | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
+  const lastClickAt = useRef(0)
 
   const story = project.stories.find((s) => s.id === storyId) ?? project.stories[0]
   const walls = project.walls.filter((w) => w.storyId === story?.id)
@@ -48,8 +64,47 @@ export default function Plan2D({ project, storyId }: Props) {
 
   useEffect(() => {
     setDraft(null)
+    setPolyDraft([])
     setCadWallId(null)
-  }, [tool])
+  }, [tool, stairMode, polyDrawMode])
+
+  const finishPolygon = useCallback(() => {
+    if (polyDraft.length < 3) return
+    if (tool === 'slab') addSlabPolygon(polyDraft)
+    else if (tool === 'roof') addRoofPolygon(polyDraft)
+    setPolyDraft([])
+  }, [polyDraft, tool, addSlabPolygon, addRoofPolygon])
+
+  const finishStairPath = useCallback(() => {
+    const minPts = stairMode === 'droit' ? 2 : 3
+    if (polyDraft.length < minPts) return
+    addStairPath(polyDraft, stairMode)
+    setPolyDraft([])
+  }, [polyDraft, stairMode, addStairPath])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setDraft(null)
+        setPolyDraft([])
+        setCadWallId(null)
+      }
+      if (e.key === 'Enter') {
+        if (tool === 'slab' || tool === 'roof') {
+          if (polyDrawMode === 'polygon' && polyDraft.length >= 3) {
+            e.preventDefault()
+            finishPolygon()
+          }
+        }
+        if (tool === 'stair' && polyDraft.length >= (stairMode === 'droit' ? 2 : 3)) {
+          e.preventDefault()
+          finishStairPath()
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [tool, polyDrawMode, polyDraft, stairMode, finishPolygon, finishStairPath])
 
   const bounds = useMemo(() => {
     let minX = -15,
@@ -92,15 +147,18 @@ export default function Plan2D({ project, storyId }: Props) {
       const local = pt.matrixTransform(ctm.inverse())
       let x = local.x
       let y = local.y
-      if (ortho && draft && (tool === 'wall' || tool === 'stair')) {
-        const dx = Math.abs(x - draft.x)
-        const dy = Math.abs(y - draft.y)
-        if (dx > dy) y = draft.y
-        else x = draft.x
+      const anchor =
+        draft ??
+        (polyDraft.length > 0 ? polyDraft[polyDraft.length - 1]! : null)
+      if (ortho && anchor && (tool === 'wall' || tool === 'stair')) {
+        const dx = Math.abs(x - anchor.x)
+        const dy = Math.abs(y - anchor.y)
+        if (dx > dy) y = anchor.y
+        else x = anchor.x
       }
       return { x: Math.round(x * 20) / 20, y: Math.round(y * 20) / 20 }
     },
-    [draft, ortho, tool],
+    [draft, polyDraft, ortho, tool],
   )
 
   const hitWall = (p: Vec2, maxDist = 0.55): string | null => {
@@ -133,15 +191,47 @@ export default function Plan2D({ project, storyId }: Props) {
       return
     }
 
-    if (tool === 'slab' || tool === 'roof' || tool === 'stair') {
-      if (!draft) {
-        setDraft(p)
+    if (tool === 'slab' || tool === 'roof') {
+      const useRect = polyDrawMode === 'rect' || e.shiftKey
+      if (useRect) {
+        if (!draft) {
+          setDraft(p)
+          setPolyDraft([])
+          return
+        }
+        if (tool === 'slab') addSlab(draft, p)
+        else addRoof(draft, p)
+        setDraft(null)
         return
       }
-      if (tool === 'slab') addSlab(draft, p)
-      else if (tool === 'roof') addRoof(draft, p)
-      else addStair(draft, p)
-      setDraft(null)
+      // Polygon mode: click vertices; double-click closes
+      const now = Date.now()
+      const isDouble = now - lastClickAt.current < 320 && polyDraft.length >= 2
+      lastClickAt.current = now
+      if (isDouble) {
+        const next = [...polyDraft, p]
+        if (tool === 'slab') addSlabPolygon(next.length >= 3 ? next : polyDraft)
+        else addRoofPolygon(next.length >= 3 ? next : polyDraft)
+        setPolyDraft([])
+        return
+      }
+      setPolyDraft((prev) => [...prev, p])
+      return
+    }
+
+    if (tool === 'stair') {
+      const needed = pointsNeededForMode(stairMode)
+      const now = Date.now()
+      const next = [...polyDraft, p]
+      // Auto-finish when enough points for mode
+      if (next.length >= needed) {
+        addStairPath(next, stairMode)
+        setPolyDraft([])
+        lastClickAt.current = now
+        return
+      }
+      setPolyDraft(next)
+      lastClickAt.current = now
       return
     }
 
@@ -186,11 +276,7 @@ export default function Plan2D({ project, storyId }: Props) {
         setInspectorTab('ouvrage')
         return
       }
-      const stair = stairs.find((s) => {
-        const mx = (s.a.x + s.b.x) / 2
-        const my = (s.a.y + s.b.y) / 2
-        return Math.hypot(mx - p.x, my - p.y) < Math.max(0.5, s.width)
-      })
+      const stair = stairs.find((s) => stairHitDist(normalizeStair(s), p) < Math.max(0.45, (s.width ?? 1) * 0.55))
       if (stair) {
         select({ kind: 'stair', id: stair.id })
         setInspectorOpen(true)
@@ -281,13 +367,73 @@ export default function Plan2D({ project, storyId }: Props) {
 
   return (
     <div className="absolute inset-0 bg-[#04080c]">
-      <div className="absolute top-20 left-3 z-10 flex gap-2 flex-wrap">
+      <div className="absolute top-20 left-3 z-10 flex gap-2 flex-wrap max-w-[92vw]">
         <button type="button" className="chip" data-active={ortho} onClick={() => setOrtho(!ortho)}>
           Ortho {ortho ? 'ON' : 'OFF'}
         </button>
-        {draft && (
-          <button type="button" className="chip" onClick={() => setDraft(null)}>
-            Annuler point
+        {tool === 'stair' &&
+          (['droit', 'quart', 'demi'] as StairMode[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              className="chip"
+              data-active={stairMode === m}
+              onClick={() => {
+                setStairMode(m)
+                setPolyDraft([])
+              }}
+            >
+              {labelForStairMode(m)}
+            </button>
+          ))}
+        {(tool === 'slab' || tool === 'roof') && (
+          <>
+            <button
+              type="button"
+              className="chip"
+              data-active={polyDrawMode === 'polygon'}
+              onClick={() => {
+                setPolyDrawMode('polygon')
+                setDraft(null)
+              }}
+            >
+              Polygone
+            </button>
+            <button
+              type="button"
+              className="chip"
+              data-active={polyDrawMode === 'rect'}
+              onClick={() => {
+                setPolyDrawMode('rect')
+                setPolyDraft([])
+              }}
+            >
+              Rectangle
+            </button>
+          </>
+        )}
+        {(draft || polyDraft.length > 0) && (
+          <button
+            type="button"
+            className="chip"
+            onClick={() => {
+              setDraft(null)
+              setPolyDraft([])
+            }}
+          >
+            Annuler
+          </button>
+        )}
+        {tool === 'stair' &&
+          polyDraft.length >= (stairMode === 'droit' ? 2 : 3) &&
+          polyDraft.length < pointsNeededForMode(stairMode) && (
+          <button type="button" className="chip" onClick={() => finishStairPath()}>
+            Terminer
+          </button>
+        )}
+        {(tool === 'slab' || tool === 'roof') && polyDrawMode === 'polygon' && polyDraft.length >= 3 && (
+          <button type="button" className="chip" onClick={() => finishPolygon()}>
+            Terminer
           </button>
         )}
         {cadWallId && (
@@ -423,18 +569,13 @@ export default function Plan2D({ project, storyId }: Props) {
           )
         })}
 
-        {stairs.map((s) => {
+        {stairs.map((raw) => {
+          const s = normalizeStair(raw)
           const active = selection?.kind === 'stair' && selection.id === s.id
-          const dx = s.b.x - s.a.x
-          const dy = s.b.y - s.a.y
-          const len = Math.hypot(dx, dy) || 1
-          const ang = (Math.atan2(dy, dx) * 180) / Math.PI
-          const cx = (s.a.x + s.b.x) / 2
-          const cy = (s.a.y + s.b.y) / 2
+          const outlines = stairPlanOutlines(s)
           return (
             <g
               key={s.id}
-              transform={`translate(${cx}, ${cy}) rotate(${ang})`}
               onPointerDown={(e) => {
                 e.stopPropagation()
                 select({ kind: 'stair', id: s.id })
@@ -442,31 +583,39 @@ export default function Plan2D({ project, storyId }: Props) {
                 setInspectorTab('ouvrage')
               }}
             >
-              <rect
-                x={-len / 2}
-                y={-s.width / 2}
-                width={len}
-                height={s.width}
-                fill={active ? 'rgba(110,208,195,0.35)' : 'rgba(110,208,195,0.12)'}
-                stroke={active ? '#6ed0c3' : '#6ed0c3'}
-                strokeWidth={0.04}
-              />
-              {Array.from({ length: Math.min(12, s.rises) }).map((_, i) => {
-                const t = (i + 1) / (Math.min(12, s.rises) + 1)
-                const x = -len / 2 + t * len
-                return (
+              {outlines.landings.map((poly, i) => (
+                <polygon
+                  key={`land-${i}`}
+                  points={poly.map((pt) => `${pt.x},${pt.y}`).join(' ')}
+                  fill={active ? 'rgba(110,208,195,0.28)' : 'rgba(110,208,195,0.1)'}
+                  stroke="#6ed0c3"
+                  strokeWidth={0.035}
+                />
+              ))}
+              {outlines.flights.map((poly, i) => (
+                <polygon
+                  key={`flight-${i}`}
+                  points={poly.map((pt) => `${pt.x},${pt.y}`).join(' ')}
+                  fill={active ? 'rgba(110,208,195,0.35)' : 'rgba(110,208,195,0.12)'}
+                  stroke="#6ed0c3"
+                  strokeWidth={0.04}
+                />
+              ))}
+              {s.path.map((pt, i) =>
+                i < s.path.length - 1 ? (
                   <line
-                    key={i}
-                    x1={x}
-                    y1={-s.width / 2}
-                    x2={x}
-                    y2={s.width / 2}
+                    key={`path-${i}`}
+                    x1={pt.x}
+                    y1={pt.y}
+                    x2={s.path[i + 1]!.x}
+                    y2={s.path[i + 1]!.y}
                     stroke="#6ed0c3"
-                    strokeWidth={0.025}
-                    opacity={0.55}
+                    strokeWidth={0.03}
+                    opacity={0.4}
+                    strokeDasharray="0.1 0.08"
                   />
-                )
-              })}
+                ) : null,
+              )}
             </g>
           )
         })}
@@ -601,8 +750,8 @@ export default function Plan2D({ project, storyId }: Props) {
           })()
         )}
 
-        {/* Two-click draft preview (slab / roof / stair / wall / rect) */}
-        {draft && hover && (tool === 'slab' || tool === 'roof' || tool === 'rect') && (
+        {/* Draft previews */}
+        {draft && hover && (tool === 'rect' || ((tool === 'slab' || tool === 'roof') && polyDrawMode === 'rect')) && (
           <rect
             x={Math.min(draft.x, hover.x)}
             y={Math.min(draft.y, hover.y)}
@@ -614,16 +763,54 @@ export default function Plan2D({ project, storyId }: Props) {
             strokeDasharray="0.12 0.08"
           />
         )}
-        {draft && hover && (tool === 'stair' || tool === 'wall') && (
+        {draft && hover && tool === 'wall' && (
           <line
             x1={draft.x}
             y1={draft.y}
             x2={hover.x}
             y2={hover.y}
             stroke="#6ed0c3"
-            strokeWidth={tool === 'stair' ? 1.0 : 0.06}
+            strokeWidth={0.06}
             opacity={0.45}
           />
+        )}
+        {/* Polygon / stair path preview */}
+        {polyDraft.length > 0 && (tool === 'slab' || tool === 'roof' || tool === 'stair') && (
+          <g>
+            {polyDraft.length >= 2 && (
+              <polyline
+                points={polyDraft.map((pt) => `${pt.x},${pt.y}`).join(' ')}
+                fill="none"
+                stroke="#6ed0c3"
+                strokeWidth={tool === 'stair' ? 0.08 : 0.05}
+                opacity={0.7}
+              />
+            )}
+            {hover && (
+              <line
+                x1={polyDraft[polyDraft.length - 1]!.x}
+                y1={polyDraft[polyDraft.length - 1]!.y}
+                x2={hover.x}
+                y2={hover.y}
+                stroke="#6ed0c3"
+                strokeWidth={0.05}
+                strokeDasharray="0.1 0.08"
+                opacity={0.55}
+              />
+            )}
+            {(tool === 'slab' || tool === 'roof') && polyDraft.length >= 2 && hover && (
+              <polygon
+                points={[...polyDraft, hover].map((pt) => `${pt.x},${pt.y}`).join(' ')}
+                fill="rgba(110,208,195,0.12)"
+                stroke="#6ed0c3"
+                strokeWidth={0.04}
+                strokeDasharray="0.12 0.08"
+              />
+            )}
+            {polyDraft.map((pt, i) => (
+              <circle key={i} cx={pt.x} cy={pt.y} r={0.12} fill="#6ed0c3" />
+            ))}
+          </g>
         )}
 
         {draft && <circle cx={draft.x} cy={draft.y} r={0.15} fill="#6ed0c3" />}

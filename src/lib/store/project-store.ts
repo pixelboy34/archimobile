@@ -12,6 +12,7 @@ import type {
   Vec2,
   OpeningKind,
   SlabKind,
+  StairMode,
 } from '../bim/types'
 import { uid } from '../bim/types'
 import { allSeeds, newSketchProject } from '../bim/seed'
@@ -24,9 +25,11 @@ import {
   makeTJoint,
   placeOpeningAtWall,
   placeSlabRect,
+  placeSlabPolygon,
   placeColumnAt,
-  placeStairRun,
+  placeStairPath,
   placeRoofRect,
+  placeRoofPolygon,
   snapGrid,
 } from '../cad/ops'
 
@@ -51,6 +54,8 @@ type StoreState = {
   massingDraft: MassingParams
   placeKind: FurnitureKind | null
   placeRotation: number
+  stairMode: StairMode
+  polyDrawMode: 'polygon' | 'rect'
   cadNote: string | null
   coupeAxis: 'horizontal' | 'vertical'
   coupeCut: number
@@ -92,9 +97,14 @@ type StoreState = {
   setArMode: (m: 'poser' | 'cote') => void
   addOpeningAtWall: (wallId: string, t: number, kind: OpeningKind) => void
   addSlab: (a: Vec2, b: Vec2, kind?: SlabKind) => void
+  addSlabPolygon: (polygon: Vec2[], kind?: SlabKind) => void
   addColumn: (pos: Vec2) => void
   addStair: (a: Vec2, b: Vec2) => void
+  addStairPath: (path: Vec2[], mode?: StairMode) => void
   addRoof: (a: Vec2, b: Vec2) => void
+  addRoofPolygon: (polygon: Vec2[]) => void
+  setStairMode: (m: StairMode) => void
+  setPolyDrawMode: (m: 'polygon' | 'rect') => void
   placeAtPoint: (pos: Vec2) => void
 }
 
@@ -123,6 +133,8 @@ export const useProjectStore = create<StoreState>()(
       massingDraft: { width: 12, depth: 18, floors: 8, floorHeight: 3 },
       placeKind: null,
       placeRotation: 0,
+      stairMode: 'droit',
+      polyDrawMode: 'polygon',
       cadNote: null,
       coupeAxis: 'horizontal',
       coupeCut: 1.4,
@@ -183,6 +195,8 @@ export const useProjectStore = create<StoreState>()(
           tool: t,
           placeKind: t === 'objects' ? get().placeKind : null,
         }),
+      setStairMode: (m) => set({ stairMode: m }),
+      setPolyDrawMode: (m) => set({ polyDrawMode: m }),
       setActiveStory: (id) => {
         set({ activeStoryId: id })
         if (get().viewMode === 'coupe') get().syncCoupeToStory()
@@ -389,19 +403,42 @@ export const useProjectStore = create<StoreState>()(
       },
 
       addStair: (a, b) => {
-        const { activeStoryId, getActive } = get()
+        get().addStairPath([a, b], 'droit')
+      },
+
+      addStairPath: (path, mode) => {
+        const { activeStoryId, getActive, stairMode } = get()
         const project = getActive()
         if (!project) return
         const storyId = activeStoryId ?? project.stories[0]?.id
         if (!storyId) return
         let stairId: string | null = null
+        const m = mode ?? stairMode
         get().commit((p) => {
-          const res = placeStairRun(p, storyId, a, b)
+          const res = placeStairPath(p, storyId, path, m)
           stairId = res.stairId
           return res.project
         })
         if (stairId) {
           get().select({ kind: 'stair', id: stairId })
+          set({ inspectorOpen: true, inspectorTab: 'ouvrage' })
+        }
+      },
+
+      addSlabPolygon: (polygon, kind = 'floor') => {
+        const { activeStoryId, getActive } = get()
+        const project = getActive()
+        if (!project) return
+        const storyId = activeStoryId ?? project.stories[0]?.id
+        if (!storyId) return
+        let slabId: string | null = null
+        get().commit((p) => {
+          const res = placeSlabPolygon(p, storyId, polygon, kind)
+          slabId = res.slabId
+          return res.project
+        })
+        if (slabId) {
+          get().select({ kind: 'slab', id: slabId })
           set({ inspectorOpen: true, inspectorTab: 'ouvrage' })
         }
       },
@@ -415,6 +452,24 @@ export const useProjectStore = create<StoreState>()(
         let roofId: string | null = null
         get().commit((p) => {
           const res = placeRoofRect(p, storyId, snapGrid(a), snapGrid(b))
+          roofId = res.roofId
+          return res.project
+        })
+        if (roofId) {
+          get().select({ kind: 'roof', id: roofId })
+          set({ inspectorOpen: true, inspectorTab: 'ouvrage' })
+        }
+      },
+
+      addRoofPolygon: (polygon) => {
+        const { activeStoryId, getActive } = get()
+        const project = getActive()
+        if (!project) return
+        const storyId = activeStoryId ?? project.stories[0]?.id
+        if (!storyId) return
+        let roofId: string | null = null
+        get().commit((p) => {
+          const res = placeRoofPolygon(p, storyId, polygon)
           roofId = res.roofId
           return res.project
         })

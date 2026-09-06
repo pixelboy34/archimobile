@@ -1,10 +1,11 @@
-import { useMemo } from 'react'
+import { useMemo, useEffect } from 'react'
 import * as THREE from 'three'
 import type { Project, Wall, Slab, Furniture, Column, Roof, Opening, Stair } from '../../lib/bim/types'
 import { wallLength, wallAngle, wallCenter } from '../../lib/bim/types'
 import { MATERIALS, FURNITURE_PRESETS } from '../../lib/bim/catalog'
 import { detectQuality } from '../../lib/render/quality'
 import { wallSolidBoxes, openingsLocal } from '../../lib/bim/wall-openings'
+import { buildStairGeometry, normalizeStair } from '../../lib/cad/stairs'
 
 const EMPTY_OPENINGS: Opening[] = []
 const boxGeo = new THREE.BoxGeometry(1, 1, 1)
@@ -171,16 +172,61 @@ function bbox(poly: { x: number; y: number }[]) {
   return { w: maxX - minX, d: maxY - minY, cx: (minX + maxX) / 2, cz: (minY + maxY) / 2 }
 }
 
+/** Extrude plan polygon (XZ) into a vertical prism of given thickness. */
+function usePolygonExtrude(poly: { x: number; y: number }[], thickness: number) {
+  const geo = useMemo(() => {
+    if (!poly || poly.length < 3) return null
+    const shape = new THREE.Shape()
+    shape.moveTo(poly[0]!.x, poly[0]!.y)
+    for (let i = 1; i < poly.length; i++) {
+      shape.lineTo(poly[i]!.x, poly[i]!.y)
+    }
+    shape.closePath()
+    const g = new THREE.ExtrudeGeometry(shape, {
+      depth: Math.max(0.02, thickness),
+      bevelEnabled: false,
+      steps: 1,
+    })
+    // Shape XY + extrude +Z → rotateX(+90°) so shape Y → world Z, depth → -Y
+    g.rotateX(Math.PI / 2)
+    g.computeVertexNormals()
+    return g
+  }, [poly, thickness])
+
+  useEffect(() => {
+    return () => {
+      geo?.dispose()
+    }
+  }, [geo])
+
+  return geo
+}
+
 function SlabMesh({ slab }: { slab: Slab }) {
-  const b = bbox(slab.polygon)
   const kindMat =
     slab.kind === 'pool' ? 'eau' : slab.kind === 'terrace' ? 'beton' : slab.kind === 'ground' ? 'pierre' : 'beton'
   const m = matFor(slab.materialId, kindMat)
+  const geo = usePolygonExtrude(slab.polygon, slab.thickness)
+  if (!geo) {
+    // Fallback bbox box if degenerate
+    const b = bbox(slab.polygon)
+    if (b.w < 0.05 || b.d < 0.05) return null
+    return (
+      <mesh
+        geometry={boxGeo}
+        position={[b.cx, slab.elevation - slab.thickness / 2, b.cz]}
+        scale={[b.w, slab.thickness, b.d]}
+        receiveShadow
+        castShadow={slab.kind !== 'ground'}
+      >
+        <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} />
+      </mesh>
+    )
+  }
   return (
     <mesh
-      geometry={boxGeo}
-      position={[b.cx, slab.elevation - slab.thickness / 2, b.cz]}
-      scale={[b.w, slab.thickness, b.d]}
+      geometry={geo}
+      position={[0, slab.elevation, 0]}
       receiveShadow
       castShadow={slab.kind !== 'ground'}
     >
@@ -190,23 +236,35 @@ function SlabMesh({ slab }: { slab: Slab }) {
         metalness={m.metalness}
         transparent={slab.kind === 'pool'}
         opacity={slab.kind === 'pool' ? 0.75 : 1}
+        side={THREE.DoubleSide}
       />
     </mesh>
   )
 }
 
 function RoofMesh({ roof, elevation }: { roof: Roof; elevation: number }) {
-  const b = bbox(roof.polygon)
   const m = matFor('tuile')
+  const h = Math.max(0.2, roof.ridgeHeight)
+  const geo = usePolygonExtrude(roof.polygon, h)
+  if (!geo) {
+    const b = bbox(roof.polygon)
+    if (b.w < 0.05 || b.d < 0.05) return null
+    return (
+      <mesh
+        geometry={boxGeo}
+        position={[b.cx, elevation + h / 2, b.cz]}
+        scale={[b.w, h, b.d]}
+        castShadow
+        receiveShadow
+      >
+        <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} />
+      </mesh>
+    )
+  }
+  // Roof geo extends downward from elevation+h
   return (
-    <mesh
-      geometry={boxGeo}
-      position={[b.cx, elevation + roof.ridgeHeight / 2, b.cz]}
-      scale={[b.w, Math.max(0.2, roof.ridgeHeight), b.d]}
-      castShadow
-      receiveShadow
-    >
-      <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} />
+    <mesh geometry={geo} position={[0, elevation + h, 0]} castShadow receiveShadow>
+      <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} side={THREE.DoubleSide} />
     </mesh>
   )
 }
@@ -227,27 +285,42 @@ function ColumnMesh({ col, elevation }: { col: Column; elevation: number }) {
 }
 
 
-function StairMesh({ stair, elevation, storyHeight }: { stair: Stair; elevation: number; storyHeight: number }) {
-  const dx = stair.b.x - stair.a.x
-  const dz = stair.b.y - stair.a.y
+function FlightMesh({
+  a,
+  b,
+  width,
+  rises,
+  startElev,
+  endElev,
+  baseElevation,
+}: {
+  a: { x: number; y: number }
+  b: { x: number; y: number }
+  width: number
+  rises: number
+  startElev: number
+  endElev: number
+  baseElevation: number
+}) {
+  const dx = b.x - a.x
+  const dz = b.y - a.y
   const len = Math.hypot(dx, dz)
-  if (len < 0.05) return null
+  if (len < 0.05 || rises < 1) return null
   const angle = Math.atan2(dz, dx)
-  const rises = Math.max(2, stair.rises)
-  const totalH = Math.min(storyHeight, rises * 0.175)
+  const totalH = Math.max(0.05, endElev - startElev)
   const riseH = totalH / rises
   const tread = len / rises
   const m = matFor('beton')
   const steps = []
   for (let i = 0; i < rises; i++) {
     const along = tread * (i + 0.5)
-    const y = riseH * (i + 0.5)
+    const y = startElev + riseH * (i + 0.5)
     steps.push(
       <mesh
         key={i}
         geometry={boxGeo}
         position={[along - len / 2, y, 0]}
-        scale={[Math.max(0.08, tread * 0.95), riseH, stair.width]}
+        scale={[Math.max(0.08, tread * 0.95), riseH, width]}
         castShadow
         receiveShadow
       >
@@ -255,31 +328,99 @@ function StairMesh({ stair, elevation, storyHeight }: { stair: Stair; elevation:
       </mesh>,
     )
   }
-  // simple side stringers
-  const stringer = (
-    <>
-      <mesh
-        geometry={boxGeo}
-        position={[0, totalH / 2, stair.width / 2 + 0.03]}
-        scale={[len, Math.max(0.08, totalH * 0.12), 0.06]}
-        castShadow
-      >
-        <meshStandardMaterial color="#7a848c" roughness={0.7} metalness={0.15} />
-      </mesh>
-      <mesh
-        geometry={boxGeo}
-        position={[0, totalH / 2, -stair.width / 2 - 0.03]}
-        scale={[len, Math.max(0.08, totalH * 0.12), 0.06]}
-        castShadow
-      >
-        <meshStandardMaterial color="#7a848c" roughness={0.7} metalness={0.15} />
-      </mesh>
-    </>
-  )
   return (
-    <group position={[(stair.a.x + stair.b.x) / 2, elevation, (stair.a.y + stair.b.y) / 2]} rotation={[0, -angle, 0]}>
+    <group
+      position={[(a.x + b.x) / 2, baseElevation, (a.y + b.y) / 2]}
+      rotation={[0, -angle, 0]}
+    >
       {steps}
-      {stringer}
+      <mesh
+        geometry={boxGeo}
+        position={[0, startElev + totalH / 2, width / 2 + 0.03]}
+        scale={[len, Math.max(0.08, totalH * 0.12), 0.06]}
+        castShadow
+      >
+        <meshStandardMaterial color="#7a848c" roughness={0.7} metalness={0.15} />
+      </mesh>
+      <mesh
+        geometry={boxGeo}
+        position={[0, startElev + totalH / 2, -width / 2 - 0.03]}
+        scale={[len, Math.max(0.08, totalH * 0.12), 0.06]}
+        castShadow
+      >
+        <meshStandardMaterial color="#7a848c" roughness={0.7} metalness={0.15} />
+      </mesh>
+    </group>
+  )
+}
+
+function LandingMesh({
+  polygon,
+  elevation,
+  thickness,
+  baseElevation,
+}: {
+  polygon: { x: number; y: number }[]
+  elevation: number
+  thickness: number
+  baseElevation: number
+}) {
+  const geo = usePolygonExtrude(polygon, thickness)
+  const m = matFor('beton')
+  if (!geo) {
+    const b = bbox(polygon)
+    if (b.w < 0.05 || b.d < 0.05) return null
+    return (
+      <mesh
+        geometry={boxGeo}
+        position={[b.cx, baseElevation + elevation - thickness / 2, b.cz]}
+        scale={[b.w, thickness, b.d]}
+        castShadow
+        receiveShadow
+      >
+        <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} />
+      </mesh>
+    )
+  }
+  return (
+    <mesh geometry={geo} position={[0, baseElevation + elevation, 0]} castShadow receiveShadow>
+      <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} side={THREE.DoubleSide} />
+    </mesh>
+  )
+}
+
+function StairMesh({ stair, elevation, storyHeight }: { stair: Stair; elevation: number; storyHeight: number }) {
+  const s = normalizeStair(stair)
+  const pathKey = s.path.map((p) => `${p.x},${p.y}`).join(';')
+  const geom = useMemo(
+    () => buildStairGeometry(s, storyHeight),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pathKey, s.width, s.rises, s.rise, s.mode, storyHeight],
+  )
+  if (geom.flights.length === 0) return null
+  return (
+    <group>
+      {geom.flights.map((f, i) => (
+        <FlightMesh
+          key={`f-${i}`}
+          a={f.a}
+          b={f.b}
+          width={s.width}
+          rises={f.rises}
+          startElev={f.startElev}
+          endElev={f.endElev}
+          baseElevation={elevation}
+        />
+      ))}
+      {geom.landings.map((l, i) => (
+        <LandingMesh
+          key={`l-${i}`}
+          polygon={l.polygon}
+          elevation={l.elevation}
+          thickness={l.thickness}
+          baseElevation={elevation}
+        />
+      ))}
     </group>
   )
 }

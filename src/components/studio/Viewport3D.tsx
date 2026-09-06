@@ -8,6 +8,7 @@ import OrbitRig from './OrbitRig'
 import VisitControls from './VisitControls'
 import { useProjectStore } from '../../lib/store/project-store'
 import { nearestWallHit } from '../../lib/cad/ops'
+import { pointsNeededForMode } from '../../lib/cad/stairs'
 
 function InvalidateOnUpdate({ stamp }: { stamp: number }) {
   const invalidate = useThree((s) => s.invalidate)
@@ -163,17 +164,48 @@ export default function Viewport3D({
   const addFurnitureAt = useProjectStore((s) => s.addFurnitureAt)
   const addOpeningAtWall = useProjectStore((s) => s.addOpeningAtWall)
   const addSlab = useProjectStore((s) => s.addSlab)
+  const addSlabPolygon = useProjectStore((s) => s.addSlabPolygon)
   const addColumn = useProjectStore((s) => s.addColumn)
-  const addStair = useProjectStore((s) => s.addStair)
+  const addStairPath = useProjectStore((s) => s.addStairPath)
   const addRoof = useProjectStore((s) => s.addRoof)
+  const addRoofPolygon = useProjectStore((s) => s.addRoofPolygon)
+  const stairMode = useProjectStore((s) => s.stairMode)
+  const polyDrawMode = useProjectStore((s) => s.polyDrawMode)
   const coupeAxis = useProjectStore((s) => s.coupeAxis)
   const coupeCut = useProjectStore((s) => s.coupeCut)
 
   const [draft, setDraft] = useState<Vec2 | null>(null)
+  const [polyDraft, setPolyDraft] = useState<Vec2[]>([])
+  const lastClickAt = useState(() => ({ t: 0 }))[0]
 
   useEffect(() => {
     setDraft(null)
-  }, [tool])
+    setPolyDraft([])
+  }, [tool, stairMode, polyDrawMode])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setDraft(null)
+        setPolyDraft([])
+      }
+      if (e.key === 'Enter') {
+        if ((tool === 'slab' || tool === 'roof') && polyDrawMode === 'polygon' && polyDraft.length >= 3) {
+          e.preventDefault()
+          if (tool === 'slab') addSlabPolygon(polyDraft)
+          else addRoofPolygon(polyDraft)
+          setPolyDraft([])
+        }
+        if (tool === 'stair' && polyDraft.length >= (stairMode === 'droit' ? 2 : 3)) {
+          e.preventDefault()
+          addStairPath(polyDraft, stairMode)
+          setPolyDraft([])
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [tool, polyDrawMode, polyDraft, stairMode, addSlabPolygon, addRoofPolygon, addStairPath])
 
   const story = useMemo(() => {
     if (!activeStoryId) return project.stories[0]
@@ -235,18 +267,62 @@ export default function Viewport3D({
         addColumn(p)
         return
       }
-      if (tool === 'slab' || tool === 'roof' || tool === 'stair') {
-        if (!draft) {
-          setDraft(p)
+      if (tool === 'slab' || tool === 'roof') {
+        if (polyDrawMode === 'rect') {
+          if (!draft) {
+            setDraft(p)
+            setPolyDraft([])
+            return
+          }
+          if (tool === 'slab') addSlab(draft, p)
+          else addRoof(draft, p)
+          setDraft(null)
           return
         }
-        if (tool === 'slab') addSlab(draft, p)
-        else if (tool === 'roof') addRoof(draft, p)
-        else addStair(draft, p)
-        setDraft(null)
+        const now = Date.now()
+        const isDouble = now - lastClickAt.t < 320 && polyDraft.length >= 2
+        lastClickAt.t = now
+        if (isDouble) {
+          const pts = polyDraft.length >= 3 ? polyDraft : [...polyDraft, p]
+          if (pts.length >= 3) {
+            if (tool === 'slab') addSlabPolygon(pts)
+            else addRoofPolygon(pts)
+          }
+          setPolyDraft([])
+          return
+        }
+        setPolyDraft((prev) => [...prev, p])
+        return
+      }
+      if (tool === 'stair') {
+        const needed = pointsNeededForMode(stairMode)
+        const next = [...polyDraft, p]
+        if (next.length >= needed) {
+          addStairPath(next, stairMode)
+          setPolyDraft([])
+          return
+        }
+        setPolyDraft(next)
       }
     },
-    [tool, placeKind, walls, draft, addFurnitureAt, addOpeningAtWall, addColumn, addSlab, addRoof, addStair],
+    [
+      tool,
+      placeKind,
+      walls,
+      draft,
+      polyDraft,
+      polyDrawMode,
+      stairMode,
+      lastClickAt,
+      addFurnitureAt,
+      addOpeningAtWall,
+      addColumn,
+      addSlab,
+      addSlabPolygon,
+      addRoof,
+      addRoofPolygon,
+      addStairPath,
+    ],
   )
 
   const stamp =
@@ -300,6 +376,12 @@ export default function Viewport3D({
             <meshBasicMaterial color="#6ed0c3" />
           </mesh>
         )}
+        {polyDraft.map((pt, i) => (
+          <mesh key={`pd-${i}`} position={[pt.x, elevation + 0.05, pt.y]}>
+            <sphereGeometry args={[0.1, 10, 10]} />
+            <meshBasicMaterial color="#6ed0c3" />
+          </mesh>
+        ))}
         <BuildingScene project={project} activeStoryId={activeStoryId} visiting={visiting} />
       </Suspense>
     </Canvas>

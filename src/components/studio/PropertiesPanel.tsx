@@ -1,6 +1,8 @@
 import { useProjectStore } from '../../lib/store/project-store'
 import { FURNITURE_PRESETS } from '../../lib/bim/catalog'
 import { downloadIfc } from '../../lib/bim/ifc-export'
+import { labelForStairMode, normalizeStair } from '../../lib/cad/stairs'
+import type { StairMode } from '../../lib/bim/types'
 
 function roundStep(v: number, step: number) {
   return Math.round(v / step) * step
@@ -195,6 +197,9 @@ export default function PropertiesPanel() {
           <>
             <p className="text-xs text-[#7a8f9c] mb-1 font-mono">{slab.id}</p>
             <p className="text-sm mb-2">Dalle ({slab.kind})</p>
+            <p className="text-xs text-[#7a8f9c] mb-2">
+              Polygone · {slab.polygon.length} sommets
+            </p>
             <SliderRow
               label="Epaisseur"
               value={slab.thickness}
@@ -330,7 +335,37 @@ export default function PropertiesPanel() {
         ) : stair ? (
           <>
             <p className="text-xs text-[#7a8f9c] mb-1 font-mono">{stair.id}</p>
-            <p className="text-sm mb-2">Escalier</p>
+            <p className="text-sm mb-2">
+              Escalier · {labelForStairMode(normalizeStair(stair).mode ?? 'droit')}
+            </p>
+            <div className="flex flex-wrap gap-1 mb-2">
+              {(['droit', 'quart', 'demi'] as StairMode[]).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  className="chip"
+                  data-active={normalizeStair(stair).mode === m}
+                  onClick={() =>
+                    commit((p) => ({
+                      ...p,
+                      stairs: p.stairs.map((s) =>
+                        s.id === stair.id
+                          ? {
+                              ...normalizeStair(s),
+                              mode: m,
+                            }
+                          : s,
+                      ),
+                    }))
+                  }
+                >
+                  {labelForStairMode(m)}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-[#7a8f9c] mb-2">
+              Parcours · {normalizeStair(stair).path.length} points
+            </p>
             <SliderRow
               label="Largeur"
               value={stair.width}
@@ -358,6 +393,20 @@ export default function PropertiesPanel() {
                 }))
               }
             />
+            <SliderRow
+              label="Hauteur"
+              value={stair.rise ?? (project.stories.find((st) => st.id === stair.storyId)?.height ?? 2.8)}
+              min={1.5}
+              max={4.5}
+              step={0.05}
+              unit=" m"
+              onChange={(v) =>
+                patchNow((p) => ({
+                  ...p,
+                  stairs: p.stairs.map((s) => (s.id === stair.id ? { ...s, rise: v } : s)),
+                }))
+              }
+            />
             <button
               type="button"
               className="chip mt-2"
@@ -375,6 +424,9 @@ export default function PropertiesPanel() {
           <>
             <p className="text-xs text-[#7a8f9c] mb-1 font-mono">{roof.id}</p>
             <p className="text-sm mb-2">Toiture</p>
+            <p className="text-xs text-[#7a8f9c] mb-2">
+              Polygone · {roof.polygon.length} sommets
+            </p>
             <SliderRow
               label="Faitage"
               value={roof.ridgeHeight}

@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "build": "tsc -p tsconfig.app.json --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0 --port 8080",
-    "test:cad": "esbuild src/lib/cad/geom.test.ts --bundle --platform=node --format=esm --outfile=/tmp/forma-cad-test.mjs && node --test /tmp/forma-cad-test.mjs"
+    "test:cad": "esbuild src/lib/cad/geom.test.ts src/lib/cad/place.test.ts src/lib/cad/stairs.test.ts --bundle --platform=node --format=esm --outdir=/tmp/forma-tests && node --test /tmp/forma-tests/geom.test.js /tmp/forma-tests/place.test.js /tmp/forma-tests/stairs.test.js"
   },
   "dependencies": {
     "@react-three/drei": "^10.0.0",

@@ -247,16 +247,26 @@ function writeStair(
   storeyPlaceId: number,
   ctxId: number,
 ): void {
-  const mx = (stair.a.x + stair.b.x) / 2
-  const my = (stair.a.y + stair.b.y) / 2
-  const len = Math.max(0.5, Math.hypot(stair.b.x - stair.a.x, stair.b.y - stair.a.y))
-  const ang = Math.atan2(stair.b.y - stair.a.y, stair.b.x - stair.a.x)
-  const height = Math.max(0.3, stair.rises * 0.18)
+  const path = stair.path && stair.path.length >= 2 ? stair.path : [stair.a, stair.b]
+  const xs = path.map((p) => p.x)
+  const ys = path.map((p) => p.y)
+  const mx = (Math.min(...xs) + Math.max(...xs)) / 2
+  const my = (Math.min(...ys) + Math.max(...ys)) / 2
+  const a = path[0]!
+  const b = path[path.length - 1]!
+  const len = Math.max(0.5, Math.hypot(b.x - a.x, b.y - a.y), Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys))
+  const ang = Math.atan2(b.y - a.y, b.x - a.x)
+  const height = Math.max(0.3, (stair.rise ?? stair.rises * 0.175))
   const place = localPlacement(w, storeyPlaceId, mx, my, 0, ang)
   const body = extrudedBox(w, ctxId, len, Math.max(0.6, stair.width), height)
-  // Prefer IfcStair; some viewers expect IfcStairFlight — use IfcStair with body
+  const predefined =
+    stair.mode === 'quart'
+      ? '.QUARTER_TURN_STAIR.'
+      : stair.mode === 'demi'
+        ? '.HALF_TURN_STAIR.'
+        : '.STRAIGHT_RUN_STAIR.'
   const stairId = w.push(
-    `IFCSTAIR('${ifcGuid()}',#${ownerId},'${esc(stair.id)}',$,$,#${place},#${body},$,.STRAIGHT_RUN_STAIR.)`,
+    `IFCSTAIR('${ifcGuid()}',#${ownerId},'${esc(stair.id)}',$,$,#${place},#${body},$,${predefined})`,
   )
   w.push(
     `IFCRELCONTAINEDINSPATIALSTRUCTURE('${ifcGuid()}',#${ownerId},$,$,(#${stairId}),#${storeyEntityId})`,
