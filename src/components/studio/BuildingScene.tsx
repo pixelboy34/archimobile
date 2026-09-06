@@ -16,7 +16,15 @@ function matFor(id?: string, fallback = 'beton') {
   }
 }
 
-function WallMesh({ wall, elevation }: { wall: Wall; elevation: number }) {
+function WallMesh({
+  wall,
+  elevation,
+  visitMode = false,
+}: {
+  wall: Wall
+  elevation: number
+  visitMode?: boolean
+}) {
   const len = wallLength(wall)
   const angle = wallAngle(wall)
   const c = wallCenter(wall)
@@ -30,7 +38,14 @@ function WallMesh({ wall, elevation }: { wall: Wall; elevation: number }) {
       castShadow
       receiveShadow
     >
-      <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} />
+      <meshStandardMaterial
+        color={m.color}
+        roughness={m.roughness}
+        metalness={m.metalness}
+        side={visitMode ? THREE.DoubleSide : THREE.FrontSide}
+        emissive={visitMode ? '#1a3030' : '#000000'}
+        emissiveIntensity={visitMode ? 0.12 : 0}
+      />
     </mesh>
   )
 }
@@ -152,9 +167,10 @@ function FurnitureMesh({ item, elevation }: { item: Furniture; elevation: number
 type Props = {
   project: Project
   activeStoryId: string | null
+  visiting?: boolean
 }
 
-export default function BuildingScene({ project, activeStoryId }: Props) {
+export default function BuildingScene({ project, activeStoryId, visiting = false }: Props) {
   const quality = useMemo(() => detectQuality(), [])
   const storyMap = useMemo(() => {
     const m = new Map<string, (typeof project.stories)[0]>()
@@ -169,12 +185,17 @@ export default function BuildingScene({ project, activeStoryId }: Props) {
 
   const focusStory = activeStoryId ? storyMap.get(activeStoryId) : null
 
+  // Visite: fill interiors (solid walls block sun) without dropping PBR quality
+  const ambientI = visiting ? 0.72 : 0.35
+  const hemiI = visiting ? 0.55 : 0.35
+  const sunI = visiting ? 1.15 : 1.35
+
   return (
     <group>
-      <ambientLight intensity={0.35} />
+      <ambientLight intensity={ambientI} />
       <directionalLight
         castShadow={quality.shadows}
-        intensity={1.35}
+        intensity={sunI}
         position={[sunX, Math.max(8, sunY), sunZ]}
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
@@ -185,7 +206,16 @@ export default function BuildingScene({ project, activeStoryId }: Props) {
         shadow-camera-bottom={-40}
         shadow-bias={-0.0002}
       />
-      <hemisphereLight args={['#b8d4e8', '#3a4a3a', 0.35]} />
+      <hemisphereLight args={['#b8d4e8', '#3a4a3a', hemiI]} />
+      {visiting && (
+        <pointLight
+          intensity={0.85}
+          distance={28}
+          decay={2}
+          color="#cfe8e4"
+          position={[0, (focusStory?.elevation ?? 0) + 2.2, 0]}
+        />
+      )}
 
       {/* Ground */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
@@ -209,7 +239,7 @@ export default function BuildingScene({ project, activeStoryId }: Props) {
         const dim = focusStory && focusStory.id !== w.storyId && Math.abs(focusStory.index - st.index) > 2
         return (
           <group key={w.id} visible={!dim || true}>
-            <WallMesh wall={w} elevation={st.elevation} />
+            <WallMesh wall={w} elevation={st.elevation} visitMode={visiting} />
           </group>
         )
       })}

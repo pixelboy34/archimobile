@@ -110,7 +110,7 @@ describe('collision helpers', () => {
 })
 
 describe('visit spawn', () => {
-  it('uses room centroid when available', () => {
+  it('spawns inside room with clearance from walls', () => {
     const rooms: Room[] = [
       {
         id: 'r1',
@@ -125,21 +125,34 @@ describe('visit spawn', () => {
       },
     ]
     const walls: Wall[] = [
-      {
-        id: 'w1',
-        storyId: 's1',
-        a: { x: 0, y: 0 },
-        b: { x: 4, y: 0 },
-        thickness: 0.2,
-        height: 2.8,
-        typology: 'exterior',
-      },
+      { id: 'w1', storyId: 's1', a: { x: 0, y: 0 }, b: { x: 4, y: 0 }, thickness: 0.2, height: 2.8, typology: 'exterior' },
+      { id: 'w2', storyId: 's1', a: { x: 4, y: 0 }, b: { x: 4, y: 4 }, thickness: 0.2, height: 2.8, typology: 'exterior' },
+      { id: 'w3', storyId: 's1', a: { x: 4, y: 4 }, b: { x: 0, y: 4 }, thickness: 0.2, height: 2.8, typology: 'exterior' },
+      { id: 'w4', storyId: 's1', a: { x: 0, y: 4 }, b: { x: 0, y: 0 }, thickness: 0.2, height: 2.8, typology: 'exterior' },
     ]
     const c = polygonCentroid(rooms[0].polygon)!
     assert.ok(pointInPolygon(c, rooms[0].polygon))
     const spawn = computeVisitSpawn(rooms, walls)
-    assert.ok(Math.abs(spawn.position.x - 2) < 1e-6)
-    assert.ok(Math.abs(spawn.position.y - 2) < 1e-6)
+    assert.ok(pointInPolygon(spawn.position, rooms[0].polygon))
+    // Prefer open floor near center (not stuck in a wall)
+    assert.ok(Math.hypot(spawn.position.x - 2, spawn.position.y - 2) < 1.6)
+    assert.ok(Number.isFinite(spawn.yaw))
+  })
+
+  it('avoids core center when rooms empty (massing)', () => {
+    const walls: Wall[] = [
+      { id: 'e1', storyId: 's1', a: { x: -6, y: -9 }, b: { x: 6, y: -9 }, thickness: 0.25, height: 3, typology: 'exterior' },
+      { id: 'e2', storyId: 's1', a: { x: 6, y: -9 }, b: { x: 6, y: 9 }, thickness: 0.25, height: 3, typology: 'exterior' },
+      { id: 'e3', storyId: 's1', a: { x: 6, y: 9 }, b: { x: -6, y: 9 }, thickness: 0.25, height: 3, typology: 'exterior' },
+      { id: 'e4', storyId: 's1', a: { x: -6, y: 9 }, b: { x: -6, y: -9 }, thickness: 0.25, height: 3, typology: 'exterior' },
+      { id: 'c1', storyId: 's1', a: { x: -1.5, y: -2.7 }, b: { x: 1.5, y: -2.7 }, thickness: 0.2, height: 3, typology: 'core' },
+      { id: 'c2', storyId: 's1', a: { x: 1.5, y: -2.7 }, b: { x: 1.5, y: 2.7 }, thickness: 0.2, height: 3, typology: 'core' },
+      { id: 'c3', storyId: 's1', a: { x: 1.5, y: 2.7 }, b: { x: -1.5, y: 2.7 }, thickness: 0.2, height: 3, typology: 'core' },
+      { id: 'c4', storyId: 's1', a: { x: -1.5, y: 2.7 }, b: { x: -1.5, y: -2.7 }, thickness: 0.2, height: 3, typology: 'core' },
+    ]
+    const spawn = computeVisitSpawn([], walls)
+    // Should not sit at exact building center (core hollow) — prefer open plateau
+    assert.ok(Math.hypot(spawn.position.x, spawn.position.y) > 0.5)
   })
 })
 

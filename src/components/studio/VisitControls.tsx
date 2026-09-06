@@ -50,6 +50,7 @@ export default function VisitControls({
   const yaw = useRef(0)
   const pitch = useRef(0)
   const pos = useRef(new THREE.Vector3(0, elevation + EYE, 0))
+  const fillLight = useRef<THREE.PointLight>(null)
   const initialized = useRef(false)
   const lastStoryKey = useRef<string | null>(null)
   const lookTouch = useRef<{
@@ -63,6 +64,16 @@ export default function VisitControls({
   wallsRef.current = walls
   furnitureRef.current = furniture
 
+  const applyCamera = () => {
+    camera.position.copy(pos.current)
+    const look = new THREE.Vector3(
+      pos.current.x + Math.sin(yaw.current) * Math.cos(pitch.current),
+      pos.current.y + Math.sin(pitch.current),
+      pos.current.z - Math.cos(yaw.current) * Math.cos(pitch.current),
+    )
+    camera.lookAt(look)
+  }
+
   const spawnAt = (elev: number) => {
     const spawn = computeVisitSpawn(rooms, walls)
     pos.current.set(spawn.position.x, elev + EYE, spawn.position.y)
@@ -71,6 +82,8 @@ export default function VisitControls({
     const resolved = resolveAll(pos.current.x, pos.current.z)
     pos.current.x = resolved.x
     pos.current.z = resolved.y
+    // Apply immediately so first paint is not black / orbit leftover
+    applyCamera()
   }
 
   const resolveAll = (x: number, z: number) => {
@@ -103,6 +116,7 @@ export default function VisitControls({
     } else {
       pos.current.y = elevation + EYE
     }
+    applyCamera()
     // elevation / storyKey / rooms / walls intentionally drive re-spawn/clamp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, elevation, storyKey])
@@ -251,9 +265,22 @@ export default function VisitControls({
       pos.current.z - Math.cos(yaw.current) * Math.cos(pitch.current),
     )
     camera.lookAt(look)
+    if (fillLight.current) {
+      fillLight.current.position.set(pos.current.x, pos.current.y + 0.25, pos.current.z)
+    }
   })
 
-  return null
+  // Local fill follows the player — interiors readable even without pointer-lock
+  return (
+    <pointLight
+      ref={fillLight}
+      intensity={0.6}
+      distance={14}
+      decay={2}
+      color="#dff5f0"
+      position={[0, elevation + EYE + 0.25, 0]}
+    />
+  )
 }
 
 /** On-screen HUD for visite — interactive joystick + lock hint. */
@@ -337,7 +364,7 @@ export function VisitHud() {
       {isFine && !locked && (
         <div className="absolute inset-0 flex items-center justify-center">
           <p className="pointer-events-none chip border-[#6ed0c3]/50 text-[#6ed0c3] text-sm px-5">
-            clic pour regarder
+            clic pour regarder · WASD pour marcher
           </p>
         </div>
       )}

@@ -236,9 +236,13 @@ export function polygonCentroid(poly: Vec2[]): Vec2 | null {
   return { x: x / poly.length, y: y / poly.length }
 }
 
-/** Bounds center of wall endpoints (and optional extra points). */
-export function wallsBoundsCenter(walls: Wall[]): Vec2 {
-  if (walls.length === 0) return { x: 0, y: 0 }
+export function wallsBounds(walls: Wall[]): {
+  minX: number
+  maxX: number
+  minY: number
+  maxY: number
+} | null {
+  if (walls.length === 0) return null
   let minX = Infinity
   let maxX = -Infinity
   let minY = Infinity
@@ -249,24 +253,51 @@ export function wallsBoundsCenter(walls: Wall[]): Vec2 {
     minY = Math.min(minY, w.a.y, w.b.y)
     maxY = Math.max(maxY, w.a.y, w.b.y)
   }
-  return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 }
+  return { minX, maxX, minY, maxY }
+}
+
+/** Bounds center of wall endpoints. */
+export function wallsBoundsCenter(walls: Wall[]): Vec2 {
+  const b = wallsBounds(walls)
+  if (!b) return { x: 0, y: 0 }
+  return { x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2 }
+}
+
+/** Clearance from point to nearest wall face (centerline dist − half thickness). */
+export function wallClearance(pos: Vec2, walls: Wall[]): number {
+  let best = Infinity
+  for (const w of walls) {
+    const proj = projectOnSegment(pos, w.a, w.b)
+    best = Math.min(best, proj.dist - w.thickness / 2)
+  }
+  return best
+}
+
+function yawToward(from: Vec2, to: Vec2, fallback: Vec2): number {
+  const dx = to.x - from.x
+  const dz = to.y - from.y
+  if (Math.hypot(dx, dz) > 1e-4) return Math.atan2(dx, -dz)
+  const tx = fallback.x - from.x
+  const tz = fallback.y - from.y
+  if (Math.hypot(tx, tz) > 1e-4) return Math.atan2(tx, -tz)
+  return 0
 }
 
 /**
- * Spawn for visite: prefer first room centroid inside its polygon,
- * else walls bounds center. Yaw faces toward room/bounds center (inward).
+ * Spawn for visite: prefer largest room centroid (clear of walls),
+ * else open-floor samples outside cores — never sit inside wall solids.
+ * Yaw faces inward (toward building / room center).
  */
 export function computeVisitSpawn(
   rooms: Room[],
   walls: Wall[],
 ): { position: Vec2; yaw: number } {
   const center = wallsBoundsCenter(walls)
-  let position = { ...center }
-  let face = { ...center }
+  const clearanceNeed = 0.35
+  const candidates: Vec2[] = []
 
   const withPoly = rooms.filter((r) => r.polygon && r.polygon.length >= 3)
   if (withPoly.length > 0) {
-    // Prefer largest area-ish (shoelace abs)
     let best = withPoly[0]
     let bestArea = 0
     for (const r of withPoly) {
@@ -284,31 +315,68 @@ export function computeVisitSpawn(
     }
     const c = polygonCentroid(best.polygon)
     if (c) {
-      position = c
-      face = c
-      // Face slightly toward polygon average of edges — nudge from a wall inward
-      // Use vector from nearest wall toward centroid
-      const near = findNearestWall(c, walls, 50)
-      if (near) {
-        const proj = projectOnSegment(c, near.wall.a, near.wall.b)
-        const inward = normalize(sub(c, proj.point))
-        face = add(c, inward)
+      candidates.push(c)
+      for (let i = 0; i < best.polygon.length; i++) {
+        const p = best.polygon[i]
+        const q = best.polygon[(i + 1) % best.polygon.length]
+        const mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }
+        candidates.push({
+          x: c.x * 0.55 + mid.x * 0.45,
+          y: c.y * 0.55 + mid.y * 0.45,
+        })
       }
     }
   }
 
-  const dx = face.x - position.x
-  const dz = face.y - position.y
-  // Camera yaw: 0 looks -Z; atan2(dx, -dz) matches VisitControls look
-  let yaw = 0
-  if (Math.hypot(dx, dz) > 1e-4) {
-    yaw = Math.atan2(dx, -dz)
+  // Open-floor samples from envelope (massing often has empty rooms[])
+  const envelopeWalls = walls.filter(
+    (w) => w.typology === 'exterior' || w.typology === 'curtain',
+  )
+  const envelope = envelopeWalls.length > 0 ? envelopeWalls : walls
+  const b = wallsBounds(envelope)
+  if (b) {
+    const xs = [0.22, 0.35, 0.5, 0.65, 0.78]
+    const ys = [0.22, 0.35, 0.5, 0.65, 0.78]
+    for (const u of xs) {
+      for (const v of ys) {
+        candidates.push({
+          x: b.minX + (b.maxX - b.minX) * u,
+          y: b.minY + (b.maxY - b.minY) * v,
+        })
+      }
+    }
   } else {
-    // Default look toward world origin from spawn, or +Z if at origin
-    const tx = center.x - position.x
-    const tz = center.y - position.y
-    if (Math.hypot(tx, tz) > 1e-4) yaw = Math.atan2(tx, -tz)
+    candidates.push({ ...center })
   }
 
-  return { position, yaw }
+  let position = { ...center }
+  let bestScore = -Infinity
+  for (const raw of candidates) {
+    const p = resolveWallCollision(raw, 0.28, walls, 0.08)
+    const clear = wallClearance(p, walls)
+    if (clear < clearanceNeed * 0.5) continue
+    const offCenter = Math.hypot(p.x - center.x, p.y - center.y)
+    const score = clear * 4 + Math.min(offCenter, 6) * 0.35
+    if (score > bestScore) {
+      bestScore = score
+      position = p
+    }
+  }
+
+  let face = { ...center }
+  const near = findNearestWall(position, walls, 50)
+  if (near) {
+    const proj = projectOnSegment(position, near.wall.a, near.wall.b)
+    const inward = normalize(sub(position, proj.point))
+    face = add(position, inward)
+    const toCenter = sub(center, position)
+    if (
+      toCenter.x * inward.x + toCenter.y * inward.y > 0 &&
+      Math.hypot(toCenter.x, toCenter.y) > 0.4
+    ) {
+      face = center
+    }
+  }
+
+  return { position, yaw: yawToward(position, face, center) }
 }

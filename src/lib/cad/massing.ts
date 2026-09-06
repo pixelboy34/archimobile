@@ -1,6 +1,6 @@
 import type { Project, Wall, Slab, Furniture, Column } from '../bim/types'
 import { uid } from '../bim/types'
-import { makeStory, rectWalls, rectPolygon, makeSlab, makeFurniture, makeColumn } from '../bim/builder'
+import { makeStory, rectWalls, rectPolygon, makeSlab, makeFurniture, makeColumn, makeRoom } from '../bim/builder'
 
 export type MassingParams = {
   width: number
@@ -92,15 +92,30 @@ export function generateMassing(params: MassingParams): Pick<
   const topElev = top.elevation + top.height
   slabs.push(makeSlab(top.id, rectPolygon(ox + 0.5, oz + 0.5, width - 1, depth - 1), topElev, 'terrace', 0.2))
 
+  // Open plateau rooms (helps visite spawn off the core)
+  const rooms = stories.map((story) =>
+    makeRoom(story.id, 'Plateau', rectPolygon(ox, oz, width, depth)),
+  )
+
+  // Simple stair runs in the core for IFC (one per story except top)
+  const stairs = stories.slice(0, -1).map((story) => ({
+    id: `stair-${story.id}`,
+    storyId: story.id,
+    a: { x: -0.6, y: coreZ + coreD - 1.4 },
+    b: { x: 0.6, y: coreZ + coreD - 1.4 },
+    width: 1.2,
+    rises: Math.max(8, Math.round(hsp / 0.17)),
+  }))
+
   return {
     stories,
     walls,
     slabs,
     columns,
     furniture,
-    rooms: [],
+    rooms,
     roofs: [],
     openings: [],
-    stairs: [],
+    stairs,
   }
 }
