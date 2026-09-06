@@ -115,7 +115,7 @@ export function CommandOrb({
     >
       {/* Mode switcher */}
       <div className="flex items-center gap-1 px-0.5">
-        <div className="flex min-w-0 flex-1 rounded-full border border-border/50 bg-elevated/70 p-0.5">
+        <div className="flex min-w-0 flex-1 rounded-full border border-accent/20 bg-elevated/75 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
           <ModeBtn
             label="Concevoir"
             icon={<PenLine className="size-3.5" />}
@@ -316,7 +316,7 @@ function OrbBtn({
       onClick={onClick}
       onContextMenu={onContextMenu}
       className={cn(
-        "hud-chip-press flex h-11 min-w-11 flex-col items-center justify-center gap-0.5 rounded-lg px-2.5 text-[9px] font-medium tracking-wide uppercase",
+        "hud-chip-press flex h-11 min-w-11 flex-col items-center justify-center gap-0.5 rounded-xl px-2.5 text-[9px] font-medium tracking-[0.12em] uppercase",
         danger && "text-danger hover:bg-danger/10",
         accent && !danger && "bg-accent/15 text-accent ring-1 ring-accent/45",
         active && !accent && !danger && "bg-accent/15 text-accent ring-1 ring-accent/50",

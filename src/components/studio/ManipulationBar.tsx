@@ -2,10 +2,6 @@ import type { ReactNode } from "react";
 import {
   Copy,
   Focus,
-  Grid3x3,
-  Layers,
-  Magnet,
-  MoveHorizontal,
   Palette,
   Redo2,
   RotateCw,
@@ -23,7 +19,7 @@ import { deliverDossier } from "@/lib/bim/dossier";
 import { useStudio } from "@/lib/store/project-store";
 import { dispatchCam } from "./OrbitRig";
 
-/** Context row inside CommandRail — accent border when selection active. */
+/** Legacy context row — drawing toggles owned by CommandOrb; isolate by ViewBar/Étages. */
 export function ManipulationBar({
   onParams,
   onMaterial,
@@ -32,14 +28,6 @@ export function ManipulationBar({
   onMaterial?: () => void;
 }) {
   const selectedIds = useStudio((s) => s.selectedIds);
-  const snap = useStudio((s) => s.snap);
-  const grid = useStudio((s) => s.grid);
-  const ortho = useStudio((s) => s.ortho);
-  const isolateStory = useStudio((s) => s.isolateStory);
-  const setSnap = useStudio((s) => s.setSnap);
-  const setGrid = useStudio((s) => s.setGrid);
-  const setOrtho = useStudio((s) => s.setOrtho);
-  const setIsolateStory = useStudio((s) => s.setIsolateStory);
   const undo = useStudio((s) => s.undo);
   const redo = useStudio((s) => s.redo);
   const duplicateSelected = useStudio((s) => s.duplicateSelected);
@@ -107,9 +95,6 @@ export function ManipulationBar({
             <BarBtn label="Supprimer" danger onClick={deleteSelected}>
               <Trash2 className="size-4" />
             </BarBtn>
-            <BarBtn label="Isoler" active={isolateStory} onClick={() => setIsolateStory(!isolateStory)}>
-              <Layers className="size-4" />
-            </BarBtn>
             <BarBtn label="Matériau" onClick={() => (onMaterial ?? onParams)()}>
               <Palette className="size-4" />
             </BarBtn>
@@ -119,15 +104,7 @@ export function ManipulationBar({
           </>
         ) : (
           <>
-            <BarBtn label="Aimant" active={snap} onClick={() => setSnap(!snap)}>
-              <Magnet className="size-4" />
-            </BarBtn>
-            <BarBtn label="Grille" active={grid} onClick={() => setGrid(!grid)}>
-              <Grid3x3 className="size-4" />
-            </BarBtn>
-            <BarBtn label="Ortho" active={ortho} onClick={() => setOrtho(!ortho)}>
-              <MoveHorizontal className="size-4" />
-            </BarBtn>
+            {/* Aimant / Grille / Ortho : CommandOrb only */}
             <BarBtn label="Annuler" onClick={undo}>
               <Undo2 className="size-4" />
             </BarBtn>

@@ -66,7 +66,7 @@ export function InspectorDock({
     <div
       className={cn(
         "inspector-dock pointer-events-auto absolute inset-x-0 bottom-0 z-30 flex flex-col",
-        "border-t border-accent/35 bg-surface/96 shadow-[0_-8px_32px_rgba(0,0,0,0.35)] backdrop-blur-md",
+        "border-t border-accent/40 bg-surface/97 shadow-[0_-12px_40px_rgba(0,0,0,0.55),0_0_0_1px_rgba(110,208,195,0.12)] backdrop-blur-xl",
         "animate-in slide-in-from-bottom duration-300",
         expanded ? "max-h-[min(52dvh,28rem)]" : "max-h-[min(36dvh,22rem)]",
       )}
@@ -77,7 +77,7 @@ export function InspectorDock({
         onClick={() => setExpanded((v) => !v)}
         className="flex w-full flex-col items-center pt-1.5 pb-0.5"
       >
-        <span className="h-1 w-10 rounded-full bg-accent/50" />
+        <span className="h-1 w-10 rounded-full bg-accent/60 shadow-[0_0_8px_rgba(110,208,195,0.45)]" />
         <span className="mt-0.5 flex items-center gap-1 text-[9px] tracking-wide text-muted uppercase">
           <ChevronUp className={cn("size-3 transition-transform duration-200", expanded && "rotate-180")} />
           {expanded ? "Réduire" : "Agrandir"}
@@ -104,7 +104,7 @@ export function InspectorDock({
                 type="button"
                 onClick={() => onTab(t.id)}
                 className={cn(
-                  "relative h-8 shrink-0 px-3 text-xs font-medium tracking-wide transition-colors",
+                  "relative h-8 shrink-0 px-3 text-xs font-medium tracking-[0.14em] uppercase transition-colors",
                   tab === t.id ? "text-fg" : "text-muted hover:text-fg",
                 )}
               >

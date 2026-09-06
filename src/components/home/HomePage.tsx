@@ -75,18 +75,18 @@ export function HomePage() {
           </div>
           <div className="flex flex-col items-end gap-2">
             <LiveStamp />
-            <div className="flex bg-elevated p-0.5 text-[11px]">
+            <div className="flex rounded-full border border-accent/20 bg-elevated/90 p-0.5 text-[11px] tracking-[0.12em] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
               <button
                 type="button"
                 onClick={() => setSkill("simple")}
-                className={`h-8 px-3 ${skill === "simple" ? "bg-primary text-primary-fg" : "text-muted"}`}
+                className={`h-8 rounded-full px-3 ${skill === "simple" ? "bg-accent/18 text-accent ring-1 ring-accent/40" : "text-muted"}`}
               >
                 Amateur
               </button>
               <button
                 type="button"
                 onClick={() => setSkill("pro")}
-                className={`h-8 px-3 ${skill === "pro" ? "bg-primary text-primary-fg" : "text-muted"}`}
+                className={`h-8 rounded-full px-3 ${skill === "pro" ? "bg-accent/18 text-accent ring-1 ring-accent/40" : "text-muted"}`}
               >
                 Expert
               </button>
@@ -157,7 +157,7 @@ export function HomePage() {
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <p className="rounded-xl border border-border bg-surface px-4 py-10 text-center text-sm text-muted">
+          <p className="panel-card px-4 py-10 text-center text-sm text-muted">
             Aucun projet. Créez une esquisse ou générez un massing.
           </p>
         ) : (
@@ -194,7 +194,7 @@ export function HomePage() {
                         const id = duplicateProjectById(p.id);
                         if (id) toast.success("Copie créée");
                       }}
-                      className="flex size-10 items-center justify-center rounded-md bg-bg/70 text-muted hover:text-fg"
+                      className="flex size-10 items-center justify-center rounded-xl border border-border/50 bg-bg/75 text-muted backdrop-blur-sm hover:border-accent/35 hover:text-fg"
                     >
                       <Copy className="size-4" />
                     </button>
@@ -207,7 +207,7 @@ export function HomePage() {
                           exportBimJson(p),
                         )
                       }
-                      className="flex size-10 items-center justify-center rounded-md bg-bg/70 text-muted hover:text-fg"
+                      className="flex size-10 items-center justify-center rounded-xl border border-border/50 bg-bg/75 text-muted backdrop-blur-sm hover:border-accent/35 hover:text-fg"
                     >
                       <FileUp className="size-4 rotate-180" />
                     </button>
@@ -220,7 +220,7 @@ export function HomePage() {
                           toast("Projet retiré");
                         }
                       }}
-                      className="flex size-10 items-center justify-center rounded-md bg-bg/70 text-muted hover:text-fg"
+                      className="flex size-10 items-center justify-center rounded-xl border border-border/50 bg-bg/75 text-muted backdrop-blur-sm hover:border-accent/35 hover:text-fg"
                     >
                       <Trash2 className="size-4" />
                     </button>

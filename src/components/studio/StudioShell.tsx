@@ -317,7 +317,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
         {/* CommandOrb regroupe Concevoir / Modifier — ResourcesPeek pour matériaux & biblio */}
 
         {view === "coupe" && (
-          <div className="pointer-events-auto absolute top-[calc(env(safe-area-inset-top)+7.5rem)] right-3 left-3 rounded-lg border border-border bg-surface/90 px-3 py-2">
+          <div className="pointer-events-auto absolute top-[calc(env(safe-area-inset-top)+7.5rem)] right-3 left-3 panel-card px-3 py-2">
             <label className="flex flex-col gap-1.5 text-xs text-muted">
               <div className="flex items-center justify-between gap-2">
                 <span className="font-medium tracking-wide text-fg uppercase">Hauteur coupe</span>
@@ -354,7 +354,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
         />
 
         <header className="pointer-events-none absolute top-0 right-0 left-0 z-20">
-          <div className="pointer-events-auto flex items-center gap-1 bg-gradient-to-b from-bg/90 via-bg/45 to-transparent pt-[max(0.3rem,env(safe-area-inset-top))] pr-2 pb-3 pl-1">
+          <div className="pointer-events-auto flex items-center gap-1 bg-gradient-to-b from-bg/95 via-bg/50 to-transparent pt-[max(0.3rem,env(safe-area-inset-top))] pr-2 pb-3 pl-1">
             <Button variant="ghost" size="icon" asChild>
               <Link to="/" aria-label="Projets">
                 <ChevronLeft className="size-5" />
@@ -363,7 +363,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
             <div className="min-w-0 flex-1">
               <p className="truncate font-display text-sm font-semibold leading-tight tracking-tight">{current.name}</p>
             </div>
-            <div className="flex shrink-0 rounded-full border border-border/60 bg-elevated/90 p-0.5">
+            <div className="flex shrink-0 rounded-full border border-accent/25 bg-elevated/90 p-0.5 shadow-[0_0_0_1px_rgba(126,208,195,0.08)]">
               {WORKSPACES.map((w) => (
                 <button
                   key={w.id}
@@ -535,8 +535,13 @@ export function StudioShell({ projectId }: { projectId: string }) {
         </SheetContent>
       </Sheet>
       <Sheet open={panel === "analyse"} onOpenChange={(o) => !o && setPanel(null)}>
-        <SheetContent title="Lumière & chiffres" tall>
-          <AnalysisPanel />
+        <SheetContent title="Chiffres & faisabilité" tall>
+          <AnalysisPanel
+            onOpenVue={() => {
+              setPanel(null);
+              setInspector("rendu");
+            }}
+          />
         </SheetContent>
       </Sheet>
       <Sheet

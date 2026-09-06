@@ -1,3 +1,11 @@
+/**
+ * PARAM_OWNERS — single source of truth for shared toggles (évite les doublons UI) :
+ * - Grille / Accrochage / Ortho → CommandOrb (+ raccourcis clavier)
+ * - Isoler étage → ViewBar + onglet Étages
+ * - Lumière / soleil / ombres → onglet Vue uniquement
+ * - Coupe clipY → slider StudioShell (vue coupe) + Param Vue
+ * - Ossature → StructurePanel ; Physique → HUD Visite + un toggle Vue
+ */
 import { useEffect, useState, type ReactNode } from "react";
 import {
   ALIGN_LABELS,
@@ -71,20 +79,10 @@ export function PropertiesPanel({
 }) {
   const project = useStudio((s) => s.projects.find((p) => p.id === s.currentId) ?? null);
   const selectedIds = useStudio((s) => s.selectedIds);
-  const grid = useStudio((s) => s.grid);
-  const snap = useStudio((s) => s.snap);
-  const setGrid = useStudio((s) => s.setGrid);
-  const setSnap = useStudio((s) => s.setSnap);
-  const ortho = useStudio((s) => s.ortho);
-  const setOrtho = useStudio((s) => s.setOrtho);
   const lighting = useStudio((s) => s.lighting);
   const setLighting = useStudio((s) => s.setLighting);
   const clipY = useStudio((s) => s.clipY);
   const setClipY = useStudio((s) => s.setClipY);
-  const isolateStory = useStudio((s) => s.isolateStory);
-  const setIsolateStory = useStudio((s) => s.setIsolateStory);
-  const showStructure = useStudio((s) => s.showStructure);
-  const setShowStructure = useStudio((s) => s.setShowStructure);
   const physics = useStudio((s) => s.physics);
   const setPhysics = useStudio((s) => s.setPhysics);
   const analysis = useStudio((s) => s.analysis);
@@ -350,9 +348,9 @@ export function PropertiesPanel({
             </More>
           </Section>
           <Section title="Saisie">
-            <ToggleRow label="Grille" on={grid} onChange={setGrid} />
-            <ToggleRow label="Accrochage" on={snap} onChange={setSnap} />
-            <ToggleRow label="Ortho" on={ortho} onChange={setOrtho} />
+            <p className="text-[11px] leading-relaxed text-subtle">
+              Réglages dessin (grille, accrochage, ortho) : voir le rail CommandOrb — G / S / O.
+            </p>
           </Section>
           <Section title="Matériaux">
             <MaterialSwatches
@@ -371,13 +369,11 @@ export function PropertiesPanel({
       {!compact && tab === "rendu" && (
         <>
           <Section title="Affichage">
-            <ToggleRow label="Grille" on={grid} onChange={setGrid} />
-            <ToggleRow label="Accrochage" on={snap} onChange={setSnap} />
-            <ToggleRow label="Ortho" on={ortho} onChange={setOrtho} />
-            <ToggleRow label="Isoler l’étage" on={isolateStory} onChange={setIsolateStory} />
-            <ToggleRow label="Ossature porteuse" on={showStructure} onChange={setShowStructure} />
             <ToggleRow label="Physique (visite)" on={physics} onChange={setPhysics} />
             <Param label="Coupe (clip Y)" value={clipY} min={0.15} max={1} step={0.02} unit="" digits={2} onBegin={beginEdit} onChange={setClipY} />
+            <p className="text-[11px] leading-relaxed text-subtle">
+              Grille / accrochage / ortho : rail CommandOrb. Isoler étage : ViewBar ou onglet Étages. Ossature : panneau Structure.
+            </p>
             <p className="text-[11px] text-subtle">Passez en vue Coupe pour voir le plan sectionné en direct.</p>
           </Section>
           <Section title="Lumière">

@@ -4,7 +4,7 @@ import { assessFeasibility } from "@/lib/bim/feasibility";
 import { useStudio } from "@/lib/store/project-store";
 import { isLiveTypical, typicalGroupSize } from "@/lib/cad/typical";
 
-/** TOP-LEFT: vues + niveaux only (Propager lives in ManipulationBar). */
+/** TOP-LEFT: vues + niveaux + Isoler (drawing toggles → CommandOrb). */
 export function ViewBar({
   project,
   onStories,
