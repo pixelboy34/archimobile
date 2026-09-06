@@ -524,7 +524,7 @@ export const useProjectStore = create<StoreState>()(
       },
     }),
     {
-      name: 'forma-studio-v9',
+      name: 'forma-studio-v10',
       partialize: (s) => ({
         projects: s.projects,
         skill: s.skill,
@@ -535,9 +535,9 @@ export const useProjectStore = create<StoreState>()(
         const p = persisted as Partial<StoreState> | undefined
         const seeds = seedMap()
         const merged = { ...seeds, ...(p?.projects ?? {}) }
-        // Ensure seed names stay available if missing
+        // Force-refresh demo seeds so premium geometry always wins
         for (const [k, v] of Object.entries(seeds)) {
-          if (!merged[k]) merged[k] = v
+          merged[k] = v
         }
         for (const proj of Object.values(merged)) {
           if (!proj) continue

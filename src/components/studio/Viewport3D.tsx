@@ -9,6 +9,7 @@ import VisitControls from './VisitControls'
 import { useProjectStore } from '../../lib/store/project-store'
 import { nearestWallHit } from '../../lib/cad/ops'
 import { pointsNeededForMode } from '../../lib/cad/stairs'
+import { Line } from '@react-three/drei'
 
 function InvalidateOnUpdate({ stamp }: { stamp: number }) {
   const invalidate = useThree((s) => s.invalidate)
@@ -119,10 +120,12 @@ function PlaceSurface({
   enabled,
   elevation,
   onPlace,
+  onHover,
 }: {
   enabled: boolean
   elevation: number
   onPlace: (x: number, z: number) => void
+  onHover?: (x: number, z: number) => void
 }) {
   const onPointerDown = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
@@ -132,12 +135,20 @@ function PlaceSurface({
     },
     [enabled, onPlace],
   )
+  const onPointerMove = useCallback(
+    (e: ThreeEvent<PointerEvent>) => {
+      if (!enabled || !onHover) return
+      onHover(e.point.x, e.point.z)
+    },
+    [enabled, onHover],
+  )
   if (!enabled) return null
   return (
     <mesh
       rotation={[-Math.PI / 2, 0, 0]}
       position={[0, elevation + 0.02, 0]}
       onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
     >
       <planeGeometry args={[200, 200]} />
       <meshBasicMaterial visible={false} />
@@ -169,6 +180,8 @@ export default function Viewport3D({
   const addStairPath = useProjectStore((s) => s.addStairPath)
   const addRoof = useProjectStore((s) => s.addRoof)
   const addRoofPolygon = useProjectStore((s) => s.addRoofPolygon)
+  const addWall = useProjectStore((s) => s.addWall)
+  const ortho = useProjectStore((s) => s.ortho)
   const stairMode = useProjectStore((s) => s.stairMode)
   const polyDrawMode = useProjectStore((s) => s.polyDrawMode)
   const coupeAxis = useProjectStore((s) => s.coupeAxis)
@@ -176,11 +189,13 @@ export default function Viewport3D({
 
   const [draft, setDraft] = useState<Vec2 | null>(null)
   const [polyDraft, setPolyDraft] = useState<Vec2[]>([])
+  const [hover, setHover] = useState<Vec2 | null>(null)
   const lastClickAt = useState(() => ({ t: 0 }))[0]
 
   useEffect(() => {
     setDraft(null)
     setPolyDraft([])
+    setHover(null)
   }, [tool, stairMode, polyDrawMode])
 
   useEffect(() => {
@@ -237,7 +252,9 @@ export default function Viewport3D({
   const placingPoint =
     !visiting &&
     !coupe &&
-    (tool === 'column' ||
+    (tool === 'wall' ||
+      tool === 'rect' ||
+      tool === 'column' ||
       tool === 'door' ||
       tool === 'window' ||
       tool === 'slab' ||
@@ -246,16 +263,81 @@ export default function Viewport3D({
       placingObjects)
   const orbitOff = placingPoint
 
-  const snap = (x: number, z: number): Vec2 => ({
-    x: Math.round(x * 20) / 20,
-    y: Math.round(z * 20) / 20,
-  })
+  const snap = (x: number, z: number, anchor: Vec2 | null = null): Vec2 => {
+    let sx = Math.round(x * 20) / 20
+    let sy = Math.round(z * 20) / 20
+    if (ortho && anchor && (tool === 'wall' || tool === 'stair')) {
+      const dx = Math.abs(sx - anchor.x)
+      const dy = Math.abs(sy - anchor.y)
+      if (dx > dy) sy = anchor.y
+      else sx = anchor.x
+    }
+    // Snap to nearby wall endpoints (visible feedback)
+    let best = 0.35
+    for (const w of walls) {
+      for (const pt of [w.a, w.b]) {
+        const dist = Math.hypot(sx - pt.x, sy - pt.y)
+        if (dist < best) {
+          best = dist
+          sx = pt.x
+          sy = pt.y
+        }
+      }
+    }
+    return { x: sx, y: sy }
+  }
 
   const onPlace = useCallback(
     (x: number, z: number) => {
-      const p = snap(x, z)
+      const p = snap(x, z, draft ?? (polyDraft.length ? polyDraft[polyDraft.length - 1]! : null))
       if (tool === 'objects' && placeKind) {
         addFurnitureAt(p)
+        return
+      }
+      if (tool === 'wall') {
+        if (!draft) {
+          setDraft(p)
+          return
+        }
+        addWall({
+          storyId: story?.id ?? '',
+          a: draft,
+          b: p,
+          thickness: 0.2,
+          height: storyHeight,
+          typology: 'exterior',
+          materialId: 'enduit',
+        })
+        setDraft(null)
+        return
+      }
+      if (tool === 'rect') {
+        if (!draft) {
+          setDraft(p)
+          return
+        }
+        const x0 = Math.min(draft.x, p.x)
+        const y0 = Math.min(draft.y, p.y)
+        const x1 = Math.max(draft.x, p.x)
+        const y1 = Math.max(draft.y, p.y)
+        const corners = [
+          { x: x0, y: y0 },
+          { x: x1, y: y0 },
+          { x: x1, y: y1 },
+          { x: x0, y: y1 },
+        ]
+        for (let i = 0; i < 4; i++) {
+          addWall({
+            storyId: story?.id ?? '',
+            a: corners[i]!,
+            b: corners[(i + 1) % 4]!,
+            thickness: 0.2,
+            height: storyHeight,
+            typology: 'exterior',
+            materialId: 'enduit',
+          })
+        }
+        setDraft(null)
         return
       }
       if (tool === 'door' || tool === 'window') {
@@ -314,6 +396,9 @@ export default function Viewport3D({
       polyDrawMode,
       stairMode,
       lastClickAt,
+      story,
+      storyHeight,
+      ortho,
       addFurnitureAt,
       addOpeningAtWall,
       addColumn,
@@ -322,6 +407,7 @@ export default function Viewport3D({
       addRoof,
       addRoofPolygon,
       addStairPath,
+      addWall,
     ],
   )
 
@@ -344,11 +430,11 @@ export default function Viewport3D({
         antialias: true,
         powerPreference: 'high-performance',
         toneMapping: 4,
-        toneMappingExposure: 1.05,
+        toneMappingExposure: 1.12,
       }}
       style={{ position: 'absolute', inset: 0, touchAction: 'none' }}
       onCreated={({ gl }) => {
-        gl.setClearColor('#04080c')
+        gl.setClearColor('#6a90a8')
         gl.shadowMap.enabled = quality.shadows
         gl.shadowMap.type = 2
         gl.localClippingEnabled = false
@@ -369,11 +455,56 @@ export default function Viewport3D({
             storyKey={story?.id ?? 'none'}
           />
         )}
-        <PlaceSurface enabled={!!placingPoint} elevation={elevation} onPlace={onPlace} />
+        <PlaceSurface
+          enabled={!!placingPoint}
+          elevation={elevation}
+          onPlace={onPlace}
+          onHover={(x, z) => {
+            if (!placingPoint) {
+              setHover(null)
+              return
+            }
+            setHover(snap(x, z, draft ?? (polyDraft.length ? polyDraft[polyDraft.length - 1]! : null)))
+          }}
+        />
         {draft && (
-          <mesh position={[draft.x, elevation + 0.05, draft.y]}>
-            <sphereGeometry args={[0.12, 12, 12]} />
-            <meshBasicMaterial color="#6ed0c3" />
+          <mesh position={[draft.x, elevation + 0.06, draft.y]}>
+            <sphereGeometry args={[0.14, 14, 14]} />
+            <meshBasicMaterial color="#6ed0c3" depthTest={false} />
+          </mesh>
+        )}
+        {draft && hover && (tool === 'wall' || tool === 'rect') && (
+          <>
+            <Line
+              points={
+                tool === 'wall'
+                  ? [
+                      [draft.x, elevation + 0.08, draft.y],
+                      [hover.x, elevation + 0.08, hover.y],
+                    ]
+                  : [
+                      [draft.x, elevation + 0.08, draft.y],
+                      [hover.x, elevation + 0.08, draft.y],
+                      [hover.x, elevation + 0.08, hover.y],
+                      [draft.x, elevation + 0.08, hover.y],
+                      [draft.x, elevation + 0.08, draft.y],
+                    ]
+              }
+              color="#6ed0c3"
+              lineWidth={2}
+              transparent
+              opacity={0.85}
+            />
+            <mesh position={[hover.x, elevation + 0.06, hover.y]}>
+              <sphereGeometry args={[0.11, 12, 12]} />
+              <meshBasicMaterial color="#9eefe4" depthTest={false} />
+            </mesh>
+          </>
+        )}
+        {hover && (tool === 'wall' || tool === 'column' || tool === 'objects') && (
+          <mesh position={[hover.x, elevation + 0.04, hover.y]} rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.12, 0.18, 24]} />
+            <meshBasicMaterial color="#6ed0c3" transparent opacity={0.75} depthTest={false} />
           </mesh>
         )}
         {polyDraft.map((pt, i) => (

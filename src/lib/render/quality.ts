@@ -15,9 +15,9 @@ export function detectQuality(): QualityProfile {
   return {
     lambert: false,
     simpleProps: false,
-    dpr: high ? 2 : 1.5,
+    dpr: high ? 2 : 1.75,
     shadows: true,
-    texSize: 256,
-    groundSize: high ? 360 : 220,
+    texSize: high ? 512 : 256,
+    groundSize: high ? 420 : 280,
   }
 }

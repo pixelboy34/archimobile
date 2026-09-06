@@ -14,11 +14,25 @@ npm run build
 
 Serveur: http://0.0.0.0:8080
 
-Stack: Vite + React 19 + TypeScript + React Router - Three/R3F/Drei - Zustand (forma-studio-v9) - Tailwind v4
+Stack: Vite + React 19 + TypeScript + React Router - Three/R3F/Drei - Zustand (forma-studio-v10) - Tailwind v4
 
 Projets: Villa Calanque, Tour Horizon, Atelier Voltaire, Maison Patio, Pavillon Lac
 
 Pas d'auth.
+
+## Persistance (v10)
+
+Cle localStorage: forma-studio-v10 (remplace forma-studio-v9).
+Au premier chargement v10, les demos premium sont recharges.
+Si d anciens projets moches restent: hard-refresh Ctrl+Shift+R, ou vider localStorage forma-studio-v9 / forma-studio-v10.
+
+## Qualite visuelle (0.10)
+
+- Eclairage soleil doux + hemisphere + fill, ciel Drei Sky
+- Sol paysage + grille + ombre contact blob (pas ContactShadows sur murs)
+- Materiaux PBR textures, verre transmission, mobilier articule
+- Amateur: Selection, Mur, Porte, Fenetre, Objets + 3D/Plan/Visite
+- Expert: CAD complet, Coupe, AR, IFC
 
 ## Outils recents
 

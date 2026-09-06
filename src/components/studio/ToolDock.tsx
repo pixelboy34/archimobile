@@ -7,12 +7,14 @@ import { FURNITURE_FAMILIES, FURNITURE_PRESETS } from '../../lib/bim/catalog'
 
 type ToolDef = { id: ToolMode; label: string; group: 'trace' | 'ouvrage' | 'cad'; amateur?: boolean }
 
+/** Amateur: Selection, Mur, Porte, Fenetre, Objets only */
 const ALL_TOOLS: ToolDef[] = [
   { id: 'select', label: 'Selection', group: 'trace', amateur: true },
   { id: 'wall', label: 'Mur', group: 'trace', amateur: true },
-  { id: 'rect', label: 'Rectangle', group: 'trace', amateur: true },
   { id: 'door', label: 'Porte', group: 'ouvrage', amateur: true },
   { id: 'window', label: 'Fenetre', group: 'ouvrage', amateur: true },
+  { id: 'objects', label: 'Objets', group: 'trace', amateur: true },
+  { id: 'rect', label: 'Rectangle', group: 'trace' },
   { id: 'slab', label: 'Dalle', group: 'ouvrage' },
   { id: 'column', label: 'Pilier', group: 'ouvrage' },
   { id: 'stair', label: 'Escalier', group: 'ouvrage' },
@@ -20,7 +22,6 @@ const ALL_TOOLS: ToolDef[] = [
   { id: 'roof', label: 'Toiture', group: 'ouvrage' },
   { id: 'trim', label: 'Couper', group: 'cad' },
   { id: 'extend', label: 'Prolonger', group: 'cad' },
-  { id: 'objects', label: 'Objets', group: 'trace', amateur: true },
 ]
 
 function toolsForSkill(skill: SkillLevel): ToolDef[] {
@@ -29,15 +30,16 @@ function toolsForSkill(skill: SkillLevel): ToolDef[] {
 }
 
 const HINTS: Partial<Record<ToolMode, string>> = {
-  door: 'Porte : cliquez un mur (plan ou 3D) pour creer une ouverture',
-  window: 'Fenetre : cliquez un mur (plan ou 3D) pour creer une ouverture',
-  slab: 'Dalle : polygone (clics + Terminer / Entree) ou mode Rectangle ; Maj = rectangle',
-  column: 'Pilier : cliquez pour placer un poteau sur l etage actif',
-  stair: 'Escalier : choisissez Droit / Quart / Demi puis cliquez le parcours (depart → angles → arrivee) ; garde-corps auto',
-  railing: 'Garde-corps : cliquez une polyligne le long d un bord (double-clic ou Terminer)',
-  roof: 'Toiture : Terrasse / 2 pentes / Croupe — polygone ou rectangle ; pente dans Ouvrage',
-  trim: 'Couper : selectionnez un mur, puis cliquez le point de coupe',
-  extend: 'Prolonger : selectionnez un mur, puis cliquez le mur cible',
+  wall: 'Mur : deux clics (plan ou 3D) — apercu elastique',
+  door: 'Porte : cliquez un mur',
+  window: 'Fenetre : cliquez un mur',
+  slab: 'Dalle : polygone ou rectangle',
+  column: 'Pilier : cliquez pour placer',
+  stair: 'Escalier : parcours selon le mode',
+  railing: 'Garde-corps : polyligne',
+  roof: 'Toiture : terrasse / 2 pentes / croupe',
+  trim: 'Couper : mur puis point',
+  extend: 'Prolonger : mur puis cible',
 }
 
 export default function ToolDock() {
@@ -61,7 +63,7 @@ export default function ToolDock() {
 
   useEffect(() => {
     if (!cadNote) return
-    const t = window.setTimeout(() => clearCadNote(), 3200)
+    const t = window.setTimeout(() => clearCadNote(), 2800)
     return () => window.clearTimeout(t)
   }, [cadNote, clearCadNote])
 
@@ -82,7 +84,6 @@ export default function ToolDock() {
     return () => window.removeEventListener('keydown', onKey)
   }, [tool, placeKind, rotatePlace, setPlaceKind, setTool])
 
-  // If skill drops to amateur while on a pro-only tool, fall back
   useEffect(() => {
     if (skill === 'simple') {
       const allowed = new Set(toolsForSkill('simple').map((t) => t.id))
@@ -95,31 +96,24 @@ export default function ToolDock() {
 
   const shown = toolsForSkill(skill)
   const hint = HINTS[tool]
+  const showHint = !!hint && tool !== 'objects' && tool !== 'select'
 
   return (
     <div className="absolute bottom-4 left-0 right-0 z-20 flex flex-col items-center gap-2 safe-bottom safe-x pointer-events-none">
       {cadNote && (
-        <div className="pointer-events-auto chip text-xs max-w-[90vw] truncate bg-[#0a1218]/95 border-[#6ed0c3]/40">
-          {cadNote}
-        </div>
+        <div className="pointer-events-auto chip text-xs max-w-[88vw] truncate">{cadNote}</div>
       )}
 
-      {hint && tool !== 'objects' && (
-        <div className="pointer-events-auto chip text-xs bg-[#0a1218]/95 max-w-[92vw]">
+      {showHint && (
+        <div className="pointer-events-auto px-3 py-1.5 rounded-full bg-[#0a1218]/80 border border-[#1a2a35]/80 text-[11px] text-[#9aafba] max-w-[88vw]">
           {hint}
         </div>
       )}
 
       {tool === 'stair' && (
-        <div className="pointer-events-auto flex gap-1 p-1 rounded-2xl bg-[#0a1218]/95 border border-[#1a2a35]">
+        <div className="pointer-events-auto flex gap-1 p-1 rounded-2xl bg-[#0a1218]/92 border border-[#1a2a35]">
           {(['droit', 'quart', 'demi'] as StairMode[]).map((m) => (
-            <button
-              key={m}
-              type="button"
-              className="chip"
-              data-active={stairMode === m}
-              onClick={() => setStairMode(m)}
-            >
+            <button key={m} type="button" className="chip" data-active={stairMode === m} onClick={() => setStairMode(m)}>
               {labelForStairMode(m)}
             </button>
           ))}
@@ -127,15 +121,9 @@ export default function ToolDock() {
       )}
 
       {tool === 'roof' && (
-        <div className="pointer-events-auto flex gap-1 p-1 rounded-2xl bg-[#0a1218]/95 border border-[#1a2a35]">
+        <div className="pointer-events-auto flex gap-1 p-1 rounded-2xl bg-[#0a1218]/92 border border-[#1a2a35]">
           {(['terrasse', '2pentes', 'croupe'] as RoofMode[]).map((m) => (
-            <button
-              key={m}
-              type="button"
-              className="chip"
-              data-active={roofMode === m}
-              onClick={() => setRoofMode(m)}
-            >
+            <button key={m} type="button" className="chip" data-active={roofMode === m} onClick={() => setRoofMode(m)}>
               {labelForRoofMode(m)}
             </button>
           ))}
@@ -143,33 +131,23 @@ export default function ToolDock() {
       )}
 
       {(tool === 'slab' || tool === 'roof') && (
-        <div className="pointer-events-auto flex gap-1 p-1 rounded-2xl bg-[#0a1218]/95 border border-[#1a2a35]">
-          <button
-            type="button"
-            className="chip"
-            data-active={polyDrawMode === 'polygon'}
-            onClick={() => setPolyDrawMode('polygon')}
-          >
+        <div className="pointer-events-auto flex gap-1 p-1 rounded-2xl bg-[#0a1218]/92 border border-[#1a2a35]">
+          <button type="button" className="chip" data-active={polyDrawMode === 'polygon'} onClick={() => setPolyDrawMode('polygon')}>
             Polygone
           </button>
-          <button
-            type="button"
-            className="chip"
-            data-active={polyDrawMode === 'rect'}
-            onClick={() => setPolyDrawMode('rect')}
-          >
+          <button type="button" className="chip" data-active={polyDrawMode === 'rect'} onClick={() => setPolyDrawMode('rect')}>
             Rectangle
           </button>
         </div>
       )}
 
       {tool === 'objects' && (
-        <div className="pointer-events-auto w-[min(96vw,28rem)] max-h-[40dvh] overflow-y-auto rounded-2xl bg-[#0a1218]/95 border border-[#1a2a35] backdrop-blur-md p-3">
+        <div className="pointer-events-auto w-[min(94vw,26rem)] max-h-[36dvh] overflow-y-auto rounded-2xl bg-[#0a1218]/94 border border-[#1a2a35] backdrop-blur-md p-3">
           <div className="flex items-center justify-between mb-2 gap-2">
             <p className="text-xs text-[#7a8f9c] uppercase tracking-wide">Bibliotheque</p>
             <div className="flex gap-1">
               <button type="button" className="chip" onClick={() => rotatePlace()} disabled={!placeKind}>
-                Rot 90 ({Math.round(((placeRotation % (Math.PI * 2)) * 180) / Math.PI)}°)
+                Rot 90
               </button>
               {placeKind && (
                 <button type="button" className="chip" onClick={() => setPlaceKind(null)}>
@@ -179,9 +157,9 @@ export default function ToolDock() {
             </div>
           </div>
           {FURNITURE_FAMILIES.map((fam) => (
-            <div key={fam.id} className="mb-3">
+            <div key={fam.id} className="mb-2.5">
               <p className="text-[11px] text-[#6ed0c3] mb-1 font-mono">{fam.label}</p>
-              <div className="flex flex-wrap gap-1">
+              <div className="flex flex-wrap gap-1.5">
                 {fam.kinds.map((kind) => {
                   const preset = FURNITURE_PRESETS[kind]
                   return (
@@ -201,18 +179,18 @@ export default function ToolDock() {
           ))}
           {placeKind && (
             <p className="text-[11px] text-[#7a8f9c]">
-              Touchez le plan ou le sol 3D pour placer. R = rotation 90°.
+              Touchez le plan ou le sol 3D. R = rotation ({Math.round(((placeRotation % (Math.PI * 2)) * 180) / Math.PI)}°).
             </p>
           )}
         </div>
       )}
 
-      <div className="pointer-events-auto flex gap-1 p-1.5 rounded-2xl bg-[#0a1218]/90 border border-[#1a2a35] backdrop-blur-md overflow-x-auto max-w-[96vw]">
+      <div className="pointer-events-auto flex gap-1.5 p-2 rounded-2xl bg-[#0a1218]/92 border border-[#1a2a35] backdrop-blur-md overflow-x-auto max-w-[96vw] shadow-[0_8px_32px_rgba(0,0,0,0.35)]">
         {shown.map((t) => (
           <button
             key={t.id}
             type="button"
-            className="chip shrink-0"
+            className="chip shrink-0 min-w-[3.25rem]"
             data-active={tool === t.id}
             onClick={() => setTool(t.id)}
           >

@@ -6,19 +6,20 @@ export type MaterialDef = {
   color: string
   roughness: number
   metalness: number
+  map?: 'plaster' | 'concrete' | 'wood' | 'tile' | 'grass'
 }
 
 export const MATERIALS: Record<string, MaterialDef> = {
-  beton: { id: 'beton', label: 'Beton', color: '#9aa3a8', roughness: 0.85, metalness: 0.05 },
-  enduit: { id: 'enduit', label: 'Enduit blanc', color: '#e8e4dc', roughness: 0.7, metalness: 0 },
-  pierre: { id: 'pierre', label: 'Pierre', color: '#c4b8a4', roughness: 0.9, metalness: 0 },
-  bois: { id: 'bois', label: 'Bois', color: '#8b6914', roughness: 0.65, metalness: 0 },
-  verre: { id: 'verre', label: 'Verre', color: '#a8d4e6', roughness: 0.1, metalness: 0.2 },
-  acier: { id: 'acier', label: 'Acier', color: '#6b7280', roughness: 0.35, metalness: 0.8 },
-  tuile: { id: 'tuile', label: 'Tuile', color: '#8b4513', roughness: 0.8, metalness: 0 },
-  herbe: { id: 'herbe', label: 'Herbe', color: '#3d5c3a', roughness: 0.95, metalness: 0 },
-  eau: { id: 'eau', label: 'Eau', color: '#2a6b8a', roughness: 0.15, metalness: 0.3 },
-  rideau: { id: 'rideau', label: 'Mur rideau', color: '#7eb8c9', roughness: 0.2, metalness: 0.4 },
+  beton: { id: 'beton', label: 'Beton', color: '#a8b0b5', roughness: 0.78, metalness: 0.04, map: 'concrete' },
+  enduit: { id: 'enduit', label: 'Enduit blanc', color: '#f0ebe3', roughness: 0.62, metalness: 0, map: 'plaster' },
+  pierre: { id: 'pierre', label: 'Pierre', color: '#c9bda8', roughness: 0.88, metalness: 0, map: 'concrete' },
+  bois: { id: 'bois', label: 'Bois', color: '#8b6914', roughness: 0.55, metalness: 0, map: 'wood' },
+  verre: { id: 'verre', label: 'Verre', color: '#c5e8f5', roughness: 0.05, metalness: 0.15 },
+  acier: { id: 'acier', label: 'Acier', color: '#8a929c', roughness: 0.28, metalness: 0.85 },
+  tuile: { id: 'tuile', label: 'Tuile', color: '#8b4513', roughness: 0.72, metalness: 0, map: 'tile' },
+  herbe: { id: 'herbe', label: 'Herbe', color: '#3d5c3a', roughness: 0.95, metalness: 0, map: 'grass' },
+  eau: { id: 'eau', label: 'Eau', color: '#2f7a9a', roughness: 0.08, metalness: 0.35 },
+  rideau: { id: 'rideau', label: 'Mur rideau', color: '#8ec4d4', roughness: 0.12, metalness: 0.45 },
 }
 
 export const FURNITURE_PRESETS: Record<string, { label: string; w: number; d: number; h: number; color: string }> = {
@@ -36,7 +37,6 @@ export const FURNITURE_PRESETS: Record<string, { label: string; w: number; d: nu
   curtain: { label: 'Rideau', w: 6.0, d: 0.2, h: 2.8, color: '#7eb8c9' },
 }
 
-
 export type FurnitureFamily = {
   id: string
   label: string
@@ -50,7 +50,6 @@ export const FURNITURE_FAMILIES: FurnitureFamily[] = [
   { id: 'exterieur', label: 'Exterieur', kinds: ['tree', 'car'] },
   { id: 'noyau', label: 'Noyau', kinds: ['elevator', 'staircore', 'balcony', 'curtain'] },
 ]
-
 
 export const OPENING_DEFAULTS = {
   door: { width: 0.9, height: 2.1, sill: 0 },

@@ -404,63 +404,10 @@ export default function Plan2D({ project, storyId }: Props) {
 
   return (
     <div className="absolute inset-0 bg-[#04080c]">
-      <div className="absolute top-20 left-3 z-10 flex gap-2 flex-wrap max-w-[92vw]">
+      <div className="absolute top-[5.75rem] left-3 z-10 flex gap-2 flex-wrap max-w-[70vw]">
         <button type="button" className="chip" data-active={ortho} onClick={() => setOrtho(!ortho)}>
-          Ortho {ortho ? 'ON' : 'OFF'}
+          Ortho
         </button>
-        {tool === 'stair' &&
-          (['droit', 'quart', 'demi'] as StairMode[]).map((m) => (
-            <button
-              key={m}
-              type="button"
-              className="chip"
-              data-active={stairMode === m}
-              onClick={() => {
-                setStairMode(m)
-                setPolyDraft([])
-              }}
-            >
-              {labelForStairMode(m)}
-            </button>
-          ))}
-        {tool === 'roof' &&
-          (['terrasse', '2pentes', 'croupe'] as RoofMode[]).map((m) => (
-            <button
-              key={m}
-              type="button"
-              className="chip"
-              data-active={roofMode === m}
-              onClick={() => setRoofMode(m)}
-            >
-              {labelForRoofMode(m)}
-            </button>
-          ))}
-        {(tool === 'slab' || tool === 'roof') && (
-          <>
-            <button
-              type="button"
-              className="chip"
-              data-active={polyDrawMode === 'polygon'}
-              onClick={() => {
-                setPolyDrawMode('polygon')
-                setDraft(null)
-              }}
-            >
-              Polygone
-            </button>
-            <button
-              type="button"
-              className="chip"
-              data-active={polyDrawMode === 'rect'}
-              onClick={() => {
-                setPolyDrawMode('rect')
-                setPolyDraft([])
-              }}
-            >
-              Rectangle
-            </button>
-          </>
-        )}
         {(draft || polyDraft.length > 0) && (
           <button
             type="button"
@@ -492,7 +439,7 @@ export default function Plan2D({ project, storyId }: Props) {
         )}
         {cadWallId && (
           <button type="button" className="chip" onClick={() => setCadWallId(null)}>
-            Annuler CAD
+            Annuler
           </button>
         )}
       </div>
@@ -879,15 +826,35 @@ export default function Plan2D({ project, storyId }: Props) {
           />
         )}
         {draft && hover && tool === 'wall' && (
-          <line
-            x1={draft.x}
-            y1={draft.y}
-            x2={hover.x}
-            y2={hover.y}
-            stroke="#6ed0c3"
-            strokeWidth={0.06}
-            opacity={0.45}
-          />
+          <g>
+            <line
+              x1={draft.x}
+              y1={draft.y}
+              x2={hover.x}
+              y2={hover.y}
+              stroke="#6ed0c3"
+              strokeWidth={0.1}
+              opacity={0.75}
+              strokeLinecap="round"
+            />
+            <circle cx={hover.x} cy={hover.y} r={0.14} fill="#9eefe4" />
+            <text
+              x={(draft.x + hover.x) / 2}
+              y={(draft.y + hover.y) / 2 - 0.35}
+              fill="#6ed0c3"
+              fontSize={0.45}
+              fontFamily="IBM Plex Mono"
+              textAnchor="middle"
+            >
+              {Math.hypot(hover.x - draft.x, hover.y - draft.y).toFixed(2)} m
+            </text>
+          </g>
+        )}
+        {hover && (tool === 'wall' || tool === 'column') && !draft && (
+          <g>
+            <circle cx={hover.x} cy={hover.y} r={0.12} fill="none" stroke="#6ed0c3" strokeWidth={0.04} opacity={0.8} />
+            <circle cx={hover.x} cy={hover.y} r={0.04} fill="#6ed0c3" />
+          </g>
         )}
         {/* Polygon / stair path preview */}
         {polyDraft.length > 0 && (tool === 'slab' || tool === 'roof' || tool === 'stair' || tool === 'railing') && (

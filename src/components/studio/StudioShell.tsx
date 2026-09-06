@@ -35,6 +35,7 @@ export default function StudioShell() {
   const coupe = viewMode === 'coupe'
   const showAr = viewMode === 'ar'
   const show3d = viewMode === '3d' || coupe || visiting
+  const expert = skill === 'pro'
 
   return (
     <div className="relative h-[100dvh] w-full overflow-hidden bg-[#04080c]">
@@ -51,14 +52,27 @@ export default function StudioShell() {
       {visiting && <VisitHud />}
 
       <header className="absolute top-0 left-0 right-0 z-30 safe-top safe-x pointer-events-none">
-        <div className="pointer-events-auto flex items-center gap-2 px-3 pt-2 pb-2">
+        <div className="pointer-events-auto flex items-center gap-2 px-3 pt-2 pb-1.5">
           <button type="button" className="chip" onClick={() => navigate('/')}>
             Retour
           </button>
           <div className="flex-1 min-w-0">
-            <p className="font-display text-sm tracking-wide truncate">FORMA</p>
-            <p className="font-mono text-[10px] text-[#7a8f9c] truncate">{project.meta.name}</p>
+            <p className="font-display text-sm tracking-wide truncate text-[#e8f0f4]">
+              {project.meta.name}
+            </p>
+            <p className="font-mono text-[10px] text-[#7a8f9c] truncate">
+              {project.meta.city}
+            </p>
           </div>
+          <button
+            type="button"
+            className="chip expert-toggle"
+            data-active={expert}
+            title={expert ? 'Mode Expert actif' : 'Passer en mode Expert'}
+            onClick={() => setSkill(expert ? 'simple' : 'pro')}
+          >
+            {expert ? 'Expert' : 'Amateur'}
+          </button>
           {!visiting && !showAr && (
             <button
               type="button"
@@ -69,60 +83,57 @@ export default function StudioShell() {
               Params
             </button>
           )}
-          <button
-            type="button"
-            className="chip"
-            title="Exporter IFC4 (sous-ensemble)"
-            onClick={() => downloadIfc(project)}
-          >
-            IFC
-          </button>
-          <button
-            type="button"
-            className="chip"
-            onClick={() => setSkill(skill === 'simple' ? 'pro' : 'simple')}
-          >
-            {skill === 'simple' ? 'Amateur' : 'Expert'}
-          </button>
         </div>
 
-        <div className="pointer-events-auto flex gap-1 px-3 pb-2 overflow-x-auto">
-          <button type="button" className="chip" data-active={viewMode === '3d'} onClick={() => setView('3d')}>
-            3D
-          </button>
-          <button type="button" className="chip" data-active={viewMode === 'plan'} onClick={() => setView('plan')}>
-            Plan
-          </button>
-          <button
-            type="button"
-            className="chip"
-            data-active={viewMode === 'visite'}
-            onClick={() => {
-              setInspectorOpen(false)
-              setView('visite')
-            }}
-          >
-            Visite
-          </button>
-          {skill === 'pro' && (
-            <>
-              <button type="button" className="chip" data-active={viewMode === 'coupe'} onClick={() => setView('coupe')}>
-                Coupe
-              </button>
-              <button type="button" className="chip" data-active={viewMode === 'ar'} onClick={() => setView('ar')}>
-                AR
-              </button>
-            </>
-          )}
+        <div className="pointer-events-auto flex items-center gap-1.5 px-3 pb-2">
+          <div className="flex gap-1 p-1 rounded-2xl bg-[#0a1218]/75 border border-[#1a2a35]/90 backdrop-blur-md">
+            <button type="button" className="chip" data-active={viewMode === '3d'} onClick={() => setView('3d')}>
+              3D
+            </button>
+            <button type="button" className="chip" data-active={viewMode === 'plan'} onClick={() => setView('plan')}>
+              Plan
+            </button>
+            <button
+              type="button"
+              className="chip"
+              data-active={viewMode === 'visite'}
+              onClick={() => {
+                setInspectorOpen(false)
+                setView('visite')
+              }}
+            >
+              Visite
+            </button>
+            {expert && (
+              <>
+                <button type="button" className="chip" data-active={viewMode === 'coupe'} onClick={() => setView('coupe')}>
+                  Coupe
+                </button>
+                <button type="button" className="chip" data-active={viewMode === 'ar'} onClick={() => setView('ar')}>
+                  AR
+                </button>
+              </>
+            )}
+          </div>
           {!visiting && !showAr && (
-            <>
-              <button type="button" className="chip" onClick={() => undo()}>
+            <div className="flex gap-1 ml-auto">
+              <button type="button" className="chip px-3" onClick={() => undo()} title="Annuler">
                 Annuler
               </button>
-              <button type="button" className="chip" onClick={() => redo()}>
+              <button type="button" className="chip px-3" onClick={() => redo()} title="Retablir">
                 Retablir
               </button>
-            </>
+              {expert && (
+                <button
+                  type="button"
+                  className="chip px-3"
+                  title="Exporter IFC4"
+                  onClick={() => downloadIfc(project)}
+                >
+                  IFC
+                </button>
+              )}
+            </div>
           )}
         </div>
       </header>

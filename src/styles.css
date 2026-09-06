@@ -37,37 +37,51 @@ html, body, #root {
 }
 
 .chip {
-  min-height: 44px;
-  min-width: 44px;
+  min-height: 48px;
+  min-width: 48px;
   border-radius: 999px;
-  border: 1px solid #1a2a35;
-  background: rgba(10, 18, 24, 0.85);
+  border: 1px solid rgba(26, 42, 53, 0.95);
+  background: rgba(10, 18, 24, 0.78);
   color: #e8f0f4;
-  padding: 0 14px;
+  padding: 0 16px;
   font-size: 13px;
   font-weight: 500;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(10px);
+  transition: border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 .chip[data-active="true"] {
   border-color: #6ed0c3;
   color: #6ed0c3;
-  box-shadow: 0 0 0 1px rgba(110, 208, 195, 0.25);
+  box-shadow: 0 0 0 1px rgba(110, 208, 195, 0.22);
+  background: rgba(110, 208, 195, 0.08);
+}
+.chip:disabled {
+  opacity: 0.4;
+}
+
+.expert-toggle[data-active="true"] {
+  background: rgba(110, 208, 195, 0.16);
 }
 
 .btn-accent {
   background: #6ed0c3;
   color: #041016;
   font-weight: 600;
-  border-radius: 12px;
-  min-height: 44px;
-  padding: 0 16px;
+  border-radius: 14px;
+  min-height: 48px;
+  padding: 0 18px;
   border: none;
+  letter-spacing: 0.01em;
 }
 
 .panel {
-  background: #0a1218;
+  background: linear-gradient(160deg, rgba(14, 26, 34, 0.96), rgba(8, 14, 20, 0.98));
   border: 1px solid #1a2a35;
-  border-radius: 16px;
+  border-radius: 18px;
+}
+
+.project-card {
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
 }
 
 input[type="range"] {

@@ -39,9 +39,9 @@ export default function ViewBar() {
   const cutDisplay = roundStep(coupeCut, cutStep)
 
   return (
-    <div className="absolute top-[4.5rem] left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2 max-w-[96vw]">
+    <div className="absolute top-[5.75rem] left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-2 max-w-[96vw] pointer-events-none">
       {showStories && (
-        <div className="flex items-center gap-2">
+        <div className="pointer-events-auto flex items-center gap-2">
           <button type="button" className="chip px-3" onClick={() => go(-1)} disabled={idx === 0}>
             ‹
           </button>

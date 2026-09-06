@@ -1,9 +1,19 @@
-import { useMemo, useEffect } from 'react'
+import { useMemo, useEffect, memo } from 'react'
 import * as THREE from 'three'
+import { Sky } from '@react-three/drei'
 import type { Project, Wall, Slab, Furniture, Column, Roof, Opening, Stair, Railing } from '../../lib/bim/types'
 import { wallLength, wallAngle, wallCenter } from '../../lib/bim/types'
 import { MATERIALS, FURNITURE_PRESETS } from '../../lib/bim/catalog'
 import { detectQuality } from '../../lib/render/quality'
+import {
+  plasterMap,
+  concreteMap,
+  woodMap,
+  tileMap,
+  grassMap,
+  softShadowMap,
+  gridOverlayMap,
+} from '../../lib/render/materials'
 import { wallSolidBoxes, openingsLocal } from '../../lib/bim/wall-openings'
 import { buildStairGeometry, normalizeStair } from '../../lib/cad/stairs'
 import {
@@ -18,12 +28,23 @@ import { buildRoofGeometry, normalizeRoof, pitchedRidgeHeight } from '../../lib/
 const EMPTY_OPENINGS: Opening[] = []
 const boxGeo = new THREE.BoxGeometry(1, 1, 1)
 
-function matFor(id?: string, fallback = 'beton') {
+function mapFor(kind?: string, texSize = 256) {
+  if (kind === 'plaster') return plasterMap(texSize)
+  if (kind === 'concrete') return concreteMap(texSize)
+  if (kind === 'wood') return woodMap(texSize)
+  if (kind === 'tile') return tileMap(texSize)
+  if (kind === 'grass') return grassMap(texSize)
+  return null
+}
+
+function matFor(id?: string, fallback = 'beton', texSize = 256) {
   const def = MATERIALS[id ?? fallback] ?? MATERIALS[fallback]
+  const map = mapFor(def.map, texSize)
   return {
     color: def.color,
     roughness: def.roughness,
     metalness: def.metalness,
+    map,
   }
 }
 
@@ -64,6 +85,7 @@ function WallMesh({
         >
           <meshStandardMaterial
             color={m.color}
+            map={m.map}
             roughness={m.roughness}
             metalness={m.metalness}
             side={visitMode ? THREE.DoubleSide : THREE.FrontSide}
@@ -129,16 +151,20 @@ function WallMesh({
               <mesh
                 geometry={boxGeo}
                 position={[0, midY, 0]}
-                scale={[innerW, innerH, Math.max(0.02, wall.thickness * 0.25)]}
+                scale={[innerW, innerH, Math.max(0.018, wall.thickness * 0.18)]}
               >
-                <meshStandardMaterial
+                <meshPhysicalMaterial
                   color={glassMat.color}
-                  roughness={glassMat.roughness}
-                  metalness={glassMat.metalness}
+                  roughness={0.05}
+                  metalness={0.05}
+                  transmission={visitMode ? 0.75 : 0.85}
+                  thickness={0.08}
+                  ior={1.45}
                   transparent
-                  opacity={visitMode ? 0.35 : 0.55}
+                  opacity={1}
                   side={THREE.DoubleSide}
                   depthWrite={false}
+                  envMapIntensity={1.2}
                 />
               </mesh>
             )}
@@ -227,7 +253,7 @@ function SlabMesh({ slab }: { slab: Slab }) {
         receiveShadow
         castShadow={slab.kind !== 'ground'}
       >
-        <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} />
+        <meshStandardMaterial color={m.color} map={m.map} roughness={m.roughness} metalness={m.metalness} />
       </mesh>
     )
   }
@@ -238,12 +264,15 @@ function SlabMesh({ slab }: { slab: Slab }) {
       receiveShadow
       castShadow={slab.kind !== 'ground'}
     >
-      <meshStandardMaterial
+      <meshPhysicalMaterial
         color={m.color}
-        roughness={m.roughness}
-        metalness={m.metalness}
+        map={slab.kind === 'pool' ? undefined : m.map}
+        roughness={slab.kind === 'pool' ? 0.08 : m.roughness}
+        metalness={slab.kind === 'pool' ? 0.25 : m.metalness}
         transparent={slab.kind === 'pool'}
-        opacity={slab.kind === 'pool' ? 0.75 : 1}
+        opacity={slab.kind === 'pool' ? 0.72 : 1}
+        transmission={slab.kind === 'pool' ? 0.35 : 0}
+        thickness={slab.kind === 'pool' ? 0.4 : 0}
         side={THREE.DoubleSide}
       />
     </mesh>
@@ -328,13 +357,13 @@ function RoofMesh({ roof, elevation }: { roof: Roof; elevation: number }) {
           castShadow
           receiveShadow
         >
-          <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} />
+          <meshStandardMaterial color={m.color} map={m.map} roughness={m.roughness} metalness={m.metalness} />
         </mesh>
       )
     }
     return (
       <mesh geometry={flatGeo} position={[0, elevation + flatH, 0]} castShadow receiveShadow>
-        <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} side={THREE.DoubleSide} />
+        <meshStandardMaterial color={m.color} map={m.map} roughness={m.roughness} metalness={m.metalness} side={THREE.DoubleSide} />
       </mesh>
     )
   }
@@ -342,7 +371,7 @@ function RoofMesh({ roof, elevation }: { roof: Roof; elevation: number }) {
   if (!pitchedGeo) return null
   return (
     <mesh geometry={pitchedGeo} position={[0, elevation, 0]} castShadow receiveShadow>
-      <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} side={THREE.DoubleSide} />
+      <meshStandardMaterial color={m.color} map={m.map} roughness={m.roughness} metalness={m.metalness} side={THREE.DoubleSide} />
     </mesh>
   )
 }
@@ -588,44 +617,125 @@ function FurnitureMesh({ item, elevation }: { item: Furniture; elevation: number
   const preset = FURNITURE_PRESETS[item.kind]
   const color = preset?.color ?? '#666'
   const isCore = item.kind === 'elevator' || item.kind === 'staircore'
+  const wood = woodMap(256)
+  const w = item.width
+  const d = item.depth
+  const h = item.height
+
   return (
     <group position={[item.position.x, elevation, item.position.y]} rotation={[0, item.rotation, 0]}>
-      <mesh
-        geometry={boxGeo}
-        position={[0, item.height / 2, 0]}
-        scale={[item.width, item.height, item.depth]}
-        castShadow
-        receiveShadow
-      >
-        <meshStandardMaterial
-          color={color}
-          roughness={isCore ? 0.5 : 0.7}
-          metalness={isCore ? 0.4 : 0.05}
-        />
-      </mesh>
       {item.kind === 'sofa' && (
-        <mesh
-          geometry={boxGeo}
-          position={[0, item.height * 0.7, -item.depth * 0.35]}
-          scale={[item.width, item.height * 0.6, item.depth * 0.25]}
-          castShadow
-        >
-          <meshStandardMaterial color={color} roughness={0.7} metalness={0} />
-        </mesh>
+        <>
+          <mesh geometry={boxGeo} position={[0, h * 0.28, 0]} scale={[w, h * 0.45, d]} castShadow receiveShadow>
+            <meshStandardMaterial color={color} roughness={0.72} metalness={0} />
+          </mesh>
+          <mesh geometry={boxGeo} position={[0, h * 0.72, -d * 0.38]} scale={[w, h * 0.7, d * 0.22]} castShadow>
+            <meshStandardMaterial color={color} roughness={0.7} metalness={0} />
+          </mesh>
+          <mesh geometry={boxGeo} position={[-w * 0.42, h * 0.55, 0]} scale={[w * 0.12, h * 0.55, d * 0.9]} castShadow>
+            <meshStandardMaterial color={color} roughness={0.7} metalness={0} />
+          </mesh>
+          <mesh geometry={boxGeo} position={[w * 0.42, h * 0.55, 0]} scale={[w * 0.12, h * 0.55, d * 0.9]} castShadow>
+            <meshStandardMaterial color={color} roughness={0.7} metalness={0} />
+          </mesh>
+        </>
+      )}
+      {item.kind === 'table' && (
+        <>
+          <mesh geometry={boxGeo} position={[0, h * 0.92, 0]} scale={[w, h * 0.08, d]} castShadow receiveShadow>
+            <meshStandardMaterial color={color} map={wood} roughness={0.5} metalness={0} />
+          </mesh>
+          {[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz], i) => (
+            <mesh key={i} geometry={boxGeo} position={[sx * w * 0.4, h * 0.42, sz * d * 0.38]} scale={[0.07, h * 0.84, 0.07]} castShadow>
+              <meshStandardMaterial color="#4a3420" roughness={0.65} />
+            </mesh>
+          ))}
+        </>
+      )}
+      {item.kind === 'bed' && (
+        <>
+          <mesh geometry={boxGeo} position={[0, h * 0.35, 0]} scale={[w, h * 0.45, d]} castShadow receiveShadow>
+            <meshStandardMaterial color="#5a6574" roughness={0.75} />
+          </mesh>
+          <mesh geometry={boxGeo} position={[0, h * 0.72, 0]} scale={[w * 0.95, h * 0.28, d * 0.92]} castShadow>
+            <meshStandardMaterial color="#d7dde6" roughness={0.85} />
+          </mesh>
+          <mesh geometry={boxGeo} position={[0, h * 0.85, -d * 0.38]} scale={[w * 0.9, h * 0.35, d * 0.18]} castShadow>
+            <meshStandardMaterial color="#eef2f7" roughness={0.8} />
+          </mesh>
+        </>
+      )}
+      {item.kind === 'chair' && (
+        <>
+          <mesh geometry={boxGeo} position={[0, h * 0.42, 0]} scale={[w, 0.06, d]} castShadow>
+            <meshStandardMaterial color={color} roughness={0.6} />
+          </mesh>
+          <mesh geometry={boxGeo} position={[0, h * 0.72, -d * 0.4]} scale={[w, h * 0.5, 0.05]} castShadow>
+            <meshStandardMaterial color={color} roughness={0.6} />
+          </mesh>
+          {[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz], i) => (
+            <mesh key={i} geometry={boxGeo} position={[sx * w * 0.35, h * 0.2, sz * d * 0.35]} scale={[0.04, h * 0.4, 0.04]} castShadow>
+              <meshStandardMaterial color={color} roughness={0.55} />
+            </mesh>
+          ))}
+        </>
+      )}
+      {item.kind === 'kitchen' && (
+        <>
+          <mesh geometry={boxGeo} position={[0, h * 0.45, 0]} scale={[w, h * 0.9, d]} castShadow receiveShadow>
+            <meshStandardMaterial color="#e8edf2" roughness={0.45} metalness={0.1} />
+          </mesh>
+          <mesh geometry={boxGeo} position={[0, h * 0.92, 0]} scale={[w * 1.02, 0.04, d * 1.05]} castShadow>
+            <meshStandardMaterial color="#c5ccd4" roughness={0.35} metalness={0.35} />
+          </mesh>
+        </>
+      )}
+      {item.kind === 'desk' && (
+        <>
+          <mesh geometry={boxGeo} position={[0, h * 0.92, 0]} scale={[w, 0.05, d]} castShadow>
+            <meshStandardMaterial color={color} map={wood} roughness={0.5} />
+          </mesh>
+          <mesh geometry={boxGeo} position={[-w * 0.42, h * 0.45, 0]} scale={[0.06, h * 0.9, d * 0.9]} castShadow>
+            <meshStandardMaterial color={color} roughness={0.55} />
+          </mesh>
+          <mesh geometry={boxGeo} position={[w * 0.42, h * 0.45, 0]} scale={[0.06, h * 0.9, d * 0.9]} castShadow>
+            <meshStandardMaterial color={color} roughness={0.55} />
+          </mesh>
+        </>
       )}
       {item.kind === 'tree' && (
         <>
-          <mesh geometry={boxGeo} position={[0, item.height * 0.25, 0]} scale={[0.25, item.height * 0.5, 0.25]}>
-            <meshStandardMaterial color="#5a3a1a" roughness={0.9} />
+          <mesh geometry={boxGeo} position={[0, h * 0.28, 0]} scale={[0.22, h * 0.55, 0.22]} castShadow>
+            <meshStandardMaterial color="#5a3a1a" map={wood} roughness={0.9} />
           </mesh>
-          <mesh geometry={boxGeo} position={[0, item.height * 0.7, 0]} scale={[item.width, item.height * 0.5, item.depth]}>
+          <mesh geometry={boxGeo} position={[0, h * 0.72, 0]} scale={[w * 0.85, h * 0.45, d * 0.85]} castShadow>
             <meshStandardMaterial color="#2f5d2e" roughness={0.95} />
           </mesh>
+          <mesh geometry={boxGeo} position={[0.25, h * 0.88, 0.15]} scale={[w * 0.55, h * 0.28, d * 0.55]} castShadow>
+            <meshStandardMaterial color="#3a6e38" roughness={0.95} />
+          </mesh>
         </>
+      )}
+      {item.kind === 'car' && (
+        <>
+          <mesh geometry={boxGeo} position={[0, h * 0.35, 0]} scale={[w, h * 0.45, d]} castShadow>
+            <meshStandardMaterial color={color} roughness={0.35} metalness={0.55} />
+          </mesh>
+          <mesh geometry={boxGeo} position={[0, h * 0.7, -d * 0.05]} scale={[w * 0.7, h * 0.35, d * 0.7]} castShadow>
+            <meshStandardMaterial color="#9ec4d8" roughness={0.15} metalness={0.2} transparent opacity={0.65} />
+          </mesh>
+        </>
+      )}
+      {(isCore || !['sofa', 'table', 'bed', 'chair', 'kitchen', 'desk', 'tree', 'car'].includes(item.kind)) && (
+        <mesh geometry={boxGeo} position={[0, h / 2, 0]} scale={[w, h, d]} castShadow receiveShadow>
+          <meshStandardMaterial color={color} roughness={isCore ? 0.45 : 0.7} metalness={isCore ? 0.45 : 0.05} />
+        </mesh>
       )}
     </group>
   )
 }
+
+const FurnitureMeshMemo = memo(FurnitureMesh)
 
 type Props = {
   project: Project
@@ -659,47 +769,99 @@ export default function BuildingScene({ project, activeStoryId, visiting = false
   const focusStory = activeStoryId ? storyMap.get(activeStoryId) : null
 
   // Visite: fill interiors (solid walls block sun) without dropping PBR quality
-  const ambientI = visiting ? 0.72 : 0.35
-  const hemiI = visiting ? 0.55 : 0.35
-  const sunI = visiting ? 1.15 : 1.35
+  const ambientI = visiting ? 0.62 : 0.28
+  const hemiI = visiting ? 0.58 : 0.42
+  const sunI = visiting ? 1.2 : 1.55
+  const grass = useMemo(() => {
+    const t = grassMap(quality.texSize)
+    t.repeat.set(quality.groundSize / 8, quality.groundSize / 8)
+    return t
+  }, [quality.texSize, quality.groundSize])
+  const grid = useMemo(() => {
+    const t = gridOverlayMap(512)
+    t.repeat.set(quality.groundSize / 20, quality.groundSize / 20)
+    return t
+  }, [quality.groundSize])
+  const blob = useMemo(() => softShadowMap(256), [])
+  const footprint = useMemo(() => {
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity
+    for (const w of project.walls) {
+      minX = Math.min(minX, w.a.x, w.b.x)
+      maxX = Math.max(maxX, w.a.x, w.b.x)
+      minZ = Math.min(minZ, w.a.y, w.b.y)
+      maxZ = Math.max(maxZ, w.a.y, w.b.y)
+    }
+    if (!Number.isFinite(minX)) return { cx: 0, cz: 0, sx: 18, sz: 18 }
+    return {
+      cx: (minX + maxX) / 2,
+      cz: (minZ + maxZ) / 2,
+      sx: Math.max(8, (maxX - minX) * 1.35),
+      sz: Math.max(8, (maxZ - minZ) * 1.35),
+    }
+  }, [project.walls])
 
   return (
     <group>
-      <ambientLight intensity={ambientI} />
+      <Sky
+        distance={450000}
+        sunPosition={[sunX, Math.max(12, sunY), sunZ]}
+        inclination={0.52}
+        azimuth={0.22}
+        mieCoefficient={0.004}
+        mieDirectionalG={0.85}
+        rayleigh={1.1}
+        turbidity={4.5}
+      />
+      <ambientLight intensity={ambientI} color="#e8f2f6" />
       <directionalLight
         castShadow={quality.shadows}
         intensity={sunI}
-        position={[sunX, Math.max(8, sunY), sunZ]}
+        position={[sunX, Math.max(10, sunY), sunZ]}
+        color="#fff2df"
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
-        shadow-camera-far={120}
-        shadow-camera-left={-40}
-        shadow-camera-right={40}
-        shadow-camera-top={40}
-        shadow-camera-bottom={-40}
-        shadow-bias={-0.0002}
+        shadow-camera-far={140}
+        shadow-camera-left={-45}
+        shadow-camera-right={45}
+        shadow-camera-top={45}
+        shadow-camera-bottom={-45}
+        shadow-bias={-0.00015}
+        shadow-normalBias={0.03}
       />
-      <hemisphereLight args={['#b8d4e8', '#3a4a3a', hemiI]} />
+      <directionalLight intensity={0.28} position={[-sunX * 0.4, 18, -sunZ * 0.5]} color="#a8c8e8" />
+      <hemisphereLight args={['#c8dff0', '#3d4a34', hemiI]} />
       {visiting && (
         <pointLight
-          intensity={0.85}
-          distance={28}
+          intensity={0.9}
+          distance={30}
           decay={2}
-          color="#cfe8e4"
-          position={[0, (focusStory?.elevation ?? 0) + 2.2, 0]}
+          color="#d8efe8"
+          position={[0, (focusStory?.elevation ?? 0) + 2.25, 0]}
         />
       )}
 
-      {/* Ground */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
+      {/* Landscape ground */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.04, 0]} receiveShadow>
         <planeGeometry args={[quality.groundSize, quality.groundSize]} />
-        <meshStandardMaterial color="#1a2a22" roughness={0.95} metalness={0} />
+        <meshStandardMaterial color="#3a5236" map={grass} roughness={0.96} metalness={0} />
       </mesh>
 
-      {/* Parcel hint */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]} receiveShadow>
+      {/* Subtle grid overlay (non-shadow) */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
+        <planeGeometry args={[quality.groundSize, quality.groundSize]} />
+        <meshBasicMaterial map={grid} transparent opacity={0.55} depthWrite={false} />
+      </mesh>
+
+      {/* Parcel lawn */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 0]} receiveShadow>
         <planeGeometry args={[project.meta.parcelWidth, project.meta.parcelDepth]} />
-        <meshStandardMaterial color="#24352c" roughness={0.9} metalness={0} />
+        <meshStandardMaterial color="#2f4630" roughness={0.92} metalness={0} />
+      </mesh>
+
+      {/* Soft contact shadow blob — ground only, avoids wall artifacts */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[footprint.cx, 0.02, footprint.cz]}>
+        <planeGeometry args={[footprint.sx, footprint.sz]} />
+        <meshBasicMaterial map={blob} transparent opacity={0.85} depthWrite={false} />
       </mesh>
 
       {project.slabs.map((s) => (
@@ -744,7 +906,7 @@ export default function BuildingScene({ project, activeStoryId, visiting = false
       {project.furniture.map((f) => {
         const st = storyMap.get(f.storyId)
         if (!st) return null
-        return <FurnitureMesh key={f.id} item={f} elevation={st.elevation} />
+        return <FurnitureMeshMemo key={f.id} item={f} elevation={st.elevation} />
       })}
 
       {project.roofs.map((r) => {
