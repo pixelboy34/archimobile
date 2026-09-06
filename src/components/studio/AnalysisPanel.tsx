@@ -1,4 +1,5 @@
 import { analyzeProject } from "@/lib/bim/analysis";
+import { assessFeasibility, VERDICT_LABELS } from "@/lib/bim/feasibility";
 import { ROOM_LABELS } from "@/lib/bim/types";
 import { formatArea, formatMeters } from "@/lib/utils";
 import { useStudio } from "@/lib/store/project-store";
@@ -17,10 +18,23 @@ export function AnalysisPanel() {
   const setView = useStudio((s) => s.setView);
   if (!project) return <p className="text-sm text-muted">Aucun projet ouvert.</p>;
   const a = analyzeProject(project);
+  const feas = assessFeasibility(project, lighting, a);
   const hour = lighting.sunHour;
 
   return (
     <div className="flex flex-col gap-5">
+      <section className="panel-card flex flex-col gap-2 p-3.5">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-medium tracking-wide text-muted uppercase">Faisabilité</p>
+          <span className="text-[11px] font-semibold text-accent">{VERDICT_LABELS[feas.verdict]} · {feas.score}</span>
+        </div>
+        <p className="font-mono text-[11px] text-muted tabular">
+          CES {(feas.gauges.ces.actual * 100).toFixed(0)} %{feas.gauges.ces.cap > 0 ? ` / ${(feas.gauges.ces.cap * 100).toFixed(0)} %` : ""}
+          {" · "}
+          COS {feas.gauges.cos.actual.toFixed(2)}{feas.gauges.cos.cap > 0 ? ` / ${feas.gauges.cos.cap.toFixed(2)}` : ""}
+        </p>
+        <p className="text-[11px] text-subtle">{feas.solarHint}</p>
+      </section>
       <section className="flex flex-col gap-3">
         <p className="text-xs font-medium tracking-wide text-muted uppercase">Ambiances</p>
         <div className="flex gap-1.5 overflow-x-auto pb-1">

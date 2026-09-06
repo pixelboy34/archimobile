@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight, Layers, Plus } from "lucide-react";
 import type { Project, ViewMode } from "@/lib/bim/types";
+import { assessFeasibility } from "@/lib/bim/feasibility";
 import { useStudio } from "@/lib/store/project-store";
 import { isLiveTypical, typicalGroupSize } from "@/lib/cad/typical";
 
@@ -7,9 +8,11 @@ import { isLiveTypical, typicalGroupSize } from "@/lib/cad/typical";
 export function ViewBar({
   project,
   onStories,
+  onSite,
 }: {
   project: Project;
   onStories: () => void;
+  onSite?: () => void;
 }) {
   const view = useStudio((s) => s.view);
   const setView = useStudio((s) => s.setView);
@@ -38,6 +41,16 @@ export function ViewBar({
         { id: "coupe", label: "Coupe" },
         { id: "ar", label: "AR" },
       ];
+
+  const feas = assessFeasibility(project);
+  const failBadge =
+    feas.verdict === "fail"
+      ? !feas.gauges.ces.ok
+        ? "CES dépassé"
+        : !feas.gauges.cos.ok
+          ? "COS dépassé"
+          : "Site non conforme"
+      : null;
 
   const go = (dir: number) => {
     const n = project.stories[(idx + dir + project.stories.length) % project.stories.length];
@@ -99,6 +112,16 @@ export function ViewBar({
           <button type="button" onClick={() => setIsolateStory(!isolateStory)} className={`hud-chip gap-1 ${isolateStory ? "hud-chip-on" : ""}`}>
             <Layers className="size-3.5" />
             {isolateStory ? "Seul" : "Tous"}
+          </button>
+        )}
+        {failBadge && (
+          <button
+            type="button"
+            onClick={() => (onSite ? onSite() : onStories())}
+            className="hud-chip gap-1 border-danger/40 text-danger"
+            title="Ouvrir Site / Faisabilité"
+          >
+            {failBadge}
           </button>
         )}
       </div>

@@ -1,4 +1,5 @@
 import { analyzeProject } from "./analysis";
+import { assessFeasibility, VERDICT_LABELS } from "./feasibility";
 import {
   aboveGroundHeight,
   buildCoupeSvg,
@@ -54,6 +55,7 @@ export interface DossierResult {
 /** Build the full printable HTML dossier (no side effects). */
 export function buildDossierHtml(project: Project): DossierResult {
   const analysis = analyzeProject(project);
+  const feas = assessFeasibility(project, null, analysis);
   const bill = computeQuantities(project);
   const stories = [...project.stories].sort((a, b) => a.elevation - b.elevation);
   const planSvgs = stories.map((st) => buildPlanSvg(project, st));
@@ -64,8 +66,10 @@ export function buildDossierHtml(project: Project): DossierResult {
   const hAg = aboveGroundHeight(project);
   const cesCap = project.meta.ces ?? 0;
   const cosCap = project.meta.cos ?? 0;
-  const cesOk = !(cesCap > 0 && analysis.cesActual > cesCap + 0.01);
-  const cosOk = !(cosCap > 0 && analysis.cosActual > cosCap + 0.01);
+  const cesOk = feas.gauges.ces.ok;
+  const cosOk = feas.gauges.cos.ok;
+  const verdictClass = feas.verdict === "ok" ? "ok" : feas.verdict === "fail" ? "bad" : "";
+  const verdictLabel = VERDICT_LABELS[feas.verdict];
 
   const roomRows = analysis.rooms
     .map(
@@ -205,6 +209,13 @@ export function buildDossierHtml(project: Project): DossierResult {
       · ${esc(project.meta.client || "Maître d'ouvrage non renseigné")}
     </p>
     <p class="meta">${esc(typologyLabel(project.meta.typology))} · ${esc(dateFr())}</p>
+    <p class="meta" style="margin-top:10px">
+      Faisabilité · <strong class="${verdictClass}">${esc(verdictLabel)}</strong>
+      · score ${feas.score}/100
+      · CES ${(analysis.cesActual * 100).toFixed(0)} %${cesCap > 0 ? ` / ${(cesCap * 100).toFixed(0)} %` : ""}
+      · COS ${analysis.cosActual.toFixed(2)}${cosCap > 0 ? ` / ${cosCap.toFixed(2)}` : ""}
+      <span style="opacity:0.7"> · indicatif</span>
+    </p>
     ${project.meta.brief ? `<p style="margin-top:16px;max-width:36em">${esc(project.meta.brief)}</p>` : ""}
     <div class="grid">
       <div class="kpi"><div class="l">Niveaux</div><div class="v">${stories.length}</div></div>

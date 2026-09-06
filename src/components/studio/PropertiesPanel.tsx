@@ -21,6 +21,7 @@ import {
   type SeismicZone,
   type Typology,
   type WindRegion,
+  type Project,
 } from "@/lib/bim/types";
 import {
   DOOR_PRESETS,
@@ -33,6 +34,13 @@ import {
   WINDOW_PRESETS,
 } from "@/lib/bim/catalog";
 import type { ProjectAnalysis } from "@/lib/bim/analysis";
+import {
+  CITY_PRESETS,
+  VERDICT_LABELS,
+  applyCityPresetMeta,
+  assessFeasibility,
+  type FeasibilityVerdict,
+} from "@/lib/bim/feasibility";
 import { wallLength } from "@/lib/bim/geometry";
 import { mergeDetectedRooms } from "@/lib/bim/rooms";
 import { healWallEnds } from "@/lib/cad/ops";
@@ -307,6 +315,16 @@ export function PropertiesPanel({
 
       {!compact && tab === "projet" && (
         <>
+          <FeasibilityCard
+            project={project}
+            lighting={lighting}
+            analysis={analysis()}
+            onApplyCity={(preset) => {
+              beginEdit();
+              patchMeta(applyCityPresetMeta(preset));
+              toast.success(`Preset ${preset.label} · indicatif`);
+            }}
+          />
           <Section title="Projet">
             <Field label="Nom">
               <Input value={project.name} onChange={(e) => renameCurrent(e.target.value)} />
@@ -318,14 +336,14 @@ export function PropertiesPanel({
             <Param label="Nord" value={project.meta.north} min={0} max={360} step={5} unit="°" digits={0} onBegin={beginEdit} onChange={(v) => patchMeta({ north: v })} />
             <Chips label="Typologie" value={project.meta.typology ?? "house"} options={["house", "villa", "collective", "office", "atelier"] as Typology[]} labels={TYPOLOGY_LABELS} onChange={(t) => patchMeta({ typology: t })} />
             <Param label="Parcelle" value={project.meta.plotM2 ?? 0} min={80} max={100000} step={50} unit="m²" digits={0} onBegin={beginEdit} onChange={(v) => patchMeta({ plotM2: v })} />
+            <Param label="CES max" value={project.meta.ces ?? 0.4} min={0.1} max={1} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => patchMeta({ ces: v })} />
+            <Param label="COS max" value={project.meta.cos ?? 0.6} min={0.1} max={8} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => patchMeta({ cos: v })} />
             <More>
               <Field label="Maître d'ouvrage">
                 <Input value={project.meta.client} onFocus={beginEdit} onChange={(e) => patchMeta({ client: e.target.value })} />
               </Field>
               <Chips label="Climat" value={(project.meta.climate as ClimateZone) || "H2"} options={["H1", "H2", "H3"] as ClimateZone[]} labels={CLIMATE_LABELS} onChange={(c) => patchMeta({ climate: c })} />
               <Chips label="Classe énergie" value={project.meta.energyClass ?? "B"} options={["A", "B", "C", "D", "E", "F"] as EnergyClass[]} labels={ENERGY_LABELS} onChange={(c) => patchMeta({ energyClass: c })} />
-              <Param label="CES max" value={project.meta.ces ?? 0.4} min={0.1} max={1} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => patchMeta({ ces: v })} />
-              <Param label="COS max" value={project.meta.cos ?? 0.6} min={0.1} max={8} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => patchMeta({ cos: v })} />
               <SiteRatios analysis={analysis()} plot={project.meta.plotM2 ?? 0} cesCap={project.meta.ces ?? 0.4} cosCap={project.meta.cos ?? 0.6} />
               <Chips label="Sismique" value={project.meta.seismic ?? "2"} options={["1", "2", "3", "4", "5"] as SeismicZone[]} labels={SEISMIC_LABELS} onChange={(z) => patchMeta({ seismic: z })} />
               <Chips label="Vent" value={project.meta.wind ?? "2"} options={["1", "2", "3", "4", "5"] as WindRegion[]} labels={WIND_LABELS} onChange={(z) => patchMeta({ wind: z })} />
@@ -760,6 +778,149 @@ function Row({ k, v }: { k: string; v: string }) {
     <div className="flex items-baseline justify-between gap-3 rounded-md bg-elevated/40 px-2.5 py-2">
       <span className="text-[11px] tracking-wide text-muted uppercase">{k}</span>
       <span className="font-mono text-sm tabular text-accent">{v}</span>
+    </div>
+  );
+}
+
+function verdictTone(v: FeasibilityVerdict): string {
+  if (v === "ok") return "bg-accent/15 text-accent ring-accent/45";
+  if (v === "watch") return "bg-warn/15 text-warn ring-warn/40";
+  return "bg-danger/15 text-danger ring-danger/40";
+}
+
+function FeasibilityCard({
+  project,
+  lighting,
+  analysis: a,
+  onApplyCity,
+}: {
+  project: Project;
+  lighting: { month: number };
+  analysis: ProjectAnalysis | null;
+  onApplyCity: (p: (typeof CITY_PRESETS)[number]) => void;
+}) {
+  const report = assessFeasibility(project, lighting, a ?? undefined);
+  const cesPct = report.gauges.ces.actual * 100;
+  const cesCapPct = report.gauges.ces.cap > 0 ? report.gauges.ces.cap * 100 : 0;
+  const cosFill =
+    report.gauges.cos.cap > 0
+      ? Math.min(100, (report.gauges.cos.actual / report.gauges.cos.cap) * 100)
+      : Math.min(100, report.gauges.cos.actual * 40);
+  const cesFill =
+    report.gauges.ces.cap > 0
+      ? Math.min(100, (report.gauges.ces.actual / report.gauges.ces.cap) * 100)
+      : Math.min(100, cesPct);
+
+  return (
+    <section className="panel-card flex flex-col gap-3 p-3.5">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold tracking-[0.14em] text-muted uppercase">Faisabilité</p>
+          <p className="mt-0.5 text-[10px] text-subtle">CES / COS · soleil · typologie · indicatif</p>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <span
+            className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide ring-1 ${verdictTone(report.verdict)}`}
+          >
+            {VERDICT_LABELS[report.verdict]}
+          </span>
+          <span className="font-mono text-lg font-semibold tabular text-fg">{report.score}</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <GaugeBar
+          label="CES"
+          valueLabel={`${cesPct.toFixed(0)} %${cesCapPct ? ` / ${cesCapPct.toFixed(0)} %` : ""}`}
+          fill={cesFill}
+          ok={report.gauges.ces.ok}
+        />
+        <GaugeBar
+          label="COS"
+          valueLabel={`${report.gauges.cos.actual.toFixed(2)}${report.gauges.cos.cap > 0 ? ` / ${report.gauges.cos.cap.toFixed(2)}` : ""}`}
+          fill={cosFill}
+          ok={report.gauges.cos.ok}
+        />
+      </div>
+
+      <div className="grid grid-cols-4 gap-1.5">
+        <MiniStat label="Jour" value={`${report.gauges.daylight}`} />
+        <MiniStat label="Énergie" value={`${report.gauges.energy}`} />
+        <MiniStat label="H" value={`${report.heightM.toFixed(1)} m`} />
+        <MiniStat label="SDP" value={`${Math.round(report.sdp)}`} />
+      </div>
+
+      <div>
+        <p className="mb-1.5 text-[10px] tracking-wide text-muted uppercase">Villes · indicatif</p>
+        <div className="flex gap-1 overflow-x-auto pb-0.5">
+          {CITY_PRESETS.map((c) => {
+            const on =
+              Math.abs(project.meta.latitude - c.latitude) < 0.2 &&
+              (project.meta.location || "").toLowerCase().includes(c.label.toLowerCase());
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => onApplyCity(c)}
+                className={`h-9 shrink-0 rounded-full px-3 text-[11px] font-medium ring-1 transition-colors ${
+                  on
+                    ? "bg-accent/15 text-accent ring-accent/45"
+                    : "bg-elevated text-muted ring-border/50 hover:text-fg"
+                }`}
+              >
+                {c.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <p className="text-[11px] leading-snug text-muted">{report.solarHint}</p>
+      {report.bullets.length > 0 && (
+        <ul className="flex flex-col gap-1 border-t border-border/50 pt-2">
+          {report.bullets.slice(0, 4).map((b) => (
+            <li key={b} className="text-[11px] leading-snug text-subtle">
+              · {b}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function GaugeBar({
+  label,
+  valueLabel,
+  fill,
+  ok,
+}: {
+  label: string;
+  valueLabel: string;
+  fill: number;
+  ok: boolean;
+}) {
+  return (
+    <div className="rounded-lg bg-elevated/40 px-2.5 py-2">
+      <div className="mb-1 flex items-baseline justify-between gap-1">
+        <span className="text-[10px] tracking-wide text-muted uppercase">{label}</span>
+        <span className={`font-mono text-[11px] tabular ${ok ? "text-accent" : "text-danger"}`}>{valueLabel}</span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-border/60">
+        <div
+          className={`h-full rounded-full transition-[width] ${ok ? "bg-accent" : "bg-danger"}`}
+          style={{ width: `${Math.max(4, Math.min(100, fill))}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md bg-elevated/35 px-1.5 py-1.5 text-center">
+      <p className="text-[9px] tracking-wide text-muted uppercase">{label}</p>
+      <p className="font-mono text-[11px] tabular text-fg">{value}</p>
     </div>
   );
 }

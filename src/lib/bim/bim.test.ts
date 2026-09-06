@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { analyzeProject } from "./analysis.ts";
+import { assessFeasibility, CITY_PRESETS, applyCityPresetMeta } from "./feasibility.ts";
 import { OBJECT_CATALOG, OBJECT_MESH, OBJECT_SIZES, WALL_PRESETS } from "./catalog.ts";
 import { furniturePhase, visibleAt } from "./construction.ts";
 import {
@@ -265,5 +266,43 @@ describe("agents copilote", () => {
     assert.ok(link.stats.types >= 1);
     assert.ok(p.openings.length >= 0);
     void before;
+  });
+});
+
+describe("feasibility", () => {
+  it("scores CES/COS and returns French verdict", () => {
+    const p = miniHouse();
+    p.meta.plotM2 = 200;
+    p.meta.ces = 0.4;
+    p.meta.cos = 0.6;
+    p.meta.typology = "house";
+    const report = assessFeasibility(p, { month: 6 });
+    assert.ok(report.score >= 0 && report.score <= 100);
+    assert.ok(["ok", "watch", "fail"].includes(report.verdict));
+    assert.equal(typeof report.solarHint, "string");
+    assert.ok(report.solarHint.length > 8);
+    assert.ok(report.bullets.length >= 1);
+    assert.ok(report.emprise > 0);
+    assert.ok(report.heightM > 0);
+  });
+
+  it("fails when CES overrun", () => {
+    const p = miniHouse();
+    p.meta.plotM2 = 50;
+    p.meta.ces = 0.3;
+    p.meta.cos = 8;
+    const report = assessFeasibility(p);
+    assert.equal(report.verdict, "fail");
+    assert.equal(report.gauges.ces.ok, false);
+  });
+
+  it("city presets are indicative and complete", () => {
+    assert.equal(CITY_PRESETS.length, 6);
+    for (const c of CITY_PRESETS) {
+      const meta = applyCityPresetMeta(c);
+      assert.equal(meta.latitude, c.latitude);
+      assert.ok((meta.ces ?? 0) > 0);
+      assert.ok((meta.cos ?? 0) > 0);
+    }
   });
 });

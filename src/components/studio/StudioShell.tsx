@@ -14,6 +14,7 @@ import {
   Download,
   Building2,
   PackageCheck,
+  MapPinned,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast, Toaster } from "sonner";
@@ -279,7 +280,13 @@ export function StudioShell({ projectId }: { projectId: string }) {
             massingCta={current.walls.length === 0 && tool === "select"}
           />
         )}
-        {view !== "ar" && <ViewBar project={current} onStories={() => setInspector("niveaux")} />}
+        {view !== "ar" && (
+          <ViewBar
+            project={current}
+            onStories={() => setInspector("niveaux")}
+            onSite={() => setInspector("projet")}
+          />
+        )}
         <StudioHud />
 
         {current.walls.length === 0 && tool === "select" && panel === null && !inspector && !radial && (
@@ -435,6 +442,13 @@ export function StudioShell({ projectId }: { projectId: string }) {
               {
                 title: "Analyser",
                 items: [
+                  {
+                    id: "faisabilite" as const,
+                    label: "Faisabilité",
+                    desc: "CES/COS, soleil, verdict site",
+                    icon: MapPinned,
+                    action: "faisabilite" as const,
+                  },
                   { id: "struct" as const, label: "Structure", desc: "Porteurs et descentes", icon: Columns3 },
                   { id: "analyse" as const, label: "Lumière & chiffres", desc: "Soleil, métrés, alertes", icon: Sun },
                   { id: "ai" as const, label: "Copilote", desc: "Suggestions et massing IA", icon: Sparkles },
@@ -472,6 +486,11 @@ export function StudioShell({ projectId }: { projectId: string }) {
                             const r = deliverDossier(current);
                             toast.success(`Dossier · ${r.planCount} plans · IFC+DXF+CSV`);
                             setPanel(null);
+                            return;
+                          }
+                          if ("action" in item && item.action === "faisabilite") {
+                            setPanel(null);
+                            setInspector("projet");
                             return;
                           }
                           if (item.id === "building") setPanel("building");
