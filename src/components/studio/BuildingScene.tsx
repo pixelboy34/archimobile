@@ -1,10 +1,12 @@
 import { useMemo } from 'react'
 import * as THREE from 'three'
-import type { Project, Wall, Slab, Furniture, Column, Roof } from '../../lib/bim/types'
+import type { Project, Wall, Slab, Furniture, Column, Roof, Opening } from '../../lib/bim/types'
 import { wallLength, wallAngle, wallCenter } from '../../lib/bim/types'
 import { MATERIALS, FURNITURE_PRESETS } from '../../lib/bim/catalog'
 import { detectQuality } from '../../lib/render/quality'
+import { wallSolidBoxes, openingsLocal } from '../../lib/bim/wall-openings'
 
+const EMPTY_OPENINGS: Opening[] = []
 const boxGeo = new THREE.BoxGeometry(1, 1, 1)
 
 function matFor(id?: string, fallback = 'beton') {
@@ -18,10 +20,12 @@ function matFor(id?: string, fallback = 'beton') {
 
 function WallMesh({
   wall,
+  openings,
   elevation,
   visitMode = false,
 }: {
   wall: Wall
+  openings: Opening[]
   elevation: number
   visitMode?: boolean
 }) {
@@ -29,39 +33,135 @@ function WallMesh({
   const angle = wallAngle(wall)
   const c = wallCenter(wall)
   const m = matFor(wall.materialId, wall.typology === 'curtain' ? 'rideau' : 'enduit')
+  const solids = useMemo(() => wallSolidBoxes(wall, openings), [wall, openings])
+  const locals = useMemo(() => openingsLocal(wall, openings), [wall, openings])
+
+  if (len < 0.01) return null
+
+  const frameMat = MATERIALS.bois
+  const metalMat = MATERIALS.acier
+  const glassMat = MATERIALS.verre
+
   return (
-    <mesh
-      geometry={boxGeo}
-      position={[c.x, elevation + wall.height / 2, c.y]}
-      rotation={[0, -angle, 0]}
-      scale={[len, wall.height, wall.thickness]}
-      castShadow
-      receiveShadow
-    >
-      <meshStandardMaterial
-        color={m.color}
-        roughness={m.roughness}
-        metalness={m.metalness}
-        side={visitMode ? THREE.DoubleSide : THREE.FrontSide}
-        emissive={visitMode ? '#1a3030' : '#000000'}
-        emissiveIntensity={visitMode ? 0.12 : 0}
-      />
-    </mesh>
+    <group position={[c.x, elevation, c.y]} rotation={[0, -angle, 0]}>
+      {solids.map((seg, i) => (
+        <mesh
+          key={`seg-${i}`}
+          geometry={boxGeo}
+          position={[seg.x, seg.y, 0]}
+          scale={[seg.w, seg.h, wall.thickness]}
+          castShadow
+          receiveShadow
+        >
+          <meshStandardMaterial
+            color={m.color}
+            roughness={m.roughness}
+            metalness={m.metalness}
+            side={visitMode ? THREE.DoubleSide : THREE.FrontSide}
+            emissive={visitMode ? '#1a3030' : '#000000'}
+            emissiveIntensity={visitMode ? 0.12 : 0}
+          />
+        </mesh>
+      ))}
+
+      {locals.map((op) => {
+        const midY = op.sill + op.height / 2
+        const frame = Math.min(0.07, op.width * 0.12, op.height * 0.08)
+        const depth = wall.thickness + 0.03
+        const isDoor = op.kind === 'door'
+        const isWindow = op.kind === 'window'
+        const fColor = isDoor ? frameMat.color : metalMat.color
+        const fRough = isDoor ? frameMat.roughness : metalMat.roughness
+        const fMetal = isDoor ? frameMat.metalness : metalMat.metalness
+        const innerW = Math.max(0.05, op.width - frame * 2)
+        const innerH = Math.max(0.05, op.height - frame * 2)
+
+        return (
+          <group key={op.id} position={[op.x, 0, 0]}>
+            {/* jambs */}
+            <mesh
+              geometry={boxGeo}
+              position={[-op.width / 2 + frame / 2, midY, 0]}
+              scale={[frame, op.height, depth]}
+              castShadow
+            >
+              <meshStandardMaterial color={fColor} roughness={fRough} metalness={fMetal} />
+            </mesh>
+            <mesh
+              geometry={boxGeo}
+              position={[op.width / 2 - frame / 2, midY, 0]}
+              scale={[frame, op.height, depth]}
+              castShadow
+            >
+              <meshStandardMaterial color={fColor} roughness={fRough} metalness={fMetal} />
+            </mesh>
+            {/* head */}
+            <mesh
+              geometry={boxGeo}
+              position={[0, op.sill + op.height - frame / 2, 0]}
+              scale={[op.width, frame, depth]}
+              castShadow
+            >
+              <meshStandardMaterial color={fColor} roughness={fRough} metalness={fMetal} />
+            </mesh>
+            {/* sill bar (windows / generic openings) */}
+            {!isDoor && (
+              <mesh
+                geometry={boxGeo}
+                position={[0, op.sill + frame / 2, 0]}
+                scale={[op.width, frame, depth]}
+                castShadow
+              >
+                <meshStandardMaterial color={fColor} roughness={fRough} metalness={fMetal} />
+              </mesh>
+            )}
+            {/* glass pane */}
+            {isWindow && (
+              <mesh
+                geometry={boxGeo}
+                position={[0, midY, 0]}
+                scale={[innerW, innerH, Math.max(0.02, wall.thickness * 0.25)]}
+              >
+                <meshStandardMaterial
+                  color={glassMat.color}
+                  roughness={glassMat.roughness}
+                  metalness={glassMat.metalness}
+                  transparent
+                  opacity={visitMode ? 0.35 : 0.55}
+                  side={THREE.DoubleSide}
+                  depthWrite={false}
+                />
+              </mesh>
+            )}
+            {/* lightly ajar door leaf — stays clear of the opening center for visite */}
+            {isDoor && (
+              <mesh
+                geometry={boxGeo}
+                position={[op.width / 2 - 0.03, midY, wall.thickness / 2 + 0.22]}
+                rotation={[0, -0.55, 0]}
+                scale={[op.width * 0.72, innerH, 0.04]}
+                castShadow
+              >
+                <meshStandardMaterial
+                  color={frameMat.color}
+                  roughness={frameMat.roughness}
+                  metalness={0}
+                />
+              </mesh>
+            )}
+          </group>
+        )
+      })}
+    </group>
   )
 }
 
-function polygonCentroid(poly: { x: number; y: number }[]) {
-  let x = 0
-  let y = 0
-  for (const p of poly) {
-    x += p.x
-    y += p.y
-  }
-  return { x: x / poly.length, y: y / poly.length }
-}
 
 function bbox(poly: { x: number; y: number }[]) {
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+  let minX = Infinity,
+    maxX = -Infinity,
+    minY = Infinity,
+    maxY = -Infinity
   for (const p of poly) {
     minX = Math.min(minX, p.x)
     maxX = Math.max(maxX, p.x)
@@ -146,7 +246,12 @@ function FurnitureMesh({ item, elevation }: { item: Furniture; elevation: number
         />
       </mesh>
       {item.kind === 'sofa' && (
-        <mesh geometry={boxGeo} position={[0, item.height * 0.7, -item.depth * 0.35]} scale={[item.width, item.height * 0.6, item.depth * 0.25]} castShadow>
+        <mesh
+          geometry={boxGeo}
+          position={[0, item.height * 0.7, -item.depth * 0.35]}
+          scale={[item.width, item.height * 0.6, item.depth * 0.25]}
+          castShadow
+        >
           <meshStandardMaterial color={color} roughness={0.7} metalness={0} />
         </mesh>
       )}
@@ -177,6 +282,16 @@ export default function BuildingScene({ project, activeStoryId, visiting = false
     for (const s of project.stories) m.set(s.id, s)
     return m
   }, [project.stories])
+
+  const openingsByWall = useMemo(() => {
+    const map = new Map<string, Opening[]>()
+    for (const o of project.openings) {
+      const list = map.get(o.wallId)
+      if (list) list.push(o)
+      else map.set(o.wallId, [o])
+    }
+    return map
+  }, [project.openings])
 
   const sunAngle = ((project.meta.lightHour - 6) / 12) * Math.PI
   const sunX = Math.cos(sunAngle) * 40
@@ -239,7 +354,12 @@ export default function BuildingScene({ project, activeStoryId, visiting = false
         const dim = focusStory && focusStory.id !== w.storyId && Math.abs(focusStory.index - st.index) > 2
         return (
           <group key={w.id} visible={!dim || true}>
-            <WallMesh wall={w} elevation={st.elevation} visitMode={visiting} />
+            <WallMesh
+              wall={w}
+              openings={openingsByWall.get(w.id) ?? EMPTY_OPENINGS}
+              elevation={st.elevation}
+              visitMode={visiting}
+            />
           </group>
         )
       })}
@@ -264,3 +384,4 @@ export default function BuildingScene({ project, activeStoryId, visiting = false
     </group>
   )
 }
+

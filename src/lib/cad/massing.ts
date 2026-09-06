@@ -1,12 +1,46 @@
-import type { Project, Wall, Slab, Furniture, Column } from '../bim/types'
-import { uid } from '../bim/types'
-import { makeStory, rectWalls, rectPolygon, makeSlab, makeFurniture, makeColumn, makeRoom } from '../bim/builder'
+import type { Project, Wall, Slab, Furniture, Column, Opening } from '../bim/types'
+import { wallLength } from '../bim/types'
+import { makeStory, rectWalls, rectPolygon, makeSlab, makeFurniture, makeColumn, makeRoom, makeOpening } from '../bim/builder'
 
 export type MassingParams = {
   width: number
   depth: number
   floors: number
   floorHeight: number
+}
+
+/** Place facade windows (and a ground-floor door) on envelope walls. */
+function facadeOpenings(envelope: Wall[], isGround: boolean, hsp: number): Opening[] {
+  const openings: Opening[] = []
+  const winH = Math.min(1.7, hsp - 1.05)
+  const sill = 0.9
+
+  envelope.forEach((wall, wi) => {
+    const len = wallLength(wall)
+    if (len < 1.2) return
+
+    if (isGround && wi === 0) {
+      // Entry door centered on the south facade
+      openings.push(makeOpening(wall.id, 'door', 0.5, Math.min(1.2, len * 0.25), Math.min(2.2, hsp - 0.15), 0))
+      // Flanking windows if wall is long enough
+      if (len > 6) {
+        openings.push(makeOpening(wall.id, 'window', 0.22, 1.4, winH, sill))
+        openings.push(makeOpening(wall.id, 'window', 0.78, 1.4, winH, sill))
+      }
+      return
+    }
+
+    const pitch = 3.2
+    const count = Math.max(1, Math.floor(len / pitch))
+    for (let i = 0; i < count; i++) {
+      const t = (i + 0.5) / count
+      const w = Math.min(1.5, len / count - 0.4)
+      if (w < 0.6) continue
+      openings.push(makeOpening(wall.id, 'window', t, w, winH, sill))
+    }
+  })
+
+  return openings
 }
 
 /** Plateau + noyau + etages empiles + terrasse. Caps floors at 80. */
@@ -27,6 +61,7 @@ export function generateMassing(params: MassingParams): Pick<
   const slabs: Slab[] = []
   const columns: Column[] = []
   const furniture: Furniture[] = []
+  const openings: Opening[] = []
 
   // Core size
   const coreW = Math.min(4, width * 0.25)
@@ -45,6 +80,7 @@ export function generateMassing(params: MassingParams): Pick<
       w.materialId = i === 0 ? 'beton' : 'rideau'
       walls.push(w)
     }
+    openings.push(...facadeOpenings(envelope, i === 0, hsp))
 
     // Core walls
     const core = rectWalls(story.id, coreX, coreZ, coreW, coreD, hsp, 0.2, 'core')
@@ -115,7 +151,7 @@ export function generateMassing(params: MassingParams): Pick<
     furniture,
     rooms,
     roofs: [],
-    openings: [],
+    openings,
     stairs,
   }
 }

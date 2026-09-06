@@ -12,6 +12,8 @@ import {
   pointInPolygon,
 } from './geom'
 import { makeTJoint, splitWallAt, trimWall, extendWallDetailed, healWallTJoints } from './ops'
+import { wallSolidBoxes, openingsLocal } from '../bim/wall-openings'
+import { generateMassing } from './massing'
 import type { Project, Wall, Opening, Room } from '../bim/types'
 
 function emptyProject(walls: Wall[], openings: Opening[] = [], rooms: Room[] = []): Project {
@@ -293,5 +295,59 @@ describe('T-joint ops', () => {
     const res = healWallTJoints(p, 'stub')
     assert.equal(res.project.walls.length, 3)
     assert.ok(res.note)
+  })
+})
+
+
+describe('wall openings solids', () => {
+  const wall: Wall = {
+    id: 'w1',
+    storyId: 's1',
+    a: { x: 0, y: 0 },
+    b: { x: 10, y: 0 },
+    thickness: 0.25,
+    height: 2.8,
+    typology: 'exterior',
+  }
+
+  it('returns one full box when no openings', () => {
+    const boxes = wallSolidBoxes(wall, [])
+    assert.equal(boxes.length, 1)
+    assert.ok(Math.abs(boxes[0]!.w - 10) < 1e-6)
+    assert.ok(Math.abs(boxes[0]!.h - 2.8) < 1e-6)
+  })
+
+  it('cuts a door void to the sill and keeps lintel', () => {
+    const openings: Opening[] = [
+      { id: 'o1', wallId: 'w1', kind: 'door', t: 0.5, width: 1.0, height: 2.1, sill: 0 },
+    ]
+    const boxes = wallSolidBoxes(wall, openings)
+    // left + right full-height + lintel over door
+    assert.ok(boxes.length >= 3)
+    const lintels = boxes.filter((b) => b.h < 1 && b.y > 2)
+    assert.ok(lintels.length >= 1)
+    const locals = openingsLocal(wall, openings)
+    assert.equal(locals.length, 1)
+    assert.equal(locals[0]!.kind, 'door')
+  })
+
+  it('keeps sill under a window', () => {
+    const openings: Opening[] = [
+      { id: 'o2', wallId: 'w1', kind: 'window', t: 0.3, width: 1.5, height: 1.4, sill: 0.9 },
+    ]
+    const boxes = wallSolidBoxes(wall, openings)
+    const sills = boxes.filter((b) => b.y < 0.9 && b.h <= 0.95)
+    assert.ok(sills.length >= 1)
+  })
+})
+
+describe('massing openings', () => {
+  it('seeds facade openings on envelope', () => {
+    const m = generateMassing({ width: 12, depth: 18, floors: 3, floorHeight: 3 })
+    assert.ok(m.openings.length > 0)
+    assert.ok(m.openings.some((o) => o.kind === 'door'))
+    assert.ok(m.openings.some((o) => o.kind === 'window'))
+    const wallIds = new Set(m.walls.map((w) => w.id))
+    for (const o of m.openings) assert.ok(wallIds.has(o.wallId))
   })
 })

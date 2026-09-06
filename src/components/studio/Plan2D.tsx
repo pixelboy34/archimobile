@@ -32,6 +32,8 @@ export default function Plan2D({ project, storyId }: Props) {
   const walls = project.walls.filter((w) => w.storyId === story?.id)
   const rooms = project.rooms.filter((r) => r.storyId === story?.id)
   const furniture = project.furniture.filter((f) => f.storyId === story?.id)
+  const wallIds = new Set(walls.map((w) => w.id))
+  const openings = project.openings.filter((o) => wallIds.has(o.wallId))
 
   const bounds = useMemo(() => {
     let minX = -15,
@@ -309,6 +311,52 @@ export default function Plan2D({ project, storyId }: Props) {
                 setInspectorTab('ouvrage')
               }}
             />
+          )
+        })}
+
+        {openings.map((op) => {
+          const w = walls.find((ww) => ww.id === op.wallId)
+          if (!w) return null
+          const dx = w.b.x - w.a.x
+          const dy = w.b.y - w.a.y
+          const len = Math.hypot(dx, dy)
+          if (len < 1e-6) return null
+          const ang = (Math.atan2(dy, dx) * 180) / Math.PI
+          const cx = w.a.x + op.t * dx
+          const cy = w.a.y + op.t * dy
+          const isDoor = op.kind === 'door'
+          return (
+            <g key={op.id} transform={`translate(${cx}, ${cy}) rotate(${ang})`}>
+              <rect
+                x={-op.width / 2}
+                y={-w.thickness / 2 - 0.02}
+                width={op.width}
+                height={w.thickness + 0.04}
+                fill="#04080c"
+                stroke={isDoor ? '#6ed0c3' : '#7eb8c9'}
+                strokeWidth={0.035}
+              />
+              {isDoor && (
+                <path
+                  d={`M ${-op.width / 2} 0 A ${op.width} ${op.width} 0 0 1 ${op.width / 2} ${op.width}`}
+                  fill="none"
+                  stroke="#6ed0c3"
+                  strokeWidth={0.03}
+                  opacity={0.55}
+                />
+              )}
+              {!isDoor && (
+                <line
+                  x1={-op.width / 2 + 0.05}
+                  y1={0}
+                  x2={op.width / 2 - 0.05}
+                  y2={0}
+                  stroke="#7eb8c9"
+                  strokeWidth={0.04}
+                  opacity={0.7}
+                />
+              )}
+            </g>
           )
         })}
 
