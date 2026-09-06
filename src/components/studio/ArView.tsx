@@ -151,7 +151,7 @@ function MaquetteSvg({
       style={{
         transform: `perspective(600px) rotateX(${12 + pitch * 40}deg) rotateY(${yaw * 57.3}deg) scale(${scale})`,
         transformOrigin: '50% 60%',
-        transition: 'transform 0.05s linear',
+        willChange: 'transform',
       }}
     >
       <rect
@@ -280,13 +280,21 @@ export default function ArView({ project }: Props) {
   }, [camStatus])
 
   const onPointerDown = (e: React.PointerEvent) => {
-    ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
+    // Ignore UI chips above; only the overlay surface starts a drag
+    if ((e.target as HTMLElement).closest?.('button, a, .chip')) return
+    try {
+      ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
+    } catch {
+      /* ignore */
+    }
     drag.current = { x: e.clientX, y: e.clientY, yaw, pitch }
   }
   const onPointerMove = (e: React.PointerEvent) => {
     if (!drag.current) return
     const dx = e.clientX - drag.current.x
     const dy = e.clientY - drag.current.y
+    // Dead-zone stabilizes Poser overlay / avoids jitter on tap
+    if (Math.hypot(dx, dy) < 3) return
     setYaw(drag.current.yaw + dx * 0.005)
     setPitch(Math.min(0.8, Math.max(-0.3, drag.current.pitch + dy * 0.004)))
   }
@@ -370,14 +378,15 @@ export default function ArView({ project }: Props) {
 
       <div
         ref={overlayRef}
-        className="absolute inset-0 flex items-center justify-center touch-none"
+        className="absolute inset-0 flex items-center justify-center touch-none select-none"
+        style={{ touchAction: 'none', contain: 'layout paint' }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onClick={onOverlayClick}
       >
-        <div className="w-[min(90vw,28rem)] h-[min(55vh,22rem)] pointer-events-none opacity-95">
+        <div className="w-[min(90vw,28rem)] h-[min(55vh,22rem)] pointer-events-none opacity-95 drop-shadow-[0_8px_24px_rgba(0,0,0,0.45)]">
           <MaquetteSvg
             project={project}
             yaw={yaw}
@@ -426,11 +435,18 @@ export default function ArView({ project }: Props) {
         </div>
 
         {viewerOnly && (
-          <p className="pointer-events-auto chip text-xs max-w-[92vw] text-center bg-[#0a1218]/95">
-            {camStatus === 'denied'
-              ? 'Camera refusee — mode viewer actif. Glissez pour regarder la maquette.'
-              : 'Camera indisponible — mode viewer. Glissez pour orienter la maquette.'}
-          </p>
+          <div className="pointer-events-auto flex flex-col items-center gap-2 max-w-[92vw]">
+            <p className="chip text-xs text-center bg-[#0a1218]/95 border border-[#6ed0c3]/35 text-[#cfe8e4]">
+              {camStatus === 'denied'
+                ? 'Acces camera refuse. Autorisez la camera dans les reglages du navigateur, ou continuez en mode viewer (glisser pour orienter la maquette Poser 1:50).'
+                : 'Camera non disponible sur cet appareil ou ce navigateur. Mode viewer actif : glissez pour orienter la maquette Poser 1:50.'}
+            </p>
+            {camStatus === 'denied' && (
+              <button type="button" className="chip border-[#6ed0c3]/50 text-[#6ed0c3]" onClick={() => void startCamera()}>
+                Reessayer la camera
+              </button>
+            )}
+          </div>
         )}
         {camStatus === 'live' && (
           <p className="chip text-[11px] text-[#7a8f9c] bg-[#0a1218]/85">
@@ -440,7 +456,7 @@ export default function ArView({ project }: Props) {
           </p>
         )}
         {camStatus === 'requesting' && (
-          <p className="chip text-xs">Autorisation camera…</p>
+          <p className="chip text-xs">Demande d acces a la camera…</p>
         )}
         {xrMessage && (
           <p className="pointer-events-auto chip text-xs max-w-[92vw] text-center">{xrMessage}</p>
