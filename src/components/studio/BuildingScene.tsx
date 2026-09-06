@@ -86,9 +86,9 @@ function useSharedResources(
   const select = useMemo(
     () =>
       new THREE.MeshLambertMaterial({
-        color: "#7a9e96",
-        emissive: "#7a9e96",
-        emissiveIntensity: 0.22,
+        color: "#6ed0c3",
+        emissive: "#6ed0c3",
+        emissiveIntensity: 0.38,
       }),
     [],
   );
@@ -1176,7 +1176,7 @@ export function Ground({
       ).map(([x, z, sx, sz], i) => (
         <mesh key={i} position={[x, 0.04, z]} raycast={skipRaycast} castShadow={shadows} receiveShadow={shadows}>
           <boxGeometry args={[sx, 0.08, sz]} />
-          <meshStandardMaterial color="#8a8680" roughness={0.9} />
+          <meshStandardMaterial color="#6e7a76" roughness={0.88} metalness={0.02} />
         </mesh>
       ))}
     </group>

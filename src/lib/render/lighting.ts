@@ -17,15 +17,15 @@ export interface Lighting {
 export const DEFAULT_LIGHTING: Lighting = {
   sunHour: 14,
   month: 6,
-  sunIntensity: 2.4,
-  fill: 0.62,
-  ambient: 0.62,
-  hemi: 0.9,
-  exposure: 1.2,
+  sunIntensity: 2.45,
+  fill: 0.64,
+  ambient: 0.58,
+  hemi: 1.0,
+  exposure: 1.28,
   shadows: true,
-  shadowSoftness: 0.4,
+  shadowSoftness: 0.42,
   interior: "auto",
-  interiorGain: 0.9,
+  interiorGain: 0.92,
 };
 
 export const MONTH_LABELS = [

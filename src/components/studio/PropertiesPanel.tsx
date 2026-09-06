@@ -77,6 +77,8 @@ export function PropertiesPanel({
   const setIsolateStory = useStudio((s) => s.setIsolateStory);
   const showStructure = useStudio((s) => s.showStructure);
   const setShowStructure = useStudio((s) => s.setShowStructure);
+  const physics = useStudio((s) => s.physics);
+  const setPhysics = useStudio((s) => s.setPhysics);
   const analysis = useStudio((s) => s.analysis);
   const beginEdit = useStudio((s) => s.beginEdit);
   const patchSelected = useStudio((s) => s.patchSelected);
@@ -356,6 +358,7 @@ export function PropertiesPanel({
             <ToggleRow label="Ortho" on={ortho} onChange={setOrtho} />
             <ToggleRow label="Isoler l’étage" on={isolateStory} onChange={setIsolateStory} />
             <ToggleRow label="Ossature porteuse" on={showStructure} onChange={setShowStructure} />
+            <ToggleRow label="Physique (visite)" on={physics} onChange={setPhysics} />
             <Param label="Coupe (clip Y)" value={clipY} min={0.15} max={1} step={0.02} unit="" digits={2} onBegin={beginEdit} onChange={setClipY} />
             <p className="text-[11px] text-subtle">Passez en vue Coupe pour voir le plan sectionné en direct.</p>
           </Section>

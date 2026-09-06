@@ -66,6 +66,7 @@ const TOOL_SHORT: Record<Tool, string> = {
   furniture: "Objet",
 };
 
+/** Tool groups inside CommandRail — quieter inactive, accent underline on active group. */
 export function ToolDock({
   tool,
   onTool,
@@ -85,11 +86,12 @@ export function ToolDock({
   const sub = active.tools;
 
   return (
-    <div className="pointer-events-auto flex max-w-full flex-col items-center gap-1.5">
+    <div className="pointer-events-auto flex max-w-full flex-col items-stretch gap-1">
       {sub.length > 1 && (
-        <div className="flex gap-1 overflow-x-auto rounded-xl border border-border/70 bg-surface/95 p-1 shadow-border backdrop-blur-md">
+        <div className="flex gap-0.5 overflow-x-auto">
           {sub.map((id) => {
             const Icon = ICONS[id] ?? MousePointer2;
+            const on = tool === id;
             return (
               <button
                 key={id}
@@ -97,9 +99,11 @@ export function ToolDock({
                 title={TOOL_LABELS[id]}
                 onClick={() => onTool(id)}
                 className={cn(
-                  "flex min-w-11 items-center justify-center rounded-lg px-2 text-muted transition-colors duration-150",
-                  expert ? "h-12 flex-col gap-0.5 py-1" : "h-11",
-                  tool === id ? "bg-accent text-accent-fg shadow-[0_0_0_1px_rgba(110,208,195,0.45)]" : "hover:bg-elevated hover:text-fg",
+                  "flex min-w-11 items-center justify-center rounded-lg px-2 transition-colors duration-150",
+                  expert ? "h-11 flex-col gap-0.5 py-1" : "h-10",
+                  on
+                    ? "bg-accent/15 text-accent ring-1 ring-accent/45"
+                    : "text-muted/70 hover:bg-elevated/70 hover:text-fg",
                 )}
               >
                 <Icon className="size-4" />
@@ -115,7 +119,7 @@ export function ToolDock({
           })}
         </div>
       )}
-      <div className="flex gap-1 overflow-x-auto rounded-xl border border-border/70 bg-surface/95 p-1.5 shadow-border backdrop-blur-md">
+      <div className="flex gap-0.5 overflow-x-auto">
         {groups.map((g) => {
           const Icon = g.icon;
           const on = g.id === active.id;
@@ -128,12 +132,15 @@ export function ToolDock({
                 if (!g.tools.includes(tool)) onTool(g.tools[0]!);
               }}
               className={cn(
-                "flex h-11 min-w-11 flex-col items-center justify-center rounded-lg px-2 text-[10px] tracking-wide text-muted uppercase transition-colors duration-150",
-                on ? "bg-elevated text-accent ring-1 ring-accent/40" : "hover:bg-elevated/70 hover:text-fg",
+                "relative flex h-11 min-w-11 flex-col items-center justify-center rounded-lg px-2 text-[10px] tracking-wide uppercase transition-colors duration-150",
+                on ? "text-accent" : "text-muted/65 hover:bg-elevated/60 hover:text-fg",
               )}
             >
               <Icon className="size-4" />
               <span>{g.label}</span>
+              {on && (
+                <span className="absolute inset-x-2 bottom-0.5 h-0.5 rounded-full bg-accent" />
+              )}
             </button>
           );
         })}

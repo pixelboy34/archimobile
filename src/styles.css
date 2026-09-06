@@ -25,6 +25,7 @@
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-xl: 16px;
+  --radius-2xl: 18px;
 
   --shadow-border:
     0 0 0 1px color-mix(in oklab, var(--color-accent) 28%, transparent),
@@ -128,31 +129,54 @@
   color: var(--color-subtle);
 }
 
+/* Shared glass surfaces — radius / border / blur unified */
+.panel-card,
+.cmd-rail,
 .hud-panel {
-  background: color-mix(in oklab, var(--color-surface) 88%, transparent);
+  background: color-mix(in oklab, var(--color-surface) 92%, transparent);
+  border: 1px solid color-mix(in oklab, var(--color-border) 60%, transparent);
   box-shadow: var(--shadow-border);
   backdrop-filter: blur(16px);
-  border-radius: var(--radius-md);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: var(--radius-2xl);
+}
+
+.hud-panel {
+  border-radius: var(--radius-xl);
+}
+
+.cmd-rail {
+  display: flex;
+  max-width: 100%;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+  padding: 0.5rem;
 }
 
 .hud-chip {
   display: flex;
-  height: 32px;
+  height: 2.5rem; /* h-10 */
   flex-shrink: 0;
   align-items: center;
-  padding: 0 11px;
+  gap: 0.35rem;
+  padding: 0 0.7rem;
   font-size: 11px;
   letter-spacing: 0.06em;
   color: var(--color-muted);
-  background: color-mix(in oklab, var(--color-surface) 82%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-accent) 20%, var(--color-border));
+  background: color-mix(in oklab, var(--color-surface) 88%, transparent);
+  border: 1px solid color-mix(in oklab, var(--color-border) 60%, transparent);
+  box-shadow: none;
   backdrop-filter: blur(12px);
-  border-radius: 2px;
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 999px;
+  transition: color 0.15s, background-color 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 .hud-chip-on {
-  color: var(--color-primary-fg);
-  background: var(--color-primary);
-  box-shadow: none;
+  color: var(--color-accent);
+  background: color-mix(in oklab, var(--color-accent) 15%, transparent);
+  border-color: color-mix(in oklab, var(--color-accent) 55%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-accent) 35%, transparent);
 }
 
 .led {
@@ -198,4 +222,40 @@
   font-weight: 700;
   letter-spacing: 0.18em;
   text-transform: uppercase;
+}
+
+.section-label {
+  margin-bottom: 0.5rem;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-subtle);
+}
+
+.studio-tile {
+  display: flex;
+  min-height: 3.5rem;
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: var(--radius-xl);
+  border: 1px solid color-mix(in oklab, var(--color-border) 60%, transparent);
+  background: color-mix(in oklab, var(--color-elevated) 90%, transparent);
+  padding: 0.75rem 0.9rem;
+  text-align: left;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+.studio-tile:active {
+  background: color-mix(in oklab, var(--color-accent) 10%, var(--color-elevated));
+}
+.studio-tile-icon {
+  display: flex;
+
+  width: 2.5rem;
+  height: 2.5rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklab, var(--color-accent) 15%, transparent);
+  color: var(--color-accent);
 }

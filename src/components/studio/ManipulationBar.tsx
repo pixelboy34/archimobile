@@ -23,7 +23,7 @@ import { deliverDossier } from "@/lib/bim/dossier";
 import { useStudio } from "@/lib/store/project-store";
 import { dispatchCam } from "./OrbitRig";
 
-/** Compact contextual bar — Plan + 3D — accent #6ed0c3, touch h-11 */
+/** Context row inside CommandRail — accent border when selection active. */
 export function ManipulationBar({
   onParams,
   onMaterial,
@@ -67,9 +67,14 @@ export function ManipulationBar({
   const nudge = (dx: number, dy: number) => moveSelected(dx, dy);
 
   return (
-    <div className="pointer-events-auto flex max-w-full flex-col items-center gap-1">
+    <div
+      className={cn(
+        "pointer-events-auto flex max-w-full flex-col items-stretch gap-1 rounded-xl p-0.5 transition-[box-shadow,border-color] duration-150",
+        hasSel ? "border border-accent/55 bg-accent/5" : "border border-transparent",
+      )}
+    >
       {movable && (
-        <div className="flex gap-1 overflow-x-auto rounded-xl border border-accent/35 bg-surface/95 p-1 shadow-border backdrop-blur-md">
+        <div className="flex gap-0.5 overflow-x-auto">
           <BarBtn label="−X" onClick={() => nudge(-0.1, 0)}>
             <span className="font-mono text-[11px]">−X</span>
           </BarBtn>
@@ -90,7 +95,7 @@ export function ManipulationBar({
           </BarBtn>
         </div>
       )}
-      <div className="flex gap-1 overflow-x-auto rounded-xl border border-accent/30 bg-surface/95 p-1 shadow-border backdrop-blur-md">
+      <div className="flex gap-0.5 overflow-x-auto">
         {hasSel ? (
           <>
             <BarBtn label="Dupliquer" onClick={duplicateSelected}>
@@ -131,7 +136,7 @@ export function ManipulationBar({
             </BarBtn>
             {multiStory && (
               <BarBtn
-                label="Propager cet étage"
+                label="Propager"
                 accent
                 onClick={() => {
                   propagateTypical();
@@ -189,9 +194,9 @@ function BarBtn({
       className={cn(
         "flex h-11 min-w-11 flex-col items-center justify-center gap-0.5 rounded-lg px-2.5 text-[9px] font-medium tracking-wide uppercase transition-[transform,background-color,color,box-shadow] duration-150 active:scale-[0.96]",
         danger && "text-danger hover:bg-danger/10",
-        accent && !danger && "bg-accent/20 text-accent ring-1 ring-accent/50",
-        active && !accent && !danger && "bg-accent text-accent-fg shadow-[0_0_0_1px_rgba(110,208,195,0.55)]",
-        !active && !accent && !danger && "text-muted hover:bg-elevated hover:text-fg",
+        accent && !danger && "bg-accent/15 text-accent ring-1 ring-accent/45",
+        active && !accent && !danger && "bg-accent/15 text-accent ring-1 ring-accent/50",
+        !active && !accent && !danger && "text-muted/80 hover:bg-elevated/80 hover:text-fg",
       )}
     >
       {children}

@@ -44,7 +44,7 @@ function Ring({
   tool,
   onTool,
   onClose,
-  size = 44,
+  size = 36,
 }: {
   items: { tool: Tool; icon: typeof PenLine }[];
   radius: number;
@@ -54,8 +54,8 @@ function Ring({
   size?: number;
 }) {
   const n = items.length;
-  const cx = 120;
-  const cy = 120;
+  const cx = 100;
+  const cy = 100;
   return (
     <>
       {items.map((item, i) => {
@@ -73,12 +73,14 @@ function Ring({
               onTool(item.tool);
               onClose();
             }}
-            className={`pointer-events-auto absolute flex items-center justify-center rounded-full border shadow-border ${
-              on ? "border-transparent bg-primary text-primary-fg" : "border-border bg-surface text-fg"
+            className={`pointer-events-auto absolute flex items-center justify-center rounded-full border ${
+              on
+                ? "border-accent/50 bg-accent/15 text-accent"
+                : "border-border/60 bg-surface/90 text-muted"
             }`}
             style={{ left: x, top: y, width: size, height: size }}
           >
-            <Icon className="size-4" />
+            <Icon className="size-3.5" />
             <span className="sr-only">{TOOL_LABELS[item.tool]}</span>
           </button>
         );
@@ -87,6 +89,7 @@ function Ring({
   );
 }
 
+/** Secondary radial — smaller, does not fight CommandRail. */
 export function RadialMenu({
   open,
   tool,
@@ -107,26 +110,26 @@ export function RadialMenu({
   const outer = pro ? STRUCT : STRUCT.filter((i) => ["column", "stair", "slab"].includes(i.tool));
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-30 flex items-end justify-center pb-[7.5rem]">
+    <div className="pointer-events-none absolute inset-0 z-30 flex items-end justify-center pb-[8.5rem]">
       <button
         type="button"
         aria-label="Fermer"
-        className="pointer-events-auto absolute inset-0"
+        className="pointer-events-auto absolute inset-0 bg-bg/25"
         onClick={onClose}
       />
-      <div className="relative size-60">
+      <div className="relative size-[12.5rem] scale-90 opacity-95">
         <button
           type="button"
           onClick={() => {
             onStudio();
             onClose();
           }}
-          className="pointer-events-auto absolute top-1/2 left-1/2 flex size-14 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full bg-primary text-[10px] tracking-wide text-primary-fg uppercase"
+          className="pointer-events-auto absolute top-1/2 left-1/2 flex size-11 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border border-accent/40 bg-accent/15 text-[9px] tracking-wide text-accent uppercase"
         >
           Studio
         </button>
-        <Ring items={inner} radius={78} tool={tool} onTool={onTool} onClose={onClose} size={42} />
-        <Ring items={outer} radius={118} tool={tool} onTool={onTool} onClose={onClose} size={40} />
+        <Ring items={inner} radius={64} tool={tool} onTool={onTool} onClose={onClose} size={34} />
+        <Ring items={outer} radius={96} tool={tool} onTool={onTool} onClose={onClose} size={32} />
       </div>
     </div>
   );

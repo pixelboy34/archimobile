@@ -412,7 +412,7 @@ export function Viewport3D({
       />
       <LightRig lighting={lighting} shadows={shadows} type={shadowType} mobile={quality.mobile} />
       <color attach="background" args={[sky]} />
-      {quality.fog && <fog attach="fog" args={[sky, Math.max(28, span * 1.6), Math.max(90, span * 5)]} />}
+      {quality.fog && <fog attach="fog" args={[sky, Math.max(36, span * 2.0), Math.max(110, span * 5.5)]} />}
       <hemisphereLight args={[night ? "#9aa4b8" : "#f2f0ea", "#4a4a40", lighting.hemi]} />
       <ambientLight intensity={ambient} />
       <directionalLight

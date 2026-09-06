@@ -7,10 +7,8 @@ import {
   Layers,
   LayoutGrid,
   Palette,
-  Redo2,
   SlidersHorizontal,
   Sparkles,
-  Undo2,
   Hammer,
   Sun,
   Download,
@@ -98,8 +96,6 @@ export function StudioShell({ projectId }: { projectId: string }) {
   const moveSelected = useStudio((s) => s.moveSelected);
   const setDraft = useStudio((s) => s.setDraft);
   const setMeasure = useStudio((s) => s.setMeasure);
-  const isolateStory = useStudio((s) => s.isolateStory);
-  const setIsolateStory = useStudio((s) => s.setIsolateStory);
 
   const [panel, setPanel] = useState<
     null | "ai" | "mats" | "chantier" | "help" | "studio" | "ouvrages" | "struct" | "layers" | "analyse" | "building"
@@ -224,6 +220,14 @@ export function StudioShell({ projectId }: { projectId: string }) {
 
   const activeStory = storyId ?? current.stories[0]!.id;
 
+  /*
+   * Layout zones (mobile-first):
+   * TOP — project header (back, name, Esq/Modèle/Rel, Amateur/Expert, Studio)
+   * TOP-LEFT — ViewBar (vues + niveaux only)
+   * TOP under — thin StudioHud status line (mode · outil · dims · types liés)
+   * BOTTOM — CommandRail (ManipulationBar + ToolDock + Params/Radial) one glass surface
+   * BOTTOM dock — InspectorDock replaces CommandRail when open (~52dvh)
+   */
   return (
     <div className="relative h-dvh overflow-hidden bg-bg text-fg">
       <Toaster theme="dark" position="top-center" />
@@ -278,17 +282,17 @@ export function StudioShell({ projectId }: { projectId: string }) {
         {view !== "ar" && <ViewBar project={current} onStories={() => setInspector("niveaux")} />}
         <StudioHud />
 
-        {current.walls.length === 0 && tool === "select" && panel === null && !inspector && (
-          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6">
-            <div className="pointer-events-auto max-w-sm rounded-xl border border-accent/35 bg-surface/95 px-5 py-5 text-center shadow-border">
-              <p className="font-display text-base font-semibold">Esquisse vide</p>
-              <p className="mt-2 text-sm text-muted">
-                Tracez un mur, ou générez un immeuble complet (façades, poteaux, toiture).
+        {current.walls.length === 0 && tool === "select" && panel === null && !inspector && !radial && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6 pb-36">
+            <div className="pointer-events-auto panel-card max-w-xs px-4 py-4 text-center">
+              <p className="font-display text-sm font-semibold">Esquisse vide</p>
+              <p className="mt-1.5 text-xs text-muted">
+                Tracez un mur ou générez un immeuble.
               </p>
               <button
                 type="button"
                 onClick={() => setPanel("building")}
-                className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-accent text-sm font-semibold text-accent-fg"
+                className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-accent-fg"
               >
                 <Building2 className="size-4" />
                 Bâtiment
@@ -296,7 +300,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
               <button
                 type="button"
                 onClick={() => setTool("wall")}
-                className="mt-2 h-11 w-full rounded-lg bg-elevated text-sm text-muted"
+                className="mt-1.5 h-10 w-full rounded-xl text-sm text-muted hover:bg-elevated"
               >
                 Tracer un mur
               </button>
@@ -337,7 +341,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
         />
 
         <header className="pointer-events-none absolute top-0 right-0 left-0 z-20">
-          <div className="pointer-events-auto flex items-center gap-1 bg-gradient-to-b from-bg/85 via-bg/40 to-transparent pt-[max(0.3rem,env(safe-area-inset-top))] pr-2 pb-3 pl-1">
+          <div className="pointer-events-auto flex items-center gap-1 bg-gradient-to-b from-bg/90 via-bg/45 to-transparent pt-[max(0.3rem,env(safe-area-inset-top))] pr-2 pb-3 pl-1">
             <Button variant="ghost" size="icon" asChild>
               <Link to="/" aria-label="Projets">
                 <ChevronLeft className="size-5" />
@@ -346,55 +350,66 @@ export function StudioShell({ projectId }: { projectId: string }) {
             <div className="min-w-0 flex-1">
               <p className="truncate font-display text-sm font-semibold leading-tight tracking-tight">{current.name}</p>
             </div>
-            <div className="flex shrink-0 bg-elevated/90 p-0.5">
+            <div className="flex shrink-0 rounded-full border border-border/60 bg-elevated/90 p-0.5">
               {WORKSPACES.map((w) => (
                 <button
                   key={w.id}
                   type="button"
                   onClick={() => setWorkspace(w.id)}
-                  className={`h-8 shrink-0 px-2 text-[11px] font-medium tracking-wide ${
-                    workspace === w.id ? "bg-primary text-primary-fg" : "text-muted"
+                  className={`h-8 shrink-0 rounded-full px-2.5 text-[11px] font-medium tracking-wide ${
+                    workspace === w.id ? "bg-accent/15 text-accent ring-1 ring-accent/40" : "text-muted"
                   }`}
                 >
                   {w.label}
                 </button>
               ))}
             </div>
-            <Button variant="ghost" size="icon-sm" onClick={undo} aria-label="Annuler">
-              <Undo2 className="size-4" />
-            </Button>
-            <Button variant="ghost" size="icon-sm" onClick={redo} aria-label="Rétablir">
-              <Redo2 className="size-4" />
-            </Button>
+            <HeaderSkillToggle />
             <button
               type="button"
-              onClick={() => setInspector(selectedIds.length ? "ouvrage" : "niveaux")}
-              className="flex h-9 shrink-0 items-center gap-1 bg-primary px-2.5 text-[11px] font-medium tracking-wide text-primary-fg uppercase"
+              aria-label="Studio"
+              onClick={() => setPanel("studio")}
+              className="flex h-9 shrink-0 items-center gap-1 rounded-full border border-accent/40 bg-accent/15 px-2.5 text-[11px] font-medium tracking-wide text-accent uppercase"
             >
-              <SlidersHorizontal className="size-3.5" />
-              Params
+              <LayoutGrid className="size-3.5" />
+              Studio
             </button>
           </div>
         </header>
 
         {!inspector && (
         <div className="pointer-events-none absolute right-0 bottom-0 left-0 z-20">
-          <div className="pointer-events-auto flex flex-col items-center gap-2 bg-gradient-to-t from-bg/80 via-bg/25 to-transparent px-3 pt-6 pb-[max(0.4rem,env(safe-area-inset-bottom))]">
-            <ManipulationBar
-              onParams={() => setInspector(selectedIds.length ? "ouvrage" : "niveaux")}
-              onMaterial={() => setPanel("mats")}
-            />
-            <div className="flex items-end justify-center gap-2">
-              <ToolDock tool={tool} onTool={setTool} />
-              <button
-                type="button"
-                aria-label="Studio"
-                onClick={() => setRadial((v) => !v)}
-                className="flex size-12 shrink-0 flex-col items-center justify-center rounded-xl border border-border/70 bg-surface/95 text-fg shadow-border"
-              >
-                <LayoutGrid className="size-4" />
-                <span className="text-[9px] tracking-wide text-muted uppercase">Studio</span>
-              </button>
+          <div className="pointer-events-auto flex flex-col items-center bg-gradient-to-t from-bg/85 via-bg/30 to-transparent px-3 pt-8 pb-[max(0.45rem,env(safe-area-inset-bottom))]">
+            <div className="cmd-rail w-full max-w-lg">
+              <ManipulationBar
+                onParams={() => setInspector(selectedIds.length ? "ouvrage" : "niveaux")}
+                onMaterial={() => setPanel("mats")}
+              />
+              <div className="flex items-end gap-1.5">
+                <div className="min-w-0 flex-1">
+                  <ToolDock tool={tool} onTool={setTool} />
+                </div>
+                <div className="flex shrink-0 flex-col gap-1">
+                  <button
+                    type="button"
+                    aria-label="Params"
+                    onClick={() => setInspector(selectedIds.length ? "ouvrage" : "niveaux")}
+                    className="flex h-11 w-11 flex-col items-center justify-center rounded-xl bg-accent/15 text-accent ring-1 ring-accent/40"
+                  >
+                    <SlidersHorizontal className="size-4" />
+                    <span className="text-[8px] tracking-wide uppercase">Params</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Outils rapides"
+                    onClick={() => setRadial((v) => !v)}
+                    className="flex h-10 w-11 flex-col items-center justify-center rounded-xl text-muted/80 hover:bg-elevated hover:text-fg"
+                  >
+                    <LayoutGrid className="size-3.5" />
+                    <span className="text-[8px] tracking-wide uppercase">Radial</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -407,78 +422,83 @@ export function StudioShell({ projectId }: { projectId: string }) {
 
       <Sheet open={panel === "studio"} onOpenChange={(o) => !o && setPanel(null)}>
         <SheetContent title="Studio">
-          <div className="flex flex-col gap-4">
-            <button
-              type="button"
-              onClick={() => setPanel("building")}
-              className="flex h-14 items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-accent-fg"
-            >
-              <Building2 className="size-5" />
-              Bâtiment
-            </button>
-            {current.walls.length > 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  const r = deliverDossier(current);
-                  toast.success(`Dossier · ${r.planCount} plans · IFC+DXF+CSV`);
-                  setPanel(null);
-                }}
-                className="flex h-12 items-center justify-center gap-2 rounded-xl border border-accent/40 bg-accent/15 text-sm font-semibold text-accent"
-              >
-                <PackageCheck className="size-5" />
-                Livrer le dossier
-              </button>
-            )}
+          <div className="flex flex-col gap-5">
             {[
               {
-                title: "Modèle",
+                title: "Concevoir",
                 items: [
-                  { id: "mats" as const, label: "Matériaux", icon: Palette },
-                  { id: "ouvrages" as const, label: "Bibliothèque", icon: BrickWall },
+                  { id: "building" as const, label: "Bâtiment", desc: "Massing R+n, façades, noyau", icon: Building2 },
+                  { id: "mats" as const, label: "Matériaux", desc: "Finitions et PBR vivants", icon: Palette },
+                  { id: "ouvrages" as const, label: "Bibliothèque", desc: "Objets et ouvrages types", icon: BrickWall },
                 ],
               },
               {
-                title: "Analyse",
+                title: "Analyser",
                 items: [
-                  { id: "analyse" as const, label: "Lumière & chiffres", icon: Sun },
-                  { id: "struct" as const, label: "Structure", icon: Columns3 },
-                  { id: "ai" as const, label: "Copilote IA", icon: Sparkles },
+                  { id: "struct" as const, label: "Structure", desc: "Porteurs et descentes", icon: Columns3 },
+                  { id: "analyse" as const, label: "Lumière & chiffres", desc: "Soleil, métrés, alertes", icon: Sun },
+                  { id: "ai" as const, label: "Copilote", desc: "Suggestions et massing IA", icon: Sparkles },
                 ],
               },
               {
-                title: "Chantier",
+                title: "Livrer",
                 items: [
-                  { id: "chantier" as const, label: "Phasage 4D", icon: Hammer },
-                  { id: "layers" as const, label: "Calques", icon: Layers },
-                  { id: "help" as const, label: "Guide", icon: HelpCircle },
+                  { id: "chantier" as const, label: "Chantier 4D", desc: "Phasage de construction", icon: Hammer },
+                  {
+                    id: "dossier" as const,
+                    label: "Livrer le dossier",
+                    desc: "Plans SVG, coupe, IFC/DXF/CSV",
+                    icon: PackageCheck,
+                    action: "dossier" as const,
+                  },
+                  { id: "layers" as const, label: "Calques", desc: "Visibilité par discipline", icon: Layers },
+                  { id: "help" as const, label: "Guide", desc: "Raccourcis et parcours", icon: HelpCircle },
                 ],
               },
-            ].map((section) => {
-              const items = section.items;
-              if (items.length === 0) return null;
-              return (
-                <div key={section.title}>
-                  <p className="mb-2 text-[10px] tracking-[0.16em] text-subtle uppercase">{section.title}</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {items.map((item) => {
-                      const Icon = item.icon;
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          onClick={() => setPanel(item.id)}
-                          className="flex h-16 flex-col items-center justify-center gap-1.5 bg-elevated text-sm"
-                        >
-                          <Icon className="size-5 text-accent" />
-                          {item.label}
-                        </button>
-                      );
-                    })}
-                  </div>
+            ].map((section) => (
+              <div key={section.title}>
+                <p className="section-label">{section.title}</p>
+                <div className="flex flex-col gap-2">
+                  {section.items.map((item) => {
+                    const Icon = item.icon;
+                    const disabled = "action" in item && item.action === "dossier" && current.walls.length === 0;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => {
+                          if ("action" in item && item.action === "dossier") {
+                            const r = deliverDossier(current);
+                            toast.success(`Dossier · ${r.planCount} plans · IFC+DXF+CSV`);
+                            setPanel(null);
+                            return;
+                          }
+                          if (item.id === "building") setPanel("building");
+                          else if (item.id === "mats") setPanel("mats");
+                          else if (item.id === "ouvrages") setPanel("ouvrages");
+                          else if (item.id === "struct") setPanel("struct");
+                          else if (item.id === "analyse") setPanel("analyse");
+                          else if (item.id === "ai") setPanel("ai");
+                          else if (item.id === "chantier") setPanel("chantier");
+                          else if (item.id === "layers") setPanel("layers");
+                          else if (item.id === "help") setPanel("help");
+                        }}
+                        className="studio-tile disabled:opacity-40"
+                      >
+                        <span className="studio-tile-icon">
+                          <Icon className="size-4" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-medium text-fg">{item.label}</span>
+                          <span className="block text-[11px] text-muted">{item.desc}</span>
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
-              );
-            })}
+              </div>
+            ))}
             <StudioSkillToggle />
             <QuickExportStrip project={current} />
           </div>
@@ -542,24 +562,51 @@ export function StudioShell({ projectId }: { projectId: string }) {
 }
 
 
+function HeaderSkillToggle() {
+  const skill = useStudio((s) => s.skill);
+  const setSkill = useStudio((s) => s.setSkill);
+  return (
+    <div className="flex shrink-0 rounded-full border border-border/60 bg-elevated/90 p-0.5">
+      <button
+        type="button"
+        onClick={() => setSkill("simple")}
+        className={`h-8 px-2 text-[10px] font-medium tracking-wide ${
+          skill === "simple" ? "rounded-full bg-accent/15 text-accent ring-1 ring-accent/40" : "text-muted"
+        }`}
+      >
+        Amateur
+      </button>
+      <button
+        type="button"
+        onClick={() => setSkill("pro")}
+        className={`h-8 px-2 text-[10px] font-medium tracking-wide ${
+          skill === "pro" ? "rounded-full bg-accent/15 text-accent ring-1 ring-accent/40" : "text-muted"
+        }`}
+      >
+        Expert
+      </button>
+    </div>
+  );
+}
+
 function StudioSkillToggle() {
   const skill = useStudio((s) => s.skill);
   const setSkill = useStudio((s) => s.setSkill);
   return (
     <div>
-      <p className="mb-2 text-[10px] tracking-[0.16em] text-subtle uppercase">Niveau</p>
-      <div className="flex bg-elevated p-0.5">
+      <p className="section-label">Niveau</p>
+      <div className="flex rounded-xl border border-border/60 bg-elevated p-0.5">
         <button
           type="button"
           onClick={() => setSkill("simple")}
-          className={`h-10 flex-1 text-xs font-medium ${skill === "simple" ? "bg-primary text-primary-fg" : "text-muted"}`}
+          className={`h-10 flex-1 rounded-lg text-xs font-medium ${skill === "simple" ? "bg-accent/15 text-accent ring-1 ring-accent/40" : "text-muted"}`}
         >
           Amateur
         </button>
         <button
           type="button"
           onClick={() => setSkill("pro")}
-          className={`h-10 flex-1 text-xs font-medium ${skill === "pro" ? "bg-primary text-primary-fg" : "text-muted"}`}
+          className={`h-10 flex-1 rounded-lg text-xs font-medium ${skill === "pro" ? "bg-accent/15 text-accent ring-1 ring-accent/40" : "text-muted"}`}
         >
           Expert
         </button>
@@ -577,7 +624,7 @@ function QuickExportStrip({ project }: { project: Project }) {
   const base = project.name.replace(/\s+/g, "-").toLowerCase();
   return (
     <div>
-      <p className="mb-2 text-[10px] tracking-[0.16em] text-subtle uppercase">Export rapide</p>
+      <p className="section-label">Export rapide</p>
       {project.walls.length > 0 && (
         <button
           type="button"

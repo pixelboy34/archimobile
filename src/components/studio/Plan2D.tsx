@@ -6,6 +6,7 @@ import {
   distToSegment,
   findWallAt,
   pointInPolygon,
+  polygonArea,
   polygonCentroid,
   projectBounds,
   snapVec,
@@ -197,14 +198,17 @@ export function Plan2D({
         });
         ctx.closePath();
         ctx.fillStyle = ROOM_HATCH[r.function] ?? "#c4bfb4";
-        ctx.globalAlpha = 0.16;
+        ctx.globalAlpha = 0.12;
         ctx.fill();
         ctx.globalAlpha = 1;
         const c = toS(polygonCentroid(r.polygon));
-        ctx.fillStyle = "#9a978e";
+        ctx.fillStyle = "#a8b6b8";
         ctx.font = "500 11px Outfit, sans-serif";
         ctx.textAlign = "center";
-        ctx.fillText(r.name, c.x, c.y);
+        ctx.fillText(r.name, c.x, c.y - 5);
+        ctx.fillStyle = "#6e8286";
+        ctx.font = "500 9px IBM Plex Mono, monospace";
+        ctx.fillText(`${polygonArea(r.polygon).toFixed(1)} m²`, c.x, c.y + 8);
       }
 
       const walls = proj.walls.filter((wl) => wl.storyId === sid);
@@ -219,13 +223,15 @@ export function Plan2D({
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
         ctx.strokeStyle = sel.includes(wall.id)
-          ? "#c8f0e6"
+          ? "#6ed0c3"
           : bearing
-            ? "#8d6750"
+            ? "#7a5a45"
             : roleTintHex(resolveMaterial(wall.materialId, proj.materials).color, wall.role);
-        ctx.lineWidth = Math.max(bearing ? 4 : 3, wall.thickness * cam.current.scale);
+        ctx.lineWidth = Math.max(bearing ? 5 : 2.5, wall.thickness * cam.current.scale);
         ctx.lineCap = "square";
+        ctx.globalAlpha = sel.includes(wall.id) ? 1 : bearing ? 1 : 0.92;
         ctx.stroke();
+        ctx.globalAlpha = 1;
         const insM = (wall.insulationMm ?? 0) / 1000;
         if (insM > 0.004) {
           const ang = wallAngle(wall);
@@ -255,7 +261,7 @@ export function Plan2D({
         }
         if (sel.includes(wall.id) || cam.current.scale >= 30) {
           const mid = toS({ x: (aW.x + bW.x) / 2, y: (aW.y + bW.y) / 2 });
-          ctx.fillStyle = sel.includes(wall.id) ? "#c8f0e6" : "#9eb0b4";
+          ctx.fillStyle = sel.includes(wall.id) ? "#6ed0c3" : "#8a9ea2";
           ctx.font = "500 11px IBM Plex Mono, monospace";
           ctx.textAlign = "center";
           ctx.fillText(`${wallLength(wall).toFixed(2)} m`, mid.x, mid.y - 10);
@@ -282,8 +288,8 @@ export function Plan2D({
           ctx.beginPath();
           ctx.moveTo(hs.x, hs.y);
           ctx.arc(hs.x, hs.y, r, start, start + dir * (Math.PI / 2), dir < 0);
-          ctx.strokeStyle = "rgba(138,104,72,0.85)";
-          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = sel.includes(o.id) ? "#6ed0c3" : "rgba(160,120,82,0.9)";
+          ctx.lineWidth = 1.35;
           ctx.stroke();
           // leaf line
           const leafAng = ang + dir * (Math.PI / 2);
@@ -293,8 +299,8 @@ export function Plan2D({
           ctx.beginPath();
           ctx.moveTo(hs.x, hs.y);
           ctx.lineTo(ls.x, ls.y);
-          ctx.strokeStyle = "rgba(138,104,72,0.95)";
-          ctx.lineWidth = 2;
+          ctx.strokeStyle = sel.includes(o.id) ? "#6ed0c3" : "rgba(160,120,82,1)";
+          ctx.lineWidth = 1.75;
           ctx.stroke();
         } else {
           const glaze =
