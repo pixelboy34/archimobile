@@ -7,7 +7,6 @@ import {
   Layers,
   LayoutGrid,
   Palette,
-  SlidersHorizontal,
   Sparkles,
   Hammer,
   Sun,
@@ -32,7 +31,6 @@ import { ConstructPanel } from "./ConstructPanel";
 import { CopilotPanel } from "./CopilotPanel";
 import { HelpPanel } from "./HelpPanel";
 import { Joystick } from "./Joystick";
-import { LibraryStrip } from "./LibraryStrip";
 import { LayersPanel } from "./LayersPanel";
 import { MaterialsPanel } from "./MaterialsPanel";
 import { OuvrageExplorer } from "./OuvrageExplorer";
@@ -46,10 +44,10 @@ import { Plan2D } from "./Plan2D";
 import { InspectorDock } from "./InspectorDock";
 import type { ParamsTab } from "./PropertiesPanel";
 import { StudioHud } from "./StudioHud";
-import { ToolDock } from "./ToolDock";
 import { ViewBar } from "./ViewBar";
 import { Viewfinder } from "./Viewfinder";
-import { ManipulationBar } from "./ManipulationBar";
+import { CommandOrb } from "./CommandOrb";
+import { ResourcesPeek } from "./ResourcesPeek";
 import { BuildingAssistant } from "./BuildingAssistant";
 import {
   deferHelpForMassingCta,
@@ -103,6 +101,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
   >(null);
   const [inspector, setInspector] = useState<ParamsTab | null>(null);
   const [radial, setRadial] = useState(false);
+  const [resources, setResources] = useState<null | "materials" | "objects" | "both">(null);
 
   useEffect(() => {
     useStudio.getState().setHydrated(true);
@@ -226,8 +225,8 @@ export function StudioShell({ projectId }: { projectId: string }) {
    * TOP — project header (back, name, Esq/Modèle/Rel, Amateur/Expert, Studio)
    * TOP-LEFT — ViewBar (vues + niveaux only)
    * TOP under — thin StudioHud status line (mode · outil · dims · types liés)
-   * BOTTOM — CommandRail (ManipulationBar + ToolDock + Params/Radial) one glass surface
-   * BOTTOM dock — InspectorDock replaces CommandRail when open (~52dvh)
+   * BOTTOM — CommandOrb (Concevoir | Modifier capsule) + ResourcesPeek strip
+   * BOTTOM dock — InspectorDock replaces CommandOrb when open (~36dvh → 52)
    */
   return (
     <div className="relative h-dvh overflow-hidden bg-bg text-fg">
@@ -315,7 +314,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
           </div>
         )}
 
-        {/* ManipulationBar remplace InspectorPeek pour les actions de sélection */}
+        {/* CommandOrb regroupe Concevoir / Modifier — ResourcesPeek pour matériaux & biblio */}
 
         {view === "coupe" && (
           <div className="pointer-events-auto absolute top-[calc(env(safe-area-inset-top)+7.5rem)] right-3 left-3 rounded-lg border border-border bg-surface/90 px-3 py-2">
@@ -338,7 +337,14 @@ export function StudioShell({ projectId }: { projectId: string }) {
           </div>
         )}
 
-        {tool === "furniture" && <LibraryStrip />}
+        <ResourcesPeek
+          open={resources !== null || tool === "furniture"}
+          mode={tool === "furniture" && !resources ? "objects" : resources ?? "both"}
+          onClose={() => {
+            setResources(null);
+            if (tool === "furniture") setTool("select");
+          }}
+        />
         <RadialMenu
           open={radial}
           tool={tool}
@@ -387,37 +393,11 @@ export function StudioShell({ projectId }: { projectId: string }) {
         {!inspector && (
         <div className="pointer-events-none absolute right-0 bottom-0 left-0 z-20">
           <div className="pointer-events-auto flex flex-col items-center bg-gradient-to-t from-bg/85 via-bg/30 to-transparent px-3 pt-8 pb-[max(0.45rem,env(safe-area-inset-bottom))]">
-            <div className="cmd-rail w-full max-w-lg">
-              <ManipulationBar
-                onParams={() => setInspector(selectedIds.length ? "ouvrage" : "niveaux")}
-                onMaterial={() => setPanel("mats")}
-              />
-              <div className="flex items-end gap-1.5">
-                <div className="min-w-0 flex-1">
-                  <ToolDock tool={tool} onTool={setTool} />
-                </div>
-                <div className="flex shrink-0 flex-col gap-1">
-                  <button
-                    type="button"
-                    aria-label="Params"
-                    onClick={() => setInspector(selectedIds.length ? "ouvrage" : "niveaux")}
-                    className="flex h-11 w-11 flex-col items-center justify-center rounded-xl bg-accent/15 text-accent ring-1 ring-accent/40"
-                  >
-                    <SlidersHorizontal className="size-4" />
-                    <span className="text-[8px] tracking-wide uppercase">Params</span>
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Outils rapides"
-                    onClick={() => setRadial((v) => !v)}
-                    className="flex h-10 w-11 flex-col items-center justify-center rounded-xl text-muted/80 hover:bg-elevated hover:text-fg"
-                  >
-                    <LayoutGrid className="size-3.5" />
-                    <span className="text-[8px] tracking-wide uppercase">Radial</span>
-                  </button>
-                </div>
-              </div>
-            </div>
+            <CommandOrb
+              onParams={() => setInspector(selectedIds.length ? "ouvrage" : "niveaux")}
+              onResources={(mode) => setResources(mode ?? "both")}
+              onOverflow={() => setRadial((v) => !v)}
+            />
           </div>
         </div>
         )}
@@ -494,8 +474,14 @@ export function StudioShell({ projectId }: { projectId: string }) {
                             return;
                           }
                           if (item.id === "building") setPanel("building");
-                          else if (item.id === "mats") setPanel("mats");
-                          else if (item.id === "ouvrages") setPanel("ouvrages");
+                          else if (item.id === "mats") {
+                            setPanel(null);
+                            setResources("materials");
+                          } else if (item.id === "ouvrages") {
+                            setPanel(null);
+                            setResources("objects");
+                            setTool("furniture");
+                          }
                           else if (item.id === "struct") setPanel("struct");
                           else if (item.id === "analyse") setPanel("analyse");
                           else if (item.id === "ai") setPanel("ai");
@@ -529,12 +515,12 @@ export function StudioShell({ projectId }: { projectId: string }) {
         </SheetContent>
       </Sheet>
       <Sheet open={panel === "mats"} onOpenChange={(o) => !o && setPanel(null)}>
-        <SheetContent title="Matériaux" tall>
+        <SheetContent title="Matériaux" half>
           <MaterialsPanel />
         </SheetContent>
       </Sheet>
       <Sheet open={panel === "ouvrages"} onOpenChange={(o) => !o && setPanel(null)}>
-        <SheetContent title="Ouvrages" tall>
+        <SheetContent title="Ouvrages" half>
           <OuvrageExplorer />
         </SheetContent>
       </Sheet>

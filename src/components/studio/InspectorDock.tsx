@@ -1,7 +1,8 @@
-import { X } from "lucide-react";
+import { useState } from "react";
+import { ChevronUp, X } from "lucide-react";
 import { FURNITURE_LABELS, ROOM_LABELS, type Project } from "@/lib/bim/types";
 import { polygonArea, wallLength } from "@/lib/bim/geometry";
-import { formatMeters } from "@/lib/utils";
+import { formatMeters, cn } from "@/lib/utils";
 import { useStudio } from "@/lib/store/project-store";
 import { PropertiesPanel, type ParamsTab } from "./PropertiesPanel";
 
@@ -45,6 +46,7 @@ function selectionChip(project: Project, id: string | undefined) {
   return { type: "Élément", dims: id.slice(0, 8) };
 }
 
+/** Compact inspector — default ~36dvh, expandable to 52dvh. Never fullscreen. */
 export function InspectorDock({
   tab,
   onTab,
@@ -57,13 +59,40 @@ export function InspectorDock({
   const project = useStudio((s) => s.projects.find((p) => p.id === s.currentId) ?? null);
   const selectedIds = useStudio((s) => s.selectedIds);
   const chip = project ? selectionChip(project, selectedIds[0]) : { type: "Projet", dims: "" };
+  const [expanded, setExpanded] = useState(false);
+  const hasSel = selectedIds.length > 0;
 
   return (
-    <div className="pointer-events-auto absolute inset-x-0 bottom-0 z-30 flex max-h-[min(52dvh,28rem)] flex-col border-t border-accent/35 bg-surface/96 shadow-[0_-8px_32px_rgba(0,0,0,0.35)] backdrop-blur-md">
-      <div className="flex items-center gap-2 border-b border-border/60 px-2 pt-2 pb-1.5">
+    <div
+      className={cn(
+        "inspector-dock pointer-events-auto absolute inset-x-0 bottom-0 z-30 flex flex-col",
+        "border-t border-accent/35 bg-surface/96 shadow-[0_-8px_32px_rgba(0,0,0,0.35)] backdrop-blur-md",
+        "animate-in slide-in-from-bottom duration-300",
+        expanded ? "max-h-[min(52dvh,28rem)]" : "max-h-[min(36dvh,22rem)]",
+      )}
+    >
+      <button
+        type="button"
+        aria-label={expanded ? "Réduire le panneau" : "Agrandir le panneau"}
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full flex-col items-center pt-1.5 pb-0.5"
+      >
+        <span className="h-1 w-10 rounded-full bg-accent/50" />
+        <span className="mt-0.5 flex items-center gap-1 text-[9px] tracking-wide text-muted uppercase">
+          <ChevronUp className={cn("size-3 transition-transform duration-200", expanded && "rotate-180")} />
+          {expanded ? "Réduire" : "Agrandir"}
+        </span>
+      </button>
+
+      <div className="flex items-center gap-2 border-b border-border/60 px-2 pb-1.5">
         <div className="min-w-0 flex-1">
-          <div className="mb-1.5 flex items-center gap-2 px-1">
-            <span className="inline-flex max-w-[58%] items-center truncate rounded-full border border-accent/40 bg-accent/10 px-2.5 py-0.5 text-[11px] font-semibold tracking-wide text-accent uppercase">
+          <div className="mb-1 flex items-center gap-2 px-1">
+            <span
+              className={cn(
+                "sel-chip inline-flex max-w-[58%] items-center truncate rounded-full border border-accent/40 bg-accent/10 px-2.5 py-0.5 text-[11px] font-semibold tracking-wide text-accent uppercase",
+                hasSel && "sel-chip-pulse",
+              )}
+            >
               {chip.type}
             </span>
             <span className="truncate font-mono text-[11px] text-muted tabular">{chip.dims}</span>
@@ -74,14 +103,13 @@ export function InspectorDock({
                 key={t.id}
                 type="button"
                 onClick={() => onTab(t.id)}
-                className={`relative h-9 shrink-0 px-3 text-xs font-medium tracking-wide transition-colors ${
-                  tab === t.id ? "text-fg" : "text-muted hover:text-fg"
-                }`}
+                className={cn(
+                  "relative h-8 shrink-0 px-3 text-xs font-medium tracking-wide transition-colors",
+                  tab === t.id ? "text-fg" : "text-muted hover:text-fg",
+                )}
               >
                 {t.label}
-                {tab === t.id && (
-                  <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-accent" />
-                )}
+                {tab === t.id && <span className="tab-underline" />}
               </button>
             ))}
           </div>
@@ -90,12 +118,12 @@ export function InspectorDock({
           type="button"
           aria-label="Fermer"
           onClick={onClose}
-          className="mb-1 flex size-11 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-elevated hover:text-fg"
+          className="mb-0.5 flex size-10 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-elevated hover:text-fg"
         >
           <X className="size-4" />
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-3 pb-[max(0.9rem,env(safe-area-inset-bottom))]">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <PropertiesPanel tab={tab} onTab={onTab} />
       </div>
     </div>

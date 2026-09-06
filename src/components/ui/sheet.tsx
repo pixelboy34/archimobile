@@ -13,11 +13,14 @@ export function SheetContent({
   side = "bottom",
   title,
   tall = false,
+  half = false,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   side?: "bottom" | "right";
   title: string;
   tall?: boolean;
+  /** ~50dvh bottom sheet — keeps the model visible */
+  half?: boolean;
 }) {
   return (
     <DialogPrimitive.Portal>
@@ -30,7 +33,8 @@ export function SheetContent({
             "inset-x-0 bottom-0 max-h-[90dvh] overflow-hidden rounded-t-lg border-t border-accent/25 pb-[env(safe-area-inset-bottom)]",
           side === "right" &&
             "inset-y-0 right-0 h-full w-full max-w-md overflow-hidden border-l sm:max-w-sm",
-          tall && side === "bottom" && "h-[90dvh]",
+          tall && side === "bottom" && !half && "h-[90dvh]",
+          half && side === "bottom" && "max-h-[min(50dvh,28rem)]",
           className,
         )}
         onOpenAutoFocus={(e) => e.preventDefault()}
