@@ -42,6 +42,7 @@ export function StudioHud() {
     typicalHint,
   ].filter(Boolean) as string[];
 
+  const surveyCount = (project.survey ?? []).filter((s) => s.storyId === storyId).length;
   const hint =
     view === "visite"
       ? physicsOn
@@ -51,11 +52,17 @@ export function StudioHud() {
         ? "2e point — longueur live"
         : draft && tool === "rect"
           ? "2e coin du rectangle"
-          : tool === "window" || tool === "door"
-            ? "Accroche façade — tapez pour poser"
-            : sel
-              ? sel.line
-              : null;
+          : tool === "survey"
+            ? surveyCount < 3
+              ? "Tapez les angles — 3 points min. pour Fermer → murs"
+              : `Fermer → murs · ${surveyCount} points — ou continuez le polygone`
+            : tool === "pen"
+              ? "Tracez un trait — Traits → murs dans la barre Relevé"
+              : tool === "window" || tool === "door"
+                ? "Accroche façade — tapez pour poser"
+                : sel
+                  ? sel.line
+                  : null;
 
   return (
     <div

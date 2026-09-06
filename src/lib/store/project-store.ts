@@ -14,6 +14,7 @@ import { snapToSketch } from "@/lib/bim/snap";
 import { mergeDetectedRooms } from "@/lib/bim/rooms";
 import { seedProjects } from "@/lib/bim/seed";
 import { activeLayerId, ensureSketch, resampleStroke } from "@/lib/bim/sketch";
+import { strokesToWalls, surveyPolygonToWalls } from "@/lib/bim/survey-to-walls";
 import type {
   FurnitureKind,
   MaterialId,
@@ -146,6 +147,8 @@ interface StudioState {
   addStroke: (points: Vec2[]) => void;
   addSurveyPoint: (p: Vec2) => void;
   clearSurvey: () => void;
+  buildWallsFromSurvey: () => { wallCount: number; perimeter: number } | null;
+  buildWallsFromStrokes: () => { wallCount: number; perimeter: number } | null;
   toggleLayer: (id: string, patch: Partial<SketchLayer>) => void;
   addLayer: () => void;
   addRevision: (note?: string) => void;
@@ -830,6 +833,26 @@ export const useStudio = create<StudioState>()(
       },
       clearSurvey: () => {
         get().commit((p) => ({ ...p, survey: [] }));
+      },
+      buildWallsFromSurvey: () => {
+        const s = get();
+        const cur = s.current();
+        const storyId = s.storyId;
+        if (!cur || !storyId) return null;
+        const preview = surveyPolygonToWalls(cur, storyId);
+        if (preview.wallCount === 0) return { wallCount: 0, perimeter: 0 };
+        s.commit(() => preview.project);
+        return { wallCount: preview.wallCount, perimeter: preview.perimeter };
+      },
+      buildWallsFromStrokes: () => {
+        const s = get();
+        const cur = s.current();
+        const storyId = s.storyId;
+        if (!cur || !storyId) return null;
+        const preview = strokesToWalls(cur, storyId);
+        if (preview.wallCount === 0) return { wallCount: 0, perimeter: 0 };
+        s.commit(() => preview.project);
+        return { wallCount: preview.wallCount, perimeter: preview.perimeter };
       },
       toggleLayer: (id, patch) => {
         get().commit((p) => {

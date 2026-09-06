@@ -231,6 +231,9 @@ describe("agents copilote", () => {
     assert.equal(parseAgentIntent("pack T2 logements").kind, "agent");
     assert.equal(parseAgentIntent("baies sud ensoleillement").kind, "agent");
     assert.equal(parseAgentIntent("propager types liés").kind, "agent");
+    assert.equal(parseAgentIntent("relevé → murs").kind, "agent");
+    assert.equal((parseAgentIntent("murs depuis relevé") as { id: string }).id, "releveMurs");
+    assert.equal((parseAgentIntent("vectoriser traits") as { id: string }).id, "releveMurs");
     assert.equal(parseAgentIntent("Maison 120 m² 3 chambres").kind, "generate");
 
     let p = emptyProject("Tour agents");
@@ -266,6 +269,69 @@ describe("agents copilote", () => {
     assert.ok(link.stats.types >= 1);
     assert.ok(p.openings.length >= 0);
     void before;
+  });
+});
+
+describe("survey-to-walls", () => {
+  it("closes survey polygon into exterior walls and heals", async () => {
+    const { surveyPolygonToWalls, strokesToWalls, closedSurveyPerimeter } = await import("./survey-to-walls.ts");
+    const { emptyProject } = await import("./builder.ts");
+    const { parseAgentIntent, releveMurs } = await import("../ai/agents.ts");
+
+    let p = emptyProject("Relevé test");
+    const sid = p.stories[0]!.id;
+    p.survey = [
+      { id: "sv1", storyId: sid, position: { x: 0, y: 0 } },
+      { id: "sv2", storyId: sid, position: { x: 8, y: 0 } },
+      { id: "sv3", storyId: sid, position: { x: 8, y: 5 } },
+      { id: "sv4", storyId: sid, position: { x: 0, y: 5 } },
+    ];
+    assert.ok(closedSurveyPerimeter(p.survey.map((s) => s.position)) > 20);
+
+    const r = surveyPolygonToWalls(p, sid);
+    assert.equal(r.wallCount, 4);
+    assert.ok(Math.abs(r.perimeter - 26) < 0.2);
+    assert.equal(r.project.walls.filter((w) => w.storyId === sid).length, 4);
+    assert.ok(r.project.walls.every((w) => w.role === "exterior"));
+    assert.ok(r.project.slabs.some((s) => s.storyId === sid));
+    assert.equal((r.project.survey ?? []).filter((s) => s.storyId === sid).length, 0);
+
+    // strokes
+    p = emptyProject("Traits");
+    const s2 = p.stories[0]!.id;
+    p.strokes = [
+      {
+        id: "sk1",
+        layerId: "ly_sketch",
+        storyId: s2,
+        points: [
+          { x: 0, y: 0 },
+          { x: 4, y: 0 },
+          { x: 4, y: 3 },
+        ],
+        width: 0.06,
+        color: "#fff",
+      },
+    ];
+    const st = strokesToWalls(p, s2);
+    assert.equal(st.wallCount, 2);
+    assert.ok(st.perimeter > 6);
+
+    const intent = parseAgentIntent("releve murs");
+    assert.equal(intent.kind, "agent");
+    if (intent.kind === "agent") assert.equal(intent.id, "releveMurs");
+
+    p = emptyProject("Agent releve");
+    const s3 = p.stories[0]!.id;
+    p.survey = [
+      { id: "a", storyId: s3, position: { x: 0, y: 0 } },
+      { id: "b", storyId: s3, position: { x: 6, y: 0 } },
+      { id: "c", storyId: s3, position: { x: 6, y: 4 } },
+      { id: "d", storyId: s3, position: { x: 0, y: 4 } },
+    ];
+    const agent = releveMurs(p, { storyId: s3 });
+    assert.equal(agent.stats.murs, 4);
+    assert.ok(agent.summary.includes("murs"));
   });
 });
 

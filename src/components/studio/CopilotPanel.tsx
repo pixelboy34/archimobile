@@ -36,6 +36,14 @@ export function CopilotPanel({ onApplied }: { onApplied?: () => void }) {
     () => projectHasWalls(current, storyId),
     [current, storyId],
   );
+  const hasSurvey = useMemo(() => {
+    if (!current || !storyId) return false;
+    const n = (current.survey ?? []).filter((s) => s.storyId === storyId).length;
+    const strokes = (current.strokes ?? []).some(
+      (s) => s.storyId === storyId && (s.points?.length ?? 0) >= 2,
+    );
+    return n >= 3 || strokes;
+  }, [current, storyId]);
 
   const executeAgent = (id: AgentId, opts?: AgentOpts) => {
     if (!current) {
@@ -45,6 +53,10 @@ export function CopilotPanel({ onApplied }: { onApplied?: () => void }) {
     const chip = AGENT_CHIPS.find((c) => c.id === id);
     if (chip?.needsWalls && !hasWalls) {
       toast.error("Cet agent nécessite des murs sur l’étage actif");
+      return;
+    }
+    if (chip?.needsSurvey && !hasSurvey) {
+      toast.error("Relevé insuffisant — ≥3 points ou traits");
       return;
     }
     setBusy(true);
@@ -149,7 +161,10 @@ export function CopilotPanel({ onApplied }: { onApplied?: () => void }) {
         <div className="mt-3 flex flex-wrap gap-2">
           {AGENT_CHIPS.map((chip) => {
             const disabled =
-              busy || !current || (chip.needsWalls && !hasWalls);
+              busy ||
+              !current ||
+              (chip.needsWalls && !hasWalls) ||
+              (!!chip.needsSurvey && !hasSurvey);
             return (
               <button
                 key={chip.id + chip.label}
@@ -176,7 +191,7 @@ export function CopilotPanel({ onApplied }: { onApplied?: () => void }) {
       <Textarea
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
-        placeholder="Ex. baies 1,35 m · attique retrait 1,2 · pack T2 · baies sud…"
+        placeholder="Ex. relevé → murs · baies 1,35 m · attique · pack T2…"
         rows={3}
       />
       <div className="flex flex-wrap gap-2">

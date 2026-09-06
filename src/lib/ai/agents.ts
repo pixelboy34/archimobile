@@ -3,6 +3,7 @@
  * Chaque agent : (project, opts) => Project + résumé.
  */
 import { addOpeningOnWall, addRectRooms, cloneProject } from "@/lib/bim/builder";
+import { strokesToWalls, surveyPolygonToWalls } from "@/lib/bim/survey-to-walls";
 import {
   projectBounds,
   rectPolygon,
@@ -24,7 +25,8 @@ export type AgentId =
   | "punchAttic"
   | "packUnits"
   | "linkTypicals"
-  | "alignNorthGlazing";
+  | "alignNorthGlazing"
+  | "releveMurs";
 
 export type AgentOpts = {
   storyId?: string | null;
@@ -41,6 +43,8 @@ export type AgentOpts = {
   propagate?: boolean;
   /** Appliquer baies sur tous les étages types (sinon étage actif + live-sync) */
   allTypicals?: boolean;
+  /** Vectoriser traits plutôt que polygone relevé */
+  fromStrokes?: boolean;
 };
 
 export type AgentResult = {
@@ -62,7 +66,10 @@ export const AGENT_CHIPS: {
   label: string;
   opts?: AgentOpts;
   needsWalls: boolean;
+  /** Relevé → murs : ≥3 points survey (ou traits si fromStrokes). */
+  needsSurvey?: boolean;
 }[] = [
+  { id: "releveMurs", label: "Relevé → murs", opts: {}, needsWalls: false, needsSurvey: true },
   { id: "facadeGrid", label: "Baies 1,35 m", opts: { spacing: 1.35 }, needsWalls: true },
   { id: "alignNorthGlazing", label: "Baies sud", opts: {}, needsWalls: true },
   { id: "punchAttic", label: "Attique −1,2 m", opts: { setback: 1.2 }, needsWalls: true },
@@ -76,6 +83,7 @@ const AGENT_LABELS: Record<AgentId, string> = {
   packUnits: "pack logements",
   linkTypicals: "types liés",
   alignNorthGlazing: "baies sud",
+  releveMurs: "relevé → murs",
 };
 
 function resolveStoryId(p: Project, storyId?: string | null): string | null {
@@ -584,12 +592,58 @@ export function alignNorthGlazing(project: Project, opts: AgentOpts = {}): Agent
   };
 }
 
+
+export function releveMurs(project: Project, opts: AgentOpts = {}): AgentResult {
+  const p0 = cloneProject(project);
+  const storyId = resolveStoryId(p0, opts.storyId);
+  if (!storyId) {
+    return {
+      project: p0,
+      agentId: "releveMurs",
+      label: AGENT_LABELS.releveMurs,
+      summary: "Aucun étage",
+      stats: { murs: 0 },
+    };
+  }
+  const fromStrokes = !!opts.fromStrokes;
+  let r = fromStrokes
+    ? strokesToWalls(p0, storyId)
+    : surveyPolygonToWalls(p0, storyId);
+
+  if (r.wallCount === 0 && !fromStrokes) {
+    const alt = strokesToWalls(p0, storyId);
+    if (alt.wallCount > 0) r = alt;
+  }
+
+  if (r.wallCount === 0) {
+    return {
+      project: p0,
+      agentId: "releveMurs",
+      label: AGENT_LABELS.releveMurs,
+      summary: fromStrokes
+        ? "Aucun trait à vectoriser (≥2 points)"
+        : "Relevé insuffisant (≥3 points)",
+      stats: { murs: 0 },
+    };
+  }
+
+  const summary = `Relevé · ${r.wallCount} murs · ${r.perimeter.toFixed(1)} m`;
+  return {
+    project: r.project,
+    agentId: "releveMurs",
+    label: AGENT_LABELS.releveMurs,
+    summary,
+    stats: { murs: r.wallCount, périmètre: Math.round(r.perimeter * 10) / 10 },
+  };
+}
+
 const AGENTS: Record<AgentId, (p: Project, o?: AgentOpts) => AgentResult> = {
   facadeGrid,
   punchAttic,
   packUnits,
   linkTypicals,
   alignNorthGlazing,
+  releveMurs,
 };
 
 export function runAgentTransform(id: AgentId, project: Project, opts: AgentOpts = {}): AgentResult {
@@ -632,6 +686,13 @@ export function parseAgentIntent(prompt: string): ParsedIntent {
   if (/\b(baies?|fenetres?|module\s+facade|grille\s+facade|1[,.]35)\b/.test(t)) {
     const spacing = parseNumberFr(t) ?? 1.35;
     return { kind: "agent", id: "facadeGrid", opts: { spacing }, label: AGENT_LABELS.facadeGrid };
+  }
+
+  if (/\b(vectoriser|traits?\s*(en|->|vers)?\s*murs?|murs?\s*depuis\s*traits?)\b/.test(t)) {
+    return { kind: "agent", id: "releveMurs", opts: { fromStrokes: true }, label: AGENT_LABELS.releveMurs };
+  }
+  if (/\b(releve|murs?\s*depuis\s*releve|releve\s*(en|->|vers)?\s*murs?|fermer\s*(en\s*)?murs?)\b/.test(t)) {
+    return { kind: "agent", id: "releveMurs", opts: {}, label: AGENT_LABELS.releveMurs };
   }
 
   // New massing / brief → generate

@@ -47,6 +47,7 @@ import { StudioHud } from "./StudioHud";
 import { ViewBar } from "./ViewBar";
 import { Viewfinder } from "./Viewfinder";
 import { CommandOrb } from "./CommandOrb";
+import { ReleveBar } from "./ReleveBar";
 import { ResourcesPeek } from "./ResourcesPeek";
 import { BuildingAssistant } from "./BuildingAssistant";
 import {
@@ -293,7 +294,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
             <div className="pointer-events-auto panel-card max-w-xs px-4 py-4 text-center">
               <p className="font-display text-sm font-semibold">Esquisse vide</p>
               <p className="mt-1.5 text-xs text-muted">
-                Tracez un mur ou générez un immeuble.
+                Relevé terrain, massing Bâtiment, ou tracer un mur.
               </p>
               <button
                 type="button"
@@ -302,6 +303,13 @@ export function StudioShell({ projectId }: { projectId: string }) {
               >
                 <Building2 className="size-4" />
                 Bâtiment
+              </button>
+              <button
+                type="button"
+                onClick={() => setWorkspace("releve")}
+                className="mt-1.5 h-10 w-full rounded-xl border border-accent/35 bg-accent/10 text-sm font-medium text-accent"
+              >
+                Relevé
               </button>
               <button
                 type="button"
@@ -393,6 +401,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
         {!inspector && (
         <div className="pointer-events-none absolute right-0 bottom-0 left-0 z-20">
           <div className="pointer-events-auto flex flex-col items-center bg-gradient-to-t from-bg/85 via-bg/30 to-transparent px-3 pt-8 pb-[max(0.45rem,env(safe-area-inset-bottom))]">
+            <ReleveBar />
             <CommandOrb
               onParams={() => setInspector(selectedIds.length ? "ouvrage" : "niveaux")}
               onResources={(mode) => setResources(mode ?? "both")}
@@ -455,7 +464,8 @@ export function StudioShell({ projectId }: { projectId: string }) {
                 <div className="flex flex-col gap-2">
                   {section.items.map((item) => {
                     const Icon = item.icon;
-                    const disabled = "action" in item && item.action === "dossier" && current.walls.length === 0;
+                    const hasSketch = (current.survey?.length ?? 0) > 0 || (current.strokes?.length ?? 0) > 0;
+                    const disabled = "action" in item && item.action === "dossier" && current.walls.length === 0 && !hasSketch;
                     return (
                       <button
                         key={item.id}
