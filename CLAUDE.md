@@ -10,7 +10,7 @@ Issues utilisateur répétées — à respecter avant toute « optimisation »:
 
 - Ne jamais dégrader le rendu 3D. PBR, ombres PCF, meubles composés, parcelle large, DPR jusqu’à 2. Un passage « perf » a déjà cassé la qualité ; l’utilisateur a exigé l’inverse (enrichir, pas diminuer).
 - Paramètres vivants. Le modèle 3D reste visible pendant qu’on règle. Interdit : Sheet / Dialog plein écran pour les params. Utiliser InspectorDock (~46 dvh, bas).
-- Menus groupés. 4 onglets inspecteur : Ouvrage | Étages | Site | Vue. Studio (radial) : Matériaux, Bibliothèque, Structure, Copilote, 4D, Calques, Guide.
+- Menus groupés. Dock familles : Éditer · Esquisse · Tracer · Ouvrage · Objets · Studio. 4 onglets inspecteur : Ouvrage | Étages | Site | Vue. Studio (radial) : Matériaux, Bibliothèque, Structure, Copilote, 4D, Calques, Guide, Porte, Fenêtre, etc. Panneaux ≤46 dvh — jamais Dialog plein écran.
 - Immeubles. Massing R+n, noyau, rideau, sous-sol, `repeatStories` jusqu’à 80. Pas seulement des villas.
 - Orbit maquette = grab the model (`theta -= dx`). Sens non inversé. `regard` existe mais n’est pas le défaut.
 - PWA installable (iPhone 17 Pro). Ne pas casser `grokPwaPlugin`, `public/__grok/`.
@@ -21,13 +21,13 @@ Issues utilisateur répétées — à respecter avant toute « optimisation »:
 
 | Couche | Choix |
 |---|---|
-| App | TanStack Start + React 19 + Vite 8 + TypeScript |
+| App | **Actuel** Vite 6 + React Router 7 + React 19. **Cible** TanStack Start + Vite 8 (scaffold `src/routes/`). |
 | Style | Tailwind v4, tokens `src/styles.css`, Syne / Outfit / IBM Plex Mono |
-| 3D | Three 0.185 + R3F 9 + drei, `frameloop="demand"` (sauf visite) |
-| Physique | Rapier — collision visite, optionnelle |
-| État | Zustand v5 persist `forma-studio-v9` |
-| BIM | modèle maison (pas de moteur IFC) |
-| IA | `src/lib/ai/copilot.ts` → `api.x.ai` si `XAI_API_KEY`, sinon massing local |
+| 3D | Three + R3F 9 + drei, `frameloop="demand"` (sauf visite) |
+| Physique | Collision visite locale (Rapier optionnelle) |
+| État | Zustand v5 persist `forma-studio-v9` (pont auto depuis `forma-studio-v10`) |
+| BIM | modèle maison + IFC4 subset export |
+| IA | `src/lib/ai/copilot.ts` — massing local ; `api.x.ai` si `XAI_API_KEY` plus tard |
 
 ```bash
 npm run dev          # 0.0.0.0:8080 — JAMAIS vite direct
@@ -37,11 +37,16 @@ node --experimental-strip-types --test src/lib/bim/bim.test.ts
 
 Routes : `/` (`HomePage`) · `/studio/$projectId` (`StudioShell`).
 
+**Migration Start (blocages)** : R3F Canvas + WebXR/AR + PWA (`public/__grok/` / manifest) sont SPA-first ; Vite est en 6 (pas 8) ; pas de SSR Three sans `clientOnly`. Scaffold : `src/routes/index.tsx`, `src/routes/studio.$projectId.tsx` (réexport pages). Ne pas migrer en plein chantier CAD.
+
+
 ## 2. Carte du code
 
 ```text
 src/components/studio/
-  StudioShell.tsx      495   chrome overlay
+  StudioShell.tsx             chrome overlay + workspaces
+  StudioRadial.tsx           radial Expert
+  StudioPanels.tsx           Materiaux/Bibliotheque/…
   BuildingScene.tsx   1064   murs / dalles / toits / meubles   ← GROS
   PropertiesPanel.tsx  614   4 onglets inspecteur
   Plan2D.tsx           574   SVG 2D

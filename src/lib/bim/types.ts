@@ -119,6 +119,11 @@ export type FurnitureKind =
   | 'staircore'
   | 'balcony'
   | 'curtain'
+  | 'lamp'
+  | 'shelf'
+  | 'bathtub'
+  | 'plant'
+  | 'parking'
 
 export type Furniture = {
   id: string
@@ -142,6 +147,12 @@ export type Meta = {
   typology: string
   climate?: string
   lightHour: number
+  /** Coefficient d'emprise au sol (0–1) */
+  ces?: number
+  /** Coefficient d'occupation des sols */
+  cos?: number
+  /** Zone sismique (ex. "2", "3", "4") */
+  sismo?: string
 }
 
 export type Project = {
@@ -157,8 +168,61 @@ export type Project = {
   stairs: Stair[]
   railings: Railing[]
   furniture: Furniture[]
+  /** Per-project layer visibility (optional; store also keeps UI defaults) */
+  layers?: LayerFlags
+  /** Releve / survey stub */
+  survey?: SurveyStub
+  /** Revision history stub */
+  revisions?: RevisionStub[]
   updatedAt: number
   createdAt: number
+}
+
+
+export type WorkspaceMode = 'esquisse' | 'modele' | 'releve'
+
+export type StudioPanelId =
+  | 'materiaux'
+  | 'bibliotheque'
+  | 'structure'
+  | 'copilote'
+  | '4d'
+  | 'calques'
+  | 'guide'
+
+export type LayerFlags = {
+  walls: boolean
+  furniture: boolean
+  slabs: boolean
+  openings: boolean
+  roofs: boolean
+  columns: boolean
+  stairs: boolean
+  railings: boolean
+  sketch: boolean
+}
+
+export type SurveyStub = {
+  notes: string
+  points: Vec2[]
+}
+
+export type RevisionStub = {
+  id: string
+  label: string
+  at: number
+}
+
+export const DEFAULT_LAYERS: LayerFlags = {
+  walls: true,
+  furniture: true,
+  slabs: true,
+  openings: true,
+  roofs: true,
+  columns: true,
+  stairs: true,
+  railings: true,
+  sketch: true,
 }
 
 export type ViewMode = 'plan' | '3d' | 'visite' | 'coupe' | 'ar'

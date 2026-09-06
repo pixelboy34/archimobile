@@ -21,6 +21,7 @@ type Props = {
 
 export default function Plan2D({ project, storyId }: Props) {
   const tool = useProjectStore((s) => s.tool)
+  const layers = useProjectStore((s) => s.layers)
   const ortho = useProjectStore((s) => s.ortho)
   const setOrtho = useProjectStore((s) => s.setOrtho)
   const addWall = useProjectStore((s) => s.addWall)
@@ -57,16 +58,18 @@ export default function Plan2D({ project, storyId }: Props) {
   const lastClickAt = useRef(0)
 
   const story = project.stories.find((s) => s.id === storyId) ?? project.stories[0]
-  const walls = project.walls.filter((w) => w.storyId === story?.id)
+  const walls = layers.walls ? project.walls.filter((w) => w.storyId === story?.id) : []
   const rooms = project.rooms.filter((r) => r.storyId === story?.id)
-  const furniture = project.furniture.filter((f) => f.storyId === story?.id)
-  const columns = project.columns.filter((c) => c.storyId === story?.id)
-  const slabs = project.slabs.filter((s) => s.storyId === story?.id)
-  const stairs = project.stairs.filter((s) => s.storyId === story?.id)
-  const roofs = project.roofs.filter((r) => r.storyId === story?.id)
-  const railings = (project.railings ?? []).filter((r) => r.storyId === story?.id)
+  const furniture = layers.furniture ? project.furniture.filter((f) => f.storyId === story?.id) : []
+  const columns = layers.columns ? project.columns.filter((c) => c.storyId === story?.id) : []
+  const slabs = layers.slabs ? project.slabs.filter((s) => s.storyId === story?.id) : []
+  const stairs = layers.stairs ? project.stairs.filter((s) => s.storyId === story?.id) : []
+  const roofs = layers.roofs ? project.roofs.filter((r) => r.storyId === story?.id) : []
+  const railings = layers.railings
+    ? (project.railings ?? []).filter((r) => r.storyId === story?.id)
+    : []
   const wallIds = new Set(walls.map((w) => w.id))
-  const openings = project.openings.filter((o) => wallIds.has(o.wallId))
+  const openings = layers.openings ? project.openings.filter((o) => wallIds.has(o.wallId)) : []
 
   useEffect(() => {
     setDraft(null)

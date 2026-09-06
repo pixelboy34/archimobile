@@ -14,17 +14,25 @@ npm run build
 
 Serveur: http://0.0.0.0:8080
 
-Stack: Vite + React 19 + TypeScript + React Router - Three/R3F/Drei - Zustand (forma-studio-v10) - Tailwind v4
+Stack: Vite + React 19 + TypeScript + React Router - Three/R3F/Drei - Zustand (forma-studio-v9) - Tailwind v4
 
 Projets: Villa Calanque, Tour Horizon, Atelier Voltaire, Maison Patio, Pavillon Lac
 
 Pas d'auth.
 
-## Persistance (v10)
+## Persistance (v9)
 
-Cle localStorage: forma-studio-v10 (remplace forma-studio-v9).
-Au premier chargement v10, les demos premium sont recharges.
+Cle localStorage: forma-studio-v9 (pont auto depuis forma-studio-v10 si present).
+Au chargement, demos premium force-refresh; pont v10→v9 pour projets utilisateur.
 Si d anciens projets moches restent: hard-refresh Ctrl+Shift+R, ou vider localStorage forma-studio-v9 / forma-studio-v10.
+
+## Product chrome (restaure)
+
+- Workspaces: Esquisse · Modele · Releve
+- Dock familles: Editer · Esquisse · Tracer · Ouvrage · Objets · Studio
+- Studio radial → panneau dock ≤46dvh (Materiaux, Bibliotheque, Structure, Copilote, 4D, Calques, Guide, Porte, Fenetre…)
+- Persist: forma-studio-v9 (pont depuis v10)
+- Routes Start scaffold: src/routes/ (runtime reste Vite + React Router — voir CLAUDE.md)
 
 ## Qualite visuelle (0.10)
 

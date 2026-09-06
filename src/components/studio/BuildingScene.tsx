@@ -5,6 +5,7 @@ import type { Project, Wall, Slab, Furniture, Column, Roof, Opening, Stair, Rail
 import { wallLength, wallAngle, wallCenter } from '../../lib/bim/types'
 import { MATERIALS, FURNITURE_PRESETS } from '../../lib/bim/catalog'
 import { detectQuality } from '../../lib/render/quality'
+import { useProjectStore } from '../../lib/store/project-store'
 import {
   plasterMap,
   concreteMap,
@@ -745,6 +746,13 @@ type Props = {
 
 export default function BuildingScene({ project, activeStoryId, visiting = false }: Props) {
   const quality = useMemo(() => detectQuality(), [])
+  const layers = useProjectStore((s) => s.layers)
+  const phase4d = useProjectStore((s) => s.phase4d)
+  const storyVisible = (storyIndex: number, total: number) => {
+    if (total <= 0) return true
+    const built = Math.max(1, Math.round(phase4d * total))
+    return storyIndex < built
+  }
   const storyMap = useMemo(() => {
     const m = new Map<string, (typeof project.stories)[0]>()
     for (const s of project.stories) m.set(s.id, s)
@@ -864,62 +872,70 @@ export default function BuildingScene({ project, activeStoryId, visiting = false
         <meshBasicMaterial map={blob} transparent opacity={0.85} depthWrite={false} />
       </mesh>
 
-      {project.slabs.map((s) => (
-        <SlabMesh key={s.id} slab={s} />
-      ))}
+      {layers.slabs &&
+        project.slabs.map((s) => {
+          const st = storyMap.get(s.storyId)
+          if (!st || !storyVisible(st.index, project.stories.length)) return null
+          return <SlabMesh key={s.id} slab={s} />
+        })}
 
-      {project.walls.map((w) => {
-        const st = storyMap.get(w.storyId)
-        if (!st) return null
-        const dim = focusStory && focusStory.id !== w.storyId && Math.abs(focusStory.index - st.index) > 2
-        return (
-          <group key={w.id} visible={!dim || true}>
-            <WallMesh
-              wall={w}
-              openings={openingsByWall.get(w.id) ?? EMPTY_OPENINGS}
+      {layers.walls &&
+        project.walls.map((w) => {
+          const st = storyMap.get(w.storyId)
+          if (!st || !storyVisible(st.index, project.stories.length)) return null
+          return (
+            <group key={w.id}>
+              <WallMesh
+                wall={w}
+                openings={layers.openings ? openingsByWall.get(w.id) ?? EMPTY_OPENINGS : EMPTY_OPENINGS}
+                elevation={st.elevation}
+                visitMode={visiting}
+              />
+            </group>
+          )
+        })}
+
+      {layers.columns &&
+        project.columns.map((c) => {
+          const st = storyMap.get(c.storyId)
+          if (!st || !storyVisible(st.index, project.stories.length)) return null
+          return <ColumnMesh key={c.id} col={c} elevation={st.elevation} />
+        })}
+
+      {layers.stairs &&
+        project.stairs.map((s) => {
+          const st = storyMap.get(s.storyId)
+          if (!st || !storyVisible(st.index, project.stories.length)) return null
+          return (
+            <StairMesh
+              key={s.id}
+              stair={s}
               elevation={st.elevation}
-              visitMode={visiting}
+              storyHeight={st.height}
             />
-          </group>
-        )
-      })}
+          )
+        })}
 
-      {project.columns.map((c) => {
-        const st = storyMap.get(c.storyId)
-        if (!st) return null
-        return <ColumnMesh key={c.id} col={c} elevation={st.elevation} />
-      })}
+      {layers.furniture &&
+        project.furniture.map((f) => {
+          const st = storyMap.get(f.storyId)
+          if (!st || !storyVisible(st.index, project.stories.length)) return null
+          return <FurnitureMeshMemo key={f.id} item={f} elevation={st.elevation} />
+        })}
 
-      {project.stairs.map((s) => {
-        const st = storyMap.get(s.storyId)
-        if (!st) return null
-        return (
-          <StairMesh
-            key={s.id}
-            stair={s}
-            elevation={st.elevation}
-            storyHeight={st.height}
-          />
-        )
-      })}
+      {layers.roofs &&
+        project.roofs.map((r) => {
+          const st = storyMap.get(r.storyId)
+          if (!st || !storyVisible(st.index, project.stories.length)) return null
+          return <RoofMesh key={r.id} roof={r} elevation={st.elevation + st.height} />
+        })}
 
-      {project.furniture.map((f) => {
-        const st = storyMap.get(f.storyId)
-        if (!st) return null
-        return <FurnitureMeshMemo key={f.id} item={f} elevation={st.elevation} />
-      })}
-
-      {project.roofs.map((r) => {
-        const st = storyMap.get(r.storyId)
-        if (!st) return null
-        return <RoofMesh key={r.id} roof={r} elevation={st.elevation + st.height} />
-      })}
-
-      {(project.railings ?? []).map((r) => {
-        const st = storyMap.get(r.storyId)
-        if (!st) return null
-        return <StandaloneRailingMesh key={r.id} railing={r} elevation={st.elevation} />
-      })}
+      {layers.railings &&
+        (project.railings ?? []).map((r) => {
+          const st = storyMap.get(r.storyId)
+          if (!st || !storyVisible(st.index, project.stories.length)) return null
+          return <StandaloneRailingMesh key={r.id} railing={r} elevation={st.elevation} />
+        })}
     </group>
   )
 }

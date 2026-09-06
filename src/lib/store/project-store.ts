@@ -14,8 +14,11 @@ import type {
   SlabKind,
   StairMode,
   RoofMode,
+  WorkspaceMode,
+  StudioPanelId,
+  LayerFlags,
 } from '../bim/types'
-import { uid } from '../bim/types'
+import { uid, DEFAULT_LAYERS } from '../bim/types'
 import { allSeeds, newSketchProject } from '../bim/seed'
 import { generateMassing, type MassingParams } from '../cad/massing'
 import {
@@ -33,7 +36,10 @@ import {
   placeRoofPolygon,
   placeRailingPath,
   snapGrid,
+  copyStory,
+  repeatStories,
 } from '../cad/ops'
+import { parseMassingPrompt } from '../ai/copilot'
 
 const HISTORY_MAX = 40
 
@@ -63,6 +69,11 @@ type StoreState = {
   coupeAxis: 'horizontal' | 'vertical'
   coupeCut: number
   arMode: 'poser' | 'cote'
+  workspace: WorkspaceMode
+  studioPanel: StudioPanelId | null
+  layers: LayerFlags
+  phase4d: number
+  radialOpen: boolean
 
   // actions
   touch: () => void
@@ -111,6 +122,16 @@ type StoreState = {
   setRoofMode: (m: RoofMode) => void
   setPolyDrawMode: (m: 'polygon' | 'rect') => void
   placeAtPoint: (pos: Vec2) => void
+  setWorkspace: (w: WorkspaceMode) => void
+  setStudioPanel: (id: StudioPanelId | null) => void
+  openStudioPanel: (id: StudioPanelId) => void
+  setRadialOpen: (open: boolean) => void
+  setLayer: (key: keyof LayerFlags, value: boolean) => void
+  setPhase4d: (v: number) => void
+  assignMaterialToSelection: (materialId: string) => void
+  copyActiveStory: () => void
+  repeatActiveStories: (count: number) => void
+  runCopilotPrompt: (prompt: string) => string
 }
 
 function seedMap(): Record<string, Project> {
@@ -145,6 +166,11 @@ export const useProjectStore = create<StoreState>()(
       coupeAxis: 'horizontal',
       coupeCut: 1.4,
       arMode: 'poser',
+      workspace: 'modele',
+      studioPanel: null,
+      layers: { ...DEFAULT_LAYERS },
+      phase4d: 1,
+      radialOpen: false,
 
       getActive: () => {
         const { projects, activeId } = get()
@@ -194,8 +220,9 @@ export const useProjectStore = create<StoreState>()(
         }
         set(patch)
       },
-      setInspectorOpen: (open) => set({ inspectorOpen: open }),
-      setInspectorTab: (t) => set({ inspectorTab: t }),
+      setInspectorOpen: (open) =>
+        set(open ? { inspectorOpen: true } : { inspectorOpen: false, studioPanel: null, radialOpen: false }),
+      setInspectorTab: (t) => set({ inspectorTab: t, studioPanel: null }),
       setTool: (t) =>
         set({
           tool: t,
@@ -522,19 +549,103 @@ export const useProjectStore = create<StoreState>()(
         if (tool === 'column') get().addColumn(pos)
         else if (tool === 'objects') get().addFurnitureAt(pos)
       },
+
+      setWorkspace: (w) => set({ workspace: w }),
+      setStudioPanel: (id) => set({ studioPanel: id }),
+      openStudioPanel: (id) =>
+        set({ studioPanel: id, inspectorOpen: true, radialOpen: false }),
+      setRadialOpen: (open) => set({ radialOpen: open }),
+      setLayer: (key, value) => set({ layers: { ...get().layers, [key]: value } }),
+      setPhase4d: (v) => set({ phase4d: Math.min(1, Math.max(0, v)) }),
+
+      assignMaterialToSelection: (materialId) => {
+        const sel = get().selection
+        if (!sel) return
+        get().commit((p) => {
+          if (sel.kind === 'wall') {
+            return {
+              ...p,
+              walls: p.walls.map((w) => (w.id === sel.id ? { ...w, materialId } : w)),
+            }
+          }
+          if (sel.kind === 'slab') {
+            return {
+              ...p,
+              slabs: p.slabs.map((s) => (s.id === sel.id ? { ...s, materialId } : s)),
+            }
+          }
+          if (sel.kind === 'railing') {
+            return {
+              ...p,
+              railings: (p.railings ?? []).map((r) =>
+                r.id === sel.id ? { ...r, materialId } : r,
+              ),
+            }
+          }
+          return p
+        })
+      },
+
+      copyActiveStory: () => {
+        const { activeStoryId, getActive } = get()
+        const p = getActive()
+        if (!p || !activeStoryId) return
+        get().commit((proj) => copyStory(proj, activeStoryId))
+        const next = get().getActive()
+        if (next?.stories.length) {
+          set({ activeStoryId: next.stories[next.stories.length - 1]!.id })
+        }
+      },
+
+      repeatActiveStories: (count) => {
+        const { activeStoryId, getActive } = get()
+        const p = getActive()
+        if (!p || !activeStoryId) return
+        const n = Math.min(Math.max(1, Math.floor(count)), 80 - p.stories.length)
+        if (n <= 0) return
+        get().commit((proj) => repeatStories(proj, activeStoryId, n))
+      },
+
+      runCopilotPrompt: (prompt) => {
+        const parsed = parseMassingPrompt(prompt)
+        if (!parsed.ok) return parsed.message
+        get().setMassingDraft(parsed.params)
+        get().generateMassingAction(parsed.params)
+        return parsed.summary
+      },
     }),
     {
-      name: 'forma-studio-v10',
+      name: 'forma-studio-v9',
       partialize: (s) => ({
         projects: s.projects,
         skill: s.skill,
         dockHeight: s.dockHeight,
         massingDraft: s.massingDraft,
+        workspace: s.workspace,
+        layers: s.layers,
       }),
       merge: (persisted, current) => {
         const p = persisted as Partial<StoreState> | undefined
         const seeds = seedMap()
-        const merged = { ...seeds, ...(p?.projects ?? {}) }
+        let fromPersist = p?.projects ?? {}
+        // One-shot bridge from v10 quality-pass key if v9 empty of user projects
+        if (typeof localStorage !== 'undefined') {
+          try {
+            const raw10 = localStorage.getItem('forma-studio-v10')
+            if (raw10) {
+              const parsed = JSON.parse(raw10) as { state?: { projects?: Record<string, Project> } }
+              const p10 = parsed.state?.projects ?? {}
+              if (Object.keys(fromPersist).length === 0 && Object.keys(p10).length > 0) {
+                fromPersist = p10
+              } else {
+                fromPersist = { ...p10, ...fromPersist }
+              }
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+        const merged = { ...seeds, ...fromPersist }
         // Force-refresh demo seeds so premium geometry always wins
         for (const [k, v] of Object.entries(seeds)) {
           merged[k] = v
@@ -542,6 +653,11 @@ export const useProjectStore = create<StoreState>()(
         for (const proj of Object.values(merged)) {
           if (!proj) continue
           if (!proj.railings) proj.railings = []
+          if (!proj.survey) proj.survey = { notes: '', points: [] }
+          if (!proj.revisions) proj.revisions = []
+          if (proj.meta.ces == null) proj.meta.ces = 0.4
+          if (proj.meta.cos == null) proj.meta.cos = 1.2
+          if (proj.meta.sismo == null) proj.meta.sismo = '2'
           for (const roof of proj.roofs ?? []) {
             if (!roof.mode) roof.mode = 'terrasse'
             if (roof.pitchDeg == null) roof.pitchDeg = 30

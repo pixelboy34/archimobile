@@ -24,6 +24,9 @@ function meta(partial: Partial<Meta> & Pick<Meta, 'name' | 'city'>): Meta {
     parcelDepth: 30,
     typology: 'logement',
     lightHour: 14,
+    ces: 0.4,
+    cos: 1.2,
+    sismo: '2',
     ...partial,
   }
 }

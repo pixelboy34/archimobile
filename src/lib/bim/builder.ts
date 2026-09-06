@@ -92,6 +92,9 @@ export function emptyProject(meta: Meta): Project {
     stairs: [],
     railings: [],
     furniture: [],
+    layers: undefined,
+    survey: { notes: '', points: [] },
+    revisions: [],
     updatedAt: now,
     createdAt: now,
   }

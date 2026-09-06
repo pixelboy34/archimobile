@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useProjectStore } from '../../lib/store/project-store'
+import type { WorkspaceMode } from '../../lib/bim/types'
 import Viewport3D from './Viewport3D'
 import Plan2D from './Plan2D'
 import InspectorDock from './InspectorDock'
@@ -8,7 +9,14 @@ import ToolDock from './ToolDock'
 import ViewBar from './ViewBar'
 import { VisitHud } from './VisitControls'
 import ArView from './ArView'
+import StudioRadial from './StudioRadial'
 import { downloadIfc } from '../../lib/bim/ifc-export'
+
+const WORKSPACES: { id: WorkspaceMode; label: string }[] = [
+  { id: 'esquisse', label: 'Esquisse' },
+  { id: 'modele', label: 'Modele' },
+  { id: 'releve', label: 'Releve' },
+]
 
 export default function StudioShell() {
   const navigate = useNavigate()
@@ -19,9 +27,14 @@ export default function StudioShell() {
   const setSkill = useProjectStore((s) => s.setSkill)
   const inspectorOpen = useProjectStore((s) => s.inspectorOpen)
   const setInspectorOpen = useProjectStore((s) => s.setInspectorOpen)
+  const setStudioPanel = useProjectStore((s) => s.setStudioPanel)
+  const studioPanel = useProjectStore((s) => s.studioPanel)
   const activeStoryId = useProjectStore((s) => s.activeStoryId)
   const undo = useProjectStore((s) => s.undo)
   const redo = useProjectStore((s) => s.redo)
+  const workspace = useProjectStore((s) => s.workspace)
+  const setWorkspace = useProjectStore((s) => s.setWorkspace)
+  const setRadialOpen = useProjectStore((s) => s.setRadialOpen)
 
   if (!project) {
     return (
@@ -64,6 +77,7 @@ export default function StudioShell() {
               {project.meta.city}
             </p>
           </div>
+          <StudioRadial />
           <button
             type="button"
             className="chip expert-toggle"
@@ -77,12 +91,36 @@ export default function StudioShell() {
             <button
               type="button"
               className="chip"
-              data-active={inspectorOpen}
-              onClick={() => setInspectorOpen(!inspectorOpen)}
+              data-active={inspectorOpen && !studioPanel}
+              onClick={() => {
+                if (inspectorOpen && !studioPanel) {
+                  setInspectorOpen(false)
+                } else {
+                  setStudioPanel(null)
+                  setRadialOpen(false)
+                  setInspectorOpen(true)
+                }
+              }}
             >
               Params
             </button>
           )}
+        </div>
+
+        <div className="pointer-events-auto flex items-center gap-1.5 px-3 pb-1.5 overflow-x-auto">
+          <div className="flex gap-1 p-1 rounded-2xl bg-[#0a1218]/75 border border-[#1a2a35]/90 backdrop-blur-md shrink-0">
+            {WORKSPACES.map((w) => (
+              <button
+                key={w.id}
+                type="button"
+                className="chip min-h-[40px] text-[12px] px-3"
+                data-active={workspace === w.id}
+                onClick={() => setWorkspace(w.id)}
+              >
+                {w.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="pointer-events-auto flex items-center gap-1.5 px-3 pb-2">

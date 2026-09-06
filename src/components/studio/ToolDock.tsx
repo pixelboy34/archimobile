@@ -1,27 +1,37 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useProjectStore } from '../../lib/store/project-store'
 import type { ToolMode, SkillLevel, StairMode, RoofMode } from '../../lib/bim/types'
 import { labelForStairMode } from '../../lib/cad/stairs'
 import { labelForRoofMode } from '../../lib/cad/roofs'
 import { FURNITURE_FAMILIES, FURNITURE_PRESETS } from '../../lib/bim/catalog'
 
-type ToolDef = { id: ToolMode; label: string; group: 'trace' | 'ouvrage' | 'cad'; amateur?: boolean }
+type DockFamily = 'editer' | 'esquisse' | 'tracer' | 'ouvrage' | 'objets' | 'studio'
 
-/** Amateur: Selection, Mur, Porte, Fenetre, Objets only */
+type ToolDef = { id: ToolMode; label: string; family: DockFamily; amateur?: boolean }
+
 const ALL_TOOLS: ToolDef[] = [
-  { id: 'select', label: 'Selection', group: 'trace', amateur: true },
-  { id: 'wall', label: 'Mur', group: 'trace', amateur: true },
-  { id: 'door', label: 'Porte', group: 'ouvrage', amateur: true },
-  { id: 'window', label: 'Fenetre', group: 'ouvrage', amateur: true },
-  { id: 'objects', label: 'Objets', group: 'trace', amateur: true },
-  { id: 'rect', label: 'Rectangle', group: 'trace' },
-  { id: 'slab', label: 'Dalle', group: 'ouvrage' },
-  { id: 'column', label: 'Pilier', group: 'ouvrage' },
-  { id: 'stair', label: 'Escalier', group: 'ouvrage' },
-  { id: 'railing', label: 'Garde-corps', group: 'ouvrage' },
-  { id: 'roof', label: 'Toiture', group: 'ouvrage' },
-  { id: 'trim', label: 'Couper', group: 'cad' },
-  { id: 'extend', label: 'Prolonger', group: 'cad' },
+  { id: 'select', label: 'Selection', family: 'editer', amateur: true },
+  { id: 'trim', label: 'Couper', family: 'editer' },
+  { id: 'extend', label: 'Prolonger', family: 'editer' },
+  { id: 'wall', label: 'Mur', family: 'tracer', amateur: true },
+  { id: 'rect', label: 'Rectangle', family: 'tracer' },
+  { id: 'door', label: 'Porte', family: 'ouvrage', amateur: true },
+  { id: 'window', label: 'Fenetre', family: 'ouvrage', amateur: true },
+  { id: 'slab', label: 'Dalle', family: 'ouvrage' },
+  { id: 'column', label: 'Pilier', family: 'ouvrage' },
+  { id: 'stair', label: 'Escalier', family: 'ouvrage' },
+  { id: 'railing', label: 'Garde-corps', family: 'ouvrage' },
+  { id: 'roof', label: 'Toiture', family: 'ouvrage' },
+  { id: 'objects', label: 'Objets', family: 'objets', amateur: true },
+]
+
+const FAMILIES: { id: DockFamily; label: string; amateur?: boolean }[] = [
+  { id: 'editer', label: 'Editer', amateur: true },
+  { id: 'esquisse', label: 'Esquisse', amateur: true },
+  { id: 'tracer', label: 'Tracer', amateur: true },
+  { id: 'ouvrage', label: 'Ouvrage', amateur: true },
+  { id: 'objets', label: 'Objets', amateur: true },
+  { id: 'studio', label: 'Studio' },
 ]
 
 function toolsForSkill(skill: SkillLevel): ToolDef[] {
@@ -42,6 +52,10 @@ const HINTS: Partial<Record<ToolMode, string>> = {
   extend: 'Prolonger : mur puis cible',
 }
 
+function familyForTool(tool: ToolMode): DockFamily {
+  return ALL_TOOLS.find((t) => t.id === tool)?.family ?? 'editer'
+}
+
 export default function ToolDock() {
   const tool = useProjectStore((s) => s.tool)
   const setTool = useProjectStore((s) => s.setTool)
@@ -60,6 +74,13 @@ export default function ToolDock() {
   const setRoofMode = useProjectStore((s) => s.setRoofMode)
   const polyDrawMode = useProjectStore((s) => s.polyDrawMode)
   const setPolyDrawMode = useProjectStore((s) => s.setPolyDrawMode)
+  const setWorkspace = useProjectStore((s) => s.setWorkspace)
+  const setRadialOpen = useProjectStore((s) => s.setRadialOpen)
+  const radialOpen = useProjectStore((s) => s.radialOpen)
+  const setSkill = useProjectStore((s) => s.setSkill)
+  const openStudioPanel = useProjectStore((s) => s.openStudioPanel)
+
+  const [family, setFamily] = useState<DockFamily>(() => familyForTool(tool))
 
   useEffect(() => {
     if (!cadNote) return
@@ -91,12 +112,49 @@ export default function ToolDock() {
     }
   }, [skill, tool, setTool])
 
+  useEffect(() => {
+    if (tool === 'objects') setFamily('objets')
+    else setFamily(familyForTool(tool))
+  }, [tool])
+
+  const shownFamilies = useMemo(
+    () => (skill === 'pro' ? FAMILIES : FAMILIES.filter((f) => f.amateur || f.id === 'studio')),
+    [skill],
+  )
+
+  const tools = useMemo(() => {
+    const all = toolsForSkill(skill)
+    if (family === 'studio' || family === 'esquisse') return []
+    return all.filter((t) => t.family === family)
+  }, [skill, family])
+
   if (inspectorOpen) return null
   if (viewMode === 'visite') return null
 
-  const shown = toolsForSkill(skill)
   const hint = HINTS[tool]
   const showHint = !!hint && tool !== 'objects' && tool !== 'select'
+
+  const pickFamily = (id: DockFamily) => {
+    setFamily(id)
+    if (id === 'studio') {
+      if (skill !== 'pro') setSkill('pro')
+      setRadialOpen(!radialOpen)
+      return
+    }
+    setRadialOpen(false)
+    if (id === 'esquisse') {
+      setWorkspace('esquisse')
+      setTool('wall')
+      return
+    }
+    if (id === 'objets') {
+      setTool('objects')
+      return
+    }
+    if (id === 'editer') setTool('select')
+    if (id === 'tracer') setTool('wall')
+    if (id === 'ouvrage') setTool(skill === 'pro' ? 'door' : 'door')
+  }
 
   return (
     <div className="absolute bottom-4 left-0 right-0 z-20 flex flex-col items-center gap-2 safe-bottom safe-x pointer-events-none">
@@ -107,6 +165,20 @@ export default function ToolDock() {
       {showHint && (
         <div className="pointer-events-auto px-3 py-1.5 rounded-full bg-[#0a1218]/80 border border-[#1a2a35]/80 text-[11px] text-[#9aafba] max-w-[88vw]">
           {hint}
+        </div>
+      )}
+
+      {family === 'esquisse' && (
+        <div className="pointer-events-auto px-3 py-2 rounded-2xl bg-[#0a1218]/94 border border-[#1a2a35] text-xs text-[#9aafba] max-w-[92vw]">
+          Esquisse — trace rapide (murs). Workspace Esquisse active. Massez ensuite via Studio / Copilote.
+          <div className="flex gap-1 mt-2">
+            <button type="button" className="chip" data-active={tool === 'wall'} onClick={() => setTool('wall')}>
+              Mur
+            </button>
+            <button type="button" className="chip" onClick={() => openStudioPanel('copilote')}>
+              Copilote
+            </button>
+          </div>
         </div>
       )}
 
@@ -141,8 +213,8 @@ export default function ToolDock() {
         </div>
       )}
 
-      {tool === 'objects' && (
-        <div className="pointer-events-auto w-[min(94vw,26rem)] max-h-[36dvh] overflow-y-auto rounded-2xl bg-[#0a1218]/94 border border-[#1a2a35] backdrop-blur-md p-3">
+      {(tool === 'objects' || family === 'objets') && (
+        <div className="pointer-events-auto w-[min(94vw,26rem)] max-h-[32dvh] overflow-y-auto rounded-2xl bg-[#0a1218]/94 border border-[#1a2a35] backdrop-blur-md p-3">
           <div className="flex items-center justify-between mb-2 gap-2">
             <p className="text-xs text-[#7a8f9c] uppercase tracking-wide">Bibliotheque</p>
             <div className="flex gap-1">
@@ -168,7 +240,10 @@ export default function ToolDock() {
                       type="button"
                       className="chip"
                       data-active={placeKind === kind}
-                      onClick={() => setPlaceKind(kind)}
+                      onClick={() => {
+                        setTool('objects')
+                        setPlaceKind(kind)
+                      }}
                     >
                       {preset?.label ?? kind}
                     </button>
@@ -179,22 +254,39 @@ export default function ToolDock() {
           ))}
           {placeKind && (
             <p className="text-[11px] text-[#7a8f9c]">
-              Touchez le plan ou le sol 3D. R = rotation ({Math.round(((placeRotation % (Math.PI * 2)) * 180) / Math.PI)}°).
+              Touchez le plan ou le sol 3D. R = rotation (
+              {Math.round(((placeRotation % (Math.PI * 2)) * 180) / Math.PI)}°).
             </p>
           )}
         </div>
       )}
 
-      <div className="pointer-events-auto flex gap-1.5 p-2 rounded-2xl bg-[#0a1218]/92 border border-[#1a2a35] backdrop-blur-md overflow-x-auto max-w-[96vw] shadow-[0_8px_32px_rgba(0,0,0,0.35)]">
-        {shown.map((t) => (
+      {tools.length > 0 && family !== 'objets' && (
+        <div className="pointer-events-auto flex gap-1.5 p-2 rounded-2xl bg-[#0a1218]/92 border border-[#1a2a35] backdrop-blur-md overflow-x-auto max-w-[96vw]">
+          {tools.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className="chip shrink-0 min-w-[3.25rem]"
+              data-active={tool === t.id}
+              onClick={() => setTool(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="pointer-events-auto flex gap-1 p-1.5 rounded-2xl bg-[#0a1218]/95 border border-[#1a2a35] backdrop-blur-md overflow-x-auto max-w-[96vw] shadow-[0_8px_32px_rgba(0,0,0,0.35)]">
+        {shownFamilies.map((f) => (
           <button
-            key={t.id}
+            key={f.id}
             type="button"
-            className="chip shrink-0 min-w-[3.25rem]"
-            data-active={tool === t.id}
-            onClick={() => setTool(t.id)}
+            className="chip shrink-0 text-[12px] px-3 min-h-[44px]"
+            data-active={family === f.id || (f.id === 'studio' && radialOpen)}
+            onClick={() => pickFamily(f.id)}
           >
-            {t.label}
+            {f.label}
           </button>
         ))}
       </div>

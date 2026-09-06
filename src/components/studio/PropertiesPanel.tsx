@@ -1,6 +1,8 @@
 import { useProjectStore } from '../../lib/store/project-store'
 import { FURNITURE_PRESETS } from '../../lib/bim/catalog'
 import { downloadIfc } from '../../lib/bim/ifc-export'
+import { downloadCsv, downloadDxf, downloadJson } from '../../lib/bim/livrables'
+import type { WallTypology } from '../../lib/bim/types'
 import { labelForStairMode, normalizeStair } from '../../lib/cad/stairs'
 import { labelForRoofMode, normalizeRoof } from '../../lib/cad/roofs'
 import { stairHasRailings, stairRailingHeight } from '../../lib/cad/railings'
@@ -60,6 +62,9 @@ export default function PropertiesPanel() {
   const setView = useProjectStore((s) => s.setView)
   const skill = useProjectStore((s) => s.skill)
   const setInspectorOpen = useProjectStore((s) => s.setInspectorOpen)
+  const copyActiveStory = useProjectStore((s) => s.copyActiveStory)
+  const repeatActiveStories = useProjectStore((s) => s.repeatActiveStories)
+  const activeStoryId = useProjectStore((s) => s.activeStoryId)
 
   if (!project) return null
 
@@ -123,7 +128,30 @@ export default function PropertiesPanel() {
                 }))
               }
             />
-            <p className="text-sm text-[#7a8f9c]">Typologie : {wall.typology}</p>
+            <p className="text-xs text-[#7a8f9c] uppercase tracking-wide mb-1 mt-2">Typologie</p>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {([
+                ['exterior', 'Exterieur'],
+                ['interior', 'Interieur'],
+                ['curtain', 'Rideau'],
+                ['core', 'Noyau'],
+              ] as [WallTypology, string][]).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className="chip text-[12px] min-h-[40px]"
+                  data-active={wall.typology === id}
+                  onClick={() =>
+                    patchNow((p) => ({
+                      ...p,
+                      walls: p.walls.map((w) => (w.id === wall.id ? { ...w, typology: id } : w)),
+                    }))
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </>
         ) : opening ? (
           <>
@@ -741,14 +769,46 @@ export default function PropertiesPanel() {
         <p className="text-[11px] text-[#7a8f9c] mt-2">
           Remplace la geometrie courante (confirmation demandee). Max 80 niveaux.
         </p>
+        <div className="mt-4 pt-3 border-t border-[#1a2a35]">
+          <p className="text-xs text-[#7a8f9c] uppercase tracking-wide mb-2">Dupliquer etage</p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="chip"
+              disabled={!activeStoryId || project.stories.length >= 80}
+              onClick={() => copyActiveStory()}
+            >
+              Copier etage actif
+            </button>
+            <button
+              type="button"
+              className="chip"
+              disabled={!activeStoryId || project.stories.length >= 80}
+              onClick={() => {
+                const n = window.prompt('Nombre de repetitions (1–80) ?', '3')
+                if (!n) return
+                repeatActiveStories(Number(n))
+              }}
+            >
+              Repeter N fois
+            </button>
+          </div>
+          <p className="text-[11px] text-[#7a8f9c] mt-2">
+            Clone murs / ouvertures / dalles / objets vers le haut. Cap 80 niveaux.
+          </p>
+        </div>
       </div>
     )
   }
 
   if (tab === 'site') {
+    const ces = project.meta.ces ?? 0.4
+    const cos = project.meta.cos ?? 1.2
+    const sismo = project.meta.sismo ?? '2'
     return (
       <div>
         <h3 className="font-display text-base mb-3">Site</h3>
+        <p className="text-sm text-[#a8bdc8] mb-2">{project.meta.city}</p>
         <SliderRow
           label="Nord"
           value={project.meta.north}
@@ -782,8 +842,67 @@ export default function PropertiesPanel() {
             patchNow((p) => ({ ...p, meta: { ...p.meta, lightHour: v } }))
           }
         />
-        <p className="text-sm text-[#7a8f9c] mt-2">
-          {project.meta.city} · parcelle {project.meta.parcelWidth} x {project.meta.parcelDepth} m
+        <SliderRow
+          label="Parcelle largeur"
+          value={project.meta.parcelWidth}
+          min={10}
+          max={120}
+          step={1}
+          unit=" m"
+          onChange={(v) =>
+            patchNow((p) => ({ ...p, meta: { ...p.meta, parcelWidth: v } }))
+          }
+        />
+        <SliderRow
+          label="Parcelle profondeur"
+          value={project.meta.parcelDepth}
+          min={10}
+          max={120}
+          step={1}
+          unit=" m"
+          onChange={(v) =>
+            patchNow((p) => ({ ...p, meta: { ...p.meta, parcelDepth: v } }))
+          }
+        />
+        <SliderRow
+          label="CES"
+          value={ces}
+          min={0.05}
+          max={1}
+          step={0.01}
+          onChange={(v) =>
+            patchNow((p) => ({ ...p, meta: { ...p.meta, ces: v } }))
+          }
+        />
+        <SliderRow
+          label="COS"
+          value={cos}
+          min={0.1}
+          max={8}
+          step={0.05}
+          onChange={(v) =>
+            patchNow((p) => ({ ...p, meta: { ...p.meta, cos: v } }))
+          }
+        />
+        <p className="text-xs text-[#7a8f9c] uppercase tracking-wide mb-1 mt-1">Zone sismique</p>
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {['1', '2', '3', '4', '5'].map((z) => (
+            <button
+              key={z}
+              type="button"
+              className="chip min-h-[40px] px-3"
+              data-active={sismo === z}
+              onClick={() =>
+                patchNow((p) => ({ ...p, meta: { ...p.meta, sismo: z } }))
+              }
+            >
+              {z}
+            </button>
+          ))}
+        </div>
+        <p className="text-[11px] text-[#7a8f9c]">
+          Parcelle {project.meta.parcelWidth} x {project.meta.parcelDepth} m · CES {ces.toFixed(2)} · COS{' '}
+          {cos.toFixed(2)} · sismo {sismo}
         </p>
       </div>
     )
@@ -838,11 +957,22 @@ export default function PropertiesPanel() {
       )}
       <div className="mt-3 mb-3">
         <p className="text-xs text-[#7a8f9c] uppercase tracking-wide mb-2">Livrables</p>
-        <button type="button" className="btn-accent w-full" onClick={() => downloadIfc(project)}>
-          Exporter IFC4
-        </button>
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" className="btn-accent" onClick={() => downloadIfc(project)}>
+            IFC4
+          </button>
+          <button type="button" className="chip" onClick={() => downloadJson(project)}>
+            JSON
+          </button>
+          <button type="button" className="chip" onClick={() => downloadCsv(project)}>
+            CSV
+          </button>
+          <button type="button" className="chip" onClick={() => downloadDxf(project, activeStoryId)}>
+            DXF
+          </button>
+        </div>
         <p className="text-[11px] text-[#7a8f9c] mt-1">
-          Sous-ensemble IFC4 (projet, site, batiment, etages, murs, ouvertures, dalles, objets). Pas un export ArchiCAD complet.
+          IFC4 sous-ensemble · JSON complet · CSV quantites · DXF lignes 2D (etage actif).
         </p>
       </div>
       <p className="text-xs text-[#7a8f9c]">
