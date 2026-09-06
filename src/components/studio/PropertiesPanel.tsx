@@ -1,5 +1,6 @@
 import { useProjectStore } from '../../lib/store/project-store'
 import { FURNITURE_PRESETS } from '../../lib/bim/catalog'
+import { downloadIfc } from '../../lib/bim/ifc-export'
 
 function roundStep(v: number, step: number) {
   return Math.round(v / step) * step
@@ -342,9 +343,25 @@ export default function PropertiesPanel() {
           Marche a hauteur d oeil (~1,6 m) sur l etage actif. Collision simple contre les murs.
         </p>
       )}
-      {(viewMode === 'coupe' || viewMode === 'ar') && (
-        <p className="text-sm text-[#7a8f9c]">Vue {viewMode.toUpperCase()} — stub Expert (a venir).</p>
+      {viewMode === 'coupe' && (
+        <p className="text-sm text-[#7a8f9c] mb-2">
+          Coupe active : plan de coupe horizontal (hauteur) ou vertical (axe X). Reglez le curseur dans la barre Vue.
+        </p>
       )}
+      {viewMode === 'ar' && (
+        <p className="text-sm text-[#7a8f9c] mb-2">
+          AR : camera + maquette (Poser 1:50 / Cote), WebXR si disponible, USDZ Quick Look sur iOS.
+        </p>
+      )}
+      <div className="mt-3 mb-3">
+        <p className="text-xs text-[#7a8f9c] uppercase tracking-wide mb-2">Livrables</p>
+        <button type="button" className="btn-accent w-full" onClick={() => downloadIfc(project)}>
+          Exporter IFC4
+        </button>
+        <p className="text-[11px] text-[#7a8f9c] mt-1">
+          Sous-ensemble IFC4 (projet, site, batiment, etages, murs, ouvertures, dalles, objets). Pas un export ArchiCAD complet.
+        </p>
+      </div>
       <p className="text-xs text-[#7a8f9c]">
         Orbit maquette : glisser pour tourner le batiment avec le doigt. Pincer pour zoomer.
       </p>

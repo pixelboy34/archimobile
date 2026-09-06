@@ -7,6 +7,8 @@ import PropertiesPanel from './PropertiesPanel'
 import ToolDock from './ToolDock'
 import ViewBar from './ViewBar'
 import { VisitHud } from './VisitControls'
+import ArView from './ArView'
+import { downloadIfc } from '../../lib/bim/ifc-export'
 
 export default function StudioShell() {
   const navigate = useNavigate()
@@ -30,19 +32,22 @@ export default function StudioShell() {
   }
 
   const visiting = viewMode === 'visite'
-  const show3d = viewMode === '3d' || viewMode === 'coupe' || viewMode === 'ar' || visiting
+  const coupe = viewMode === 'coupe'
+  const showAr = viewMode === 'ar'
+  const show3d = viewMode === '3d' || coupe || visiting
 
   return (
     <div className="relative h-[100dvh] w-full overflow-hidden bg-[#04080c]">
       {show3d && (
-        <Viewport3D project={project} activeStoryId={activeStoryId} visiting={visiting} />
+        <Viewport3D
+          project={project}
+          activeStoryId={activeStoryId}
+          visiting={visiting}
+          coupe={coupe}
+        />
       )}
       {viewMode === 'plan' && <Plan2D project={project} storyId={activeStoryId} />}
-      {(viewMode === 'coupe' || viewMode === 'ar') && (
-        <div className="absolute inset-x-0 top-1/2 z-10 text-center pointer-events-none">
-          <span className="chip inline-flex">{viewMode === 'coupe' ? 'Coupe (stub)' : 'AR (stub)'}</span>
-        </div>
-      )}
+      {showAr && <ArView project={project} />}
       {visiting && <VisitHud />}
 
       <header className="absolute top-0 left-0 right-0 z-30 safe-top safe-x pointer-events-none">
@@ -54,7 +59,7 @@ export default function StudioShell() {
             <p className="font-display text-sm tracking-wide truncate">FORMA</p>
             <p className="font-mono text-[10px] text-[#7a8f9c] truncate">{project.meta.name}</p>
           </div>
-          {!visiting && (
+          {!visiting && !showAr && (
             <button
               type="button"
               className="chip"
@@ -64,6 +69,14 @@ export default function StudioShell() {
               Params
             </button>
           )}
+          <button
+            type="button"
+            className="chip"
+            title="Exporter IFC4 (sous-ensemble)"
+            onClick={() => downloadIfc(project)}
+          >
+            IFC
+          </button>
           <button
             type="button"
             className="chip"
@@ -101,7 +114,7 @@ export default function StudioShell() {
               </button>
             </>
           )}
-          {!visiting && (
+          {!visiting && !showAr && (
             <>
               <button type="button" className="chip" onClick={() => undo()}>
                 Annuler
@@ -114,10 +127,10 @@ export default function StudioShell() {
         </div>
       </header>
 
-      <ViewBar />
-      {!visiting && <ToolDock />}
+      {!showAr && <ViewBar />}
+      {!visiting && !showAr && <ToolDock />}
 
-      {!visiting && (
+      {!visiting && !showAr && (
         <InspectorDock>
           <PropertiesPanel />
         </InspectorDock>

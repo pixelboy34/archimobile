@@ -1,5 +1,6 @@
 import { Suspense, useMemo, useEffect, useCallback } from 'react'
 import { Canvas, useThree, ThreeEvent } from '@react-three/fiber'
+import * as THREE from 'three'
 import type { Project } from '../../lib/bim/types'
 import { detectQuality } from '../../lib/render/quality'
 import BuildingScene from './BuildingScene'
@@ -13,6 +14,66 @@ function InvalidateOnUpdate({ stamp }: { stamp: number }) {
     invalidate()
   }, [stamp, invalidate])
   return null
+}
+
+/** Global clipping plane for Coupe mode + translucent section helper. */
+function CoupeClip({
+  enabled,
+  axis,
+  cut,
+}: {
+  enabled: boolean
+  axis: 'horizontal' | 'vertical'
+  cut: number
+}) {
+  const { gl, invalidate } = useThree()
+
+  useEffect(() => {
+    if (!enabled) {
+      gl.clippingPlanes = []
+      invalidate()
+      return
+    }
+    const plane =
+      axis === 'horizontal'
+        ? new THREE.Plane(new THREE.Vector3(0, -1, 0), cut)
+        : new THREE.Plane(new THREE.Vector3(-1, 0, 0), cut)
+    gl.clippingPlanes = [plane]
+    invalidate()
+    return () => {
+      gl.clippingPlanes = []
+    }
+  }, [enabled, axis, cut, gl, invalidate])
+
+  if (!enabled) return null
+
+  if (axis === 'horizontal') {
+    return (
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, cut, 0]} renderOrder={10}>
+        <planeGeometry args={[80, 80]} />
+        <meshBasicMaterial
+          color="#6ed0c3"
+          transparent
+          opacity={0.12}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+        />
+      </mesh>
+    )
+  }
+
+  return (
+    <mesh rotation={[0, Math.PI / 2, 0]} position={[cut, 12, 0]} renderOrder={10}>
+      <planeGeometry args={[80, 40]} />
+      <meshBasicMaterial
+        color="#6ed0c3"
+        transparent
+        opacity={0.12}
+        side={THREE.DoubleSide}
+        depthWrite={false}
+      />
+    </mesh>
+  )
 }
 
 function GroundClick({
@@ -47,13 +108,21 @@ type Props = {
   project: Project
   activeStoryId: string | null
   visiting?: boolean
+  coupe?: boolean
 }
 
-export default function Viewport3D({ project, activeStoryId, visiting = false }: Props) {
+export default function Viewport3D({
+  project,
+  activeStoryId,
+  visiting = false,
+  coupe = false,
+}: Props) {
   const quality = useMemo(() => detectQuality(), [])
   const tool = useProjectStore((s) => s.tool)
   const placeKind = useProjectStore((s) => s.placeKind)
   const addFurnitureAt = useProjectStore((s) => s.addFurnitureAt)
+  const coupeAxis = useProjectStore((s) => s.coupeAxis)
+  const coupeCut = useProjectStore((s) => s.coupeCut)
 
   const story = useMemo(() => {
     if (!activeStoryId) return project.stories[0]
@@ -76,11 +145,12 @@ export default function Viewport3D({ project, activeStoryId, visiting = false }:
   )
 
   const targetY = useMemo(() => {
+    if (coupe && coupeAxis === 'horizontal') return coupeCut
     if (!story) return 1.5
     return story.elevation + story.height * 0.4
-  }, [story])
+  }, [story, coupe, coupeAxis, coupeCut])
 
-  const placing = tool === 'objects' && !!placeKind && !visiting
+  const placing = tool === 'objects' && !!placeKind && !visiting && !coupe
 
   const onPlace = useCallback(
     (x: number, z: number) => {
@@ -89,13 +159,17 @@ export default function Viewport3D({ project, activeStoryId, visiting = false }:
     [addFurnitureAt],
   )
 
+  const stamp =
+    project.updatedAt +
+    (coupe ? coupeCut * 1000 + (coupeAxis === 'vertical' ? 7 : 0) : 0)
+
   return (
     <Canvas
       frameloop={visiting ? 'always' : 'demand'}
       shadows={quality.shadows}
       dpr={[1, quality.dpr]}
       camera={{
-        position: visiting ? [0, elevation + 1.6, 4] : [22, 16, 22],
+        position: visiting ? [0, elevation + 1.6, 4] : coupe ? [28, 18, 28] : [22, 16, 22],
         fov: visiting ? 70 : 42,
         near: 0.05,
         far: 400,
@@ -114,7 +188,8 @@ export default function Viewport3D({ project, activeStoryId, visiting = false }:
       }}
     >
       <Suspense fallback={null}>
-        <InvalidateOnUpdate stamp={project.updatedAt} />
+        <InvalidateOnUpdate stamp={stamp} />
+        <CoupeClip enabled={coupe} axis={coupeAxis} cut={coupeCut} />
         {!visiting && <OrbitRig target={[0, targetY, 0]} enabled={!placing} />}
         {visiting && (
           <VisitControls

@@ -38,6 +38,9 @@ type StoreState = {
   placeKind: FurnitureKind | null
   placeRotation: number
   cadNote: string | null
+  coupeAxis: 'horizontal' | 'vertical'
+  coupeCut: number
+  arMode: 'poser' | 'cote'
 
   // actions
   touch: () => void
@@ -69,6 +72,10 @@ type StoreState = {
   applyExtend: (wallId: string, targetWallId: string) => void
   applyTJoint: (wallAId: string, wallBId: string, preferEnd?: 'a' | 'b') => void
   clearCadNote: () => void
+  setCoupeAxis: (a: 'horizontal' | 'vertical') => void
+  setCoupeCut: (v: number) => void
+  syncCoupeToStory: () => void
+  setArMode: (m: 'poser' | 'cote') => void
 }
 
 function seedMap(): Record<string, Project> {
@@ -97,6 +104,9 @@ export const useProjectStore = create<StoreState>()(
       placeKind: null,
       placeRotation: 0,
       cadNote: null,
+      coupeAxis: 'horizontal',
+      coupeCut: 1.4,
+      arMode: 'poser',
 
       getActive: () => {
         const { projects, activeId } = get()
@@ -135,8 +145,17 @@ export const useProjectStore = create<StoreState>()(
       },
 
       select: (sel) => set({ selection: sel }),
-      setView: (v) => set({ viewMode: v }),
-      setSkill: (s) => set({ skill: s }),
+      setView: (v) => {
+        set({ viewMode: v })
+        if (v === 'coupe') get().syncCoupeToStory()
+      },
+      setSkill: (s) => {
+        const patch: Partial<StoreState> = { skill: s }
+        if (s === 'simple' && (get().viewMode === 'coupe' || get().viewMode === 'ar')) {
+          patch.viewMode = '3d'
+        }
+        set(patch)
+      },
       setInspectorOpen: (open) => set({ inspectorOpen: open }),
       setInspectorTab: (t) => set({ inspectorTab: t }),
       setTool: (t) =>
@@ -144,7 +163,10 @@ export const useProjectStore = create<StoreState>()(
           tool: t,
           placeKind: t === 'objects' ? get().placeKind : null,
         }),
-      setActiveStory: (id) => set({ activeStoryId: id }),
+      setActiveStory: (id) => {
+        set({ activeStoryId: id })
+        if (get().viewMode === 'coupe') get().syncCoupeToStory()
+      },
       setDockHeight: (h) => set({ dockHeight: Math.min(70, Math.max(30, h)) }),
       setOrtho: (v) => set({ ortho: v }),
       setMassingDraft: (partial) =>
@@ -238,6 +260,24 @@ export const useProjectStore = create<StoreState>()(
       setPlaceRotation: (r) => set({ placeRotation: r }),
       rotatePlace: () => set({ placeRotation: (get().placeRotation + Math.PI / 2) % (Math.PI * 2) }),
       clearCadNote: () => set({ cadNote: null }),
+
+      setCoupeAxis: (a) => set({ coupeAxis: a }),
+      setCoupeCut: (v) => set({ coupeCut: v }),
+      setArMode: (m) => set({ arMode: m }),
+      syncCoupeToStory: () => {
+        const { getActive, activeStoryId, coupeAxis } = get()
+        const p = getActive()
+        if (!p) return
+        const story =
+          (activeStoryId ? p.stories.find((s) => s.id === activeStoryId) : null) ??
+          p.stories[0]
+        if (!story) return
+        if (coupeAxis === 'horizontal') {
+          set({ coupeCut: Math.round((story.elevation + story.height * 0.5) * 100) / 100 })
+        } else {
+          set({ coupeCut: 0 })
+        }
+      },
 
       addFurnitureAt: (pos) => {
         const { placeKind, placeRotation, activeStoryId, getActive } = get()
