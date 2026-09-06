@@ -16,7 +16,7 @@ function InvalidateOnUpdate({ stamp }: { stamp: number }) {
   return null
 }
 
-/** Global clipping plane for Coupe mode + translucent section helper. */
+/** Global clipping plane for Coupe mode + translucent section helper + edges. */
 function CoupeClip({
   enabled,
   axis,
@@ -29,6 +29,7 @@ function CoupeClip({
   const { gl, invalidate } = useThree()
 
   useEffect(() => {
+    gl.localClippingEnabled = enabled
     if (!enabled) {
       gl.clippingPlanes = []
       invalidate()
@@ -42,37 +43,73 @@ function CoupeClip({
     invalidate()
     return () => {
       gl.clippingPlanes = []
+      gl.localClippingEnabled = false
     }
   }, [enabled, axis, cut, gl, invalidate])
+
+  const edgeH = useMemo(() => new THREE.EdgesGeometry(new THREE.PlaneGeometry(80, 80)), [])
+  const edgeV = useMemo(() => new THREE.EdgesGeometry(new THREE.PlaneGeometry(80, 40)), [])
 
   if (!enabled) return null
 
   if (axis === 'horizontal') {
     return (
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, cut, 0]} renderOrder={10}>
-        <planeGeometry args={[80, 80]} />
-        <meshBasicMaterial
-          color="#6ed0c3"
-          transparent
-          opacity={0.12}
-          side={THREE.DoubleSide}
-          depthWrite={false}
-        />
-      </mesh>
+      <group position={[0, cut, 0]} renderOrder={10}>
+        <mesh rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[80, 80]} />
+          <meshBasicMaterial
+            color="#6ed0c3"
+            transparent
+            opacity={0.2}
+            side={THREE.DoubleSide}
+            depthWrite={false}
+            toneMapped={false}
+          />
+        </mesh>
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
+          <ringGeometry args={[38.5, 40, 64]} />
+          <meshBasicMaterial color="#6ed0c3" toneMapped={false} transparent opacity={0.95} />
+        </mesh>
+        <lineSegments geometry={edgeH} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
+          <lineBasicMaterial color="#9eefe4" toneMapped={false} />
+        </lineSegments>
+        <mesh position={[0, 0.015, 0]}>
+          <boxGeometry args={[80, 0.04, 0.08]} />
+          <meshBasicMaterial color="#6ed0c3" transparent opacity={0.55} toneMapped={false} />
+        </mesh>
+        <mesh position={[0, 0.015, 0]}>
+          <boxGeometry args={[0.08, 0.04, 80]} />
+          <meshBasicMaterial color="#6ed0c3" transparent opacity={0.55} toneMapped={false} />
+        </mesh>
+      </group>
     )
   }
 
   return (
-    <mesh rotation={[0, Math.PI / 2, 0]} position={[cut, 12, 0]} renderOrder={10}>
-      <planeGeometry args={[80, 40]} />
-      <meshBasicMaterial
-        color="#6ed0c3"
-        transparent
-        opacity={0.12}
-        side={THREE.DoubleSide}
-        depthWrite={false}
-      />
-    </mesh>
+    <group position={[cut, 12, 0]} renderOrder={10}>
+      <mesh rotation={[0, Math.PI / 2, 0]}>
+        <planeGeometry args={[80, 40]} />
+        <meshBasicMaterial
+          color="#6ed0c3"
+          transparent
+          opacity={0.2}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+          toneMapped={false}
+        />
+      </mesh>
+      <lineSegments geometry={edgeV} rotation={[0, Math.PI / 2, 0]} position={[0.02, 0, 0]}>
+        <lineBasicMaterial color="#9eefe4" toneMapped={false} />
+      </lineSegments>
+      <mesh rotation={[0, Math.PI / 2, 0]} position={[0.03, 0, 0]}>
+        <boxGeometry args={[80, 0.08, 0.06]} />
+        <meshBasicMaterial color="#6ed0c3" transparent opacity={0.55} toneMapped={false} />
+      </mesh>
+      <mesh rotation={[0, Math.PI / 2, 0]} position={[0.03, 0, 0]}>
+        <boxGeometry args={[0.08, 40, 0.06]} />
+        <meshBasicMaterial color="#6ed0c3" transparent opacity={0.55} toneMapped={false} />
+      </mesh>
+    </group>
   )
 }
 
@@ -185,6 +222,7 @@ export default function Viewport3D({
         gl.setClearColor('#04080c')
         gl.shadowMap.enabled = quality.shadows
         gl.shadowMap.type = 2
+        gl.localClippingEnabled = false
       }}
     >
       <Suspense fallback={null}>
@@ -203,7 +241,7 @@ export default function Viewport3D({
           />
         )}
         <GroundClick enabled={placing} onPlace={onPlace} />
-        <BuildingScene project={project} activeStoryId={activeStoryId} />
+        <BuildingScene project={project} activeStoryId={activeStoryId} visiting={visiting} />
       </Suspense>
     </Canvas>
   )
