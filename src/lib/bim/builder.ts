@@ -1,4 +1,4 @@
-import type { Vec2, Wall, Room, Slab, Opening, Column, Furniture, Story, Project, Meta } from './types'
+import type { Vec2, Wall, Room, Slab, Opening, Column, Furniture, Story, Project, Meta, Stair, Roof } from './types'
 import { uid } from './types'
 
 export function rectWalls(
@@ -103,4 +103,12 @@ export function rectPolygon(x: number, z: number, w: number, d: number): Vec2[] 
     { x: x + w, y: z + d },
     { x, y: z + d },
   ]
+}
+
+export function makeStair(storyId: string, a: Vec2, b: Vec2, rises: number, width = 1.0): Stair {
+  return { id: uid('stair'), storyId, a, b, width, rises }
+}
+
+export function makeRoof(storyId: string, polygon: Vec2[], ridgeHeight = 1.0, overhang = 0.3): Roof {
+  return { id: uid('roof'), storyId, polygon, ridgeHeight, overhang }
 }

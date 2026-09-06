@@ -1,12 +1,13 @@
-import { Suspense, useMemo, useEffect, useCallback } from 'react'
+import { Suspense, useMemo, useEffect, useCallback, useState } from 'react'
 import { Canvas, useThree, ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
-import type { Project } from '../../lib/bim/types'
+import type { Project, Vec2 } from '../../lib/bim/types'
 import { detectQuality } from '../../lib/render/quality'
 import BuildingScene from './BuildingScene'
 import OrbitRig from './OrbitRig'
 import VisitControls from './VisitControls'
 import { useProjectStore } from '../../lib/store/project-store'
+import { nearestWallHit } from '../../lib/cad/ops'
 
 function InvalidateOnUpdate({ stamp }: { stamp: number }) {
   const invalidate = useThree((s) => s.invalidate)
@@ -113,11 +114,13 @@ function CoupeClip({
   )
 }
 
-function GroundClick({
+function PlaceSurface({
   enabled,
+  elevation,
   onPlace,
 }: {
   enabled: boolean
+  elevation: number
   onPlace: (x: number, z: number) => void
 }) {
   const onPointerDown = useCallback(
@@ -132,7 +135,7 @@ function GroundClick({
   return (
     <mesh
       rotation={[-Math.PI / 2, 0, 0]}
-      position={[0, 0.02, 0]}
+      position={[0, elevation + 0.02, 0]}
       onPointerDown={onPointerDown}
     >
       <planeGeometry args={[200, 200]} />
@@ -158,8 +161,19 @@ export default function Viewport3D({
   const tool = useProjectStore((s) => s.tool)
   const placeKind = useProjectStore((s) => s.placeKind)
   const addFurnitureAt = useProjectStore((s) => s.addFurnitureAt)
+  const addOpeningAtWall = useProjectStore((s) => s.addOpeningAtWall)
+  const addSlab = useProjectStore((s) => s.addSlab)
+  const addColumn = useProjectStore((s) => s.addColumn)
+  const addStair = useProjectStore((s) => s.addStair)
+  const addRoof = useProjectStore((s) => s.addRoof)
   const coupeAxis = useProjectStore((s) => s.coupeAxis)
   const coupeCut = useProjectStore((s) => s.coupeCut)
+
+  const [draft, setDraft] = useState<Vec2 | null>(null)
+
+  useEffect(() => {
+    setDraft(null)
+  }, [tool])
 
   const story = useMemo(() => {
     if (!activeStoryId) return project.stories[0]
@@ -187,13 +201,52 @@ export default function Viewport3D({
     return story.elevation + story.height * 0.4
   }, [story, coupe, coupeAxis, coupeCut])
 
-  const placing = tool === 'objects' && !!placeKind && !visiting && !coupe
+  const placingObjects = tool === 'objects' && !!placeKind && !visiting && !coupe
+  const placingPoint =
+    !visiting &&
+    !coupe &&
+    (tool === 'column' ||
+      tool === 'door' ||
+      tool === 'window' ||
+      tool === 'slab' ||
+      tool === 'stair' ||
+      tool === 'roof' ||
+      placingObjects)
+  const orbitOff = placingPoint
+
+  const snap = (x: number, z: number): Vec2 => ({
+    x: Math.round(x * 20) / 20,
+    y: Math.round(z * 20) / 20,
+  })
 
   const onPlace = useCallback(
     (x: number, z: number) => {
-      addFurnitureAt({ x: Math.round(x * 20) / 20, y: Math.round(z * 20) / 20 })
+      const p = snap(x, z)
+      if (tool === 'objects' && placeKind) {
+        addFurnitureAt(p)
+        return
+      }
+      if (tool === 'door' || tool === 'window') {
+        const hit = nearestWallHit(p, walls, 0.85)
+        if (hit) addOpeningAtWall(hit.wall.id, hit.t, tool === 'door' ? 'door' : 'window')
+        return
+      }
+      if (tool === 'column') {
+        addColumn(p)
+        return
+      }
+      if (tool === 'slab' || tool === 'roof' || tool === 'stair') {
+        if (!draft) {
+          setDraft(p)
+          return
+        }
+        if (tool === 'slab') addSlab(draft, p)
+        else if (tool === 'roof') addRoof(draft, p)
+        else addStair(draft, p)
+        setDraft(null)
+      }
     },
-    [addFurnitureAt],
+    [tool, placeKind, walls, draft, addFurnitureAt, addOpeningAtWall, addColumn, addSlab, addRoof, addStair],
   )
 
   const stamp =
@@ -228,7 +281,7 @@ export default function Viewport3D({
       <Suspense fallback={null}>
         <InvalidateOnUpdate stamp={stamp} />
         <CoupeClip enabled={coupe} axis={coupeAxis} cut={coupeCut} />
-        {!visiting && <OrbitRig target={[0, targetY, 0]} enabled={!placing} />}
+        {!visiting && <OrbitRig target={[0, targetY, 0]} enabled={!orbitOff} />}
         {visiting && (
           <VisitControls
             walls={walls}
@@ -240,7 +293,13 @@ export default function Viewport3D({
             storyKey={story?.id ?? 'none'}
           />
         )}
-        <GroundClick enabled={placing} onPlace={onPlace} />
+        <PlaceSurface enabled={!!placingPoint} elevation={elevation} onPlace={onPlace} />
+        {draft && (
+          <mesh position={[draft.x, elevation + 0.05, draft.y]}>
+            <sphereGeometry args={[0.12, 12, 12]} />
+            <meshBasicMaterial color="#6ed0c3" />
+          </mesh>
+        )}
         <BuildingScene project={project} activeStoryId={activeStoryId} visiting={visiting} />
       </Suspense>
     </Canvas>

@@ -136,7 +136,19 @@ export type Project = {
 export type ViewMode = 'plan' | '3d' | 'visite' | 'coupe' | 'ar'
 export type SkillLevel = 'simple' | 'pro'
 export type InspectorTab = 'ouvrage' | 'etages' | 'site' | 'vue'
-export type ToolMode = 'select' | 'wall' | 'rect' | 'objects' | 'trim' | 'extend'
+export type ToolMode =
+  | 'select'
+  | 'wall'
+  | 'rect'
+  | 'objects'
+  | 'trim'
+  | 'extend'
+  | 'door'
+  | 'window'
+  | 'slab'
+  | 'column'
+  | 'stair'
+  | 'roof'
 
 export type Selection =
   | { kind: 'wall'; id: string }
@@ -144,6 +156,10 @@ export type Selection =
   | { kind: 'furniture'; id: string }
   | { kind: 'slab'; id: string }
   | { kind: 'story'; id: string }
+  | { kind: 'column'; id: string }
+  | { kind: 'stair'; id: string }
+  | { kind: 'opening'; id: string }
+  | { kind: 'roof'; id: string }
   | null
 
 export function uid(prefix = 'id'): string {

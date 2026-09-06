@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import * as THREE from 'three'
-import type { Project, Wall, Slab, Furniture, Column, Roof, Opening } from '../../lib/bim/types'
+import type { Project, Wall, Slab, Furniture, Column, Roof, Opening, Stair } from '../../lib/bim/types'
 import { wallLength, wallAngle, wallCenter } from '../../lib/bim/types'
 import { MATERIALS, FURNITURE_PRESETS } from '../../lib/bim/catalog'
 import { detectQuality } from '../../lib/render/quality'
@@ -226,6 +226,64 @@ function ColumnMesh({ col, elevation }: { col: Column; elevation: number }) {
   )
 }
 
+
+function StairMesh({ stair, elevation, storyHeight }: { stair: Stair; elevation: number; storyHeight: number }) {
+  const dx = stair.b.x - stair.a.x
+  const dz = stair.b.y - stair.a.y
+  const len = Math.hypot(dx, dz)
+  if (len < 0.05) return null
+  const angle = Math.atan2(dz, dx)
+  const rises = Math.max(2, stair.rises)
+  const totalH = Math.min(storyHeight, rises * 0.175)
+  const riseH = totalH / rises
+  const tread = len / rises
+  const m = matFor('beton')
+  const steps = []
+  for (let i = 0; i < rises; i++) {
+    const along = tread * (i + 0.5)
+    const y = riseH * (i + 0.5)
+    steps.push(
+      <mesh
+        key={i}
+        geometry={boxGeo}
+        position={[along - len / 2, y, 0]}
+        scale={[Math.max(0.08, tread * 0.95), riseH, stair.width]}
+        castShadow
+        receiveShadow
+      >
+        <meshStandardMaterial color={m.color} roughness={m.roughness} metalness={m.metalness} />
+      </mesh>,
+    )
+  }
+  // simple side stringers
+  const stringer = (
+    <>
+      <mesh
+        geometry={boxGeo}
+        position={[0, totalH / 2, stair.width / 2 + 0.03]}
+        scale={[len, Math.max(0.08, totalH * 0.12), 0.06]}
+        castShadow
+      >
+        <meshStandardMaterial color="#7a848c" roughness={0.7} metalness={0.15} />
+      </mesh>
+      <mesh
+        geometry={boxGeo}
+        position={[0, totalH / 2, -stair.width / 2 - 0.03]}
+        scale={[len, Math.max(0.08, totalH * 0.12), 0.06]}
+        castShadow
+      >
+        <meshStandardMaterial color="#7a848c" roughness={0.7} metalness={0.15} />
+      </mesh>
+    </>
+  )
+  return (
+    <group position={[(stair.a.x + stair.b.x) / 2, elevation, (stair.a.y + stair.b.y) / 2]} rotation={[0, -angle, 0]}>
+      {steps}
+      {stringer}
+    </group>
+  )
+}
+
 function FurnitureMesh({ item, elevation }: { item: Furniture; elevation: number }) {
   const preset = FURNITURE_PRESETS[item.kind]
   const color = preset?.color ?? '#666'
@@ -368,6 +426,19 @@ export default function BuildingScene({ project, activeStoryId, visiting = false
         const st = storyMap.get(c.storyId)
         if (!st) return null
         return <ColumnMesh key={c.id} col={c} elevation={st.elevation} />
+      })}
+
+      {project.stairs.map((s) => {
+        const st = storyMap.get(s.storyId)
+        if (!st) return null
+        return (
+          <StairMesh
+            key={s.id}
+            stair={s}
+            elevation={st.elevation}
+            storyHeight={st.height}
+          />
+        )
       })}
 
       {project.furniture.map((f) => {

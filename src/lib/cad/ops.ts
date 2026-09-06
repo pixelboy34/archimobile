@@ -1,6 +1,7 @@
 import type { Project, Story, Wall, Slab, Opening, Room, Column, Furniture, Stair, Roof, Vec2 } from '../bim/types'
 import { uid } from '../bim/types'
-import { FURNITURE_PRESETS } from '../bim/catalog'
+import { FURNITURE_PRESETS, OPENING_DEFAULTS, COLUMN_DEFAULT_SIZE, SLAB_DEFAULT_THICKNESS, STAIR_DEFAULT_WIDTH, ROOF_DEFAULT_RIDGE } from '../bim/catalog'
+import { rectPolygon } from '../bim/builder'
 import { dist, lineIntersection, projectOnSegment, segmentIntersection, snapNearWall } from './geom'
 
 /** Clone a story and all its elements upward. Cap total stories at 80. */
@@ -490,5 +491,164 @@ export function placeFurniture(
     ...project,
     furniture: [...project.furniture, item],
     updatedAt: Date.now(),
+  }
+}
+
+
+export function snapGrid(pos: Vec2, step = 0.05): Vec2 {
+  return {
+    x: Math.round(pos.x / step) * step,
+    y: Math.round(pos.y / step) * step,
+  }
+}
+
+/** Nearest wall hit with parameter t along the wall. */
+export function nearestWallHit(
+  pos: Vec2,
+  walls: Wall[],
+  maxDist = 0.65,
+): { wall: Wall; t: number; point: Vec2; dist: number } | null {
+  let best: { wall: Wall; t: number; point: Vec2; dist: number } | null = null
+  for (const wall of walls) {
+    const proj = projectOnSegment(pos, wall.a, wall.b)
+    if (proj.dist <= maxDist && (!best || proj.dist < best.dist)) {
+      best = { wall, t: proj.t, point: proj.point, dist: proj.dist }
+    }
+  }
+  return best
+}
+
+export function placeOpeningAtWall(
+  project: Project,
+  wallId: string,
+  t: number,
+  kind: Opening['kind'],
+): { project: Project; openingId: string | null } {
+  const wall = project.walls.find((w) => w.id === wallId)
+  if (!wall) return { project, openingId: null }
+  const def = OPENING_DEFAULTS[kind] ?? OPENING_DEFAULTS.opening
+  const len = Math.hypot(wall.b.x - wall.a.x, wall.b.y - wall.a.y)
+  const half = def.width / 2
+  const margin = len > 1e-6 ? half / len : 0.1
+  const clampedT = Math.max(margin, Math.min(1 - margin, t))
+  const height = Math.min(def.height, wall.height - def.sill - 0.05)
+  const opening: Opening = {
+    id: uid('open'),
+    wallId,
+    kind,
+    t: clampedT,
+    width: def.width,
+    height: Math.max(0.4, height),
+    sill: kind === 'door' ? 0 : Math.min(def.sill, wall.height - 0.5),
+  }
+  return {
+    project: {
+      ...project,
+      openings: [...project.openings, opening],
+      updatedAt: Date.now(),
+    },
+    openingId: opening.id,
+  }
+}
+
+export function placeSlabRect(
+  project: Project,
+  storyId: string,
+  a: Vec2,
+  b: Vec2,
+  kind: Slab['kind'] = 'floor',
+): { project: Project; slabId: string | null } {
+  const story = project.stories.find((s) => s.id === storyId)
+  if (!story) return { project, slabId: null }
+  const x0 = Math.min(a.x, b.x)
+  const y0 = Math.min(a.y, b.y)
+  const x1 = Math.max(a.x, b.x)
+  const y1 = Math.max(a.y, b.y)
+  if (x1 - x0 < 0.2 || y1 - y0 < 0.2) return { project, slabId: null }
+  const slab: Slab = {
+    id: uid('slab'),
+    storyId,
+    kind,
+    polygon: rectPolygon(x0, y0, x1 - x0, y1 - y0),
+    thickness: SLAB_DEFAULT_THICKNESS,
+    elevation: story.elevation,
+  }
+  return {
+    project: { ...project, slabs: [...project.slabs, slab], updatedAt: Date.now() },
+    slabId: slab.id,
+  }
+}
+
+export function placeColumnAt(
+  project: Project,
+  storyId: string,
+  position: Vec2,
+): { project: Project; columnId: string | null } {
+  const story = project.stories.find((s) => s.id === storyId)
+  if (!story) return { project, columnId: null }
+  const pos = snapGrid(position)
+  const col: Column = {
+    id: uid('col'),
+    storyId,
+    position: pos,
+    width: COLUMN_DEFAULT_SIZE,
+    depth: COLUMN_DEFAULT_SIZE,
+    height: story.height,
+  }
+  return {
+    project: { ...project, columns: [...project.columns, col], updatedAt: Date.now() },
+    columnId: col.id,
+  }
+}
+
+export function placeStairRun(
+  project: Project,
+  storyId: string,
+  a: Vec2,
+  b: Vec2,
+): { project: Project; stairId: string | null } {
+  const story = project.stories.find((s) => s.id === storyId)
+  if (!story) return { project, stairId: null }
+  const len = Math.hypot(b.x - a.x, b.y - a.y)
+  if (len < 0.4) return { project, stairId: null }
+  const rises = Math.max(3, Math.round(story.height / 0.175))
+  const stair: Stair = {
+    id: uid('stair'),
+    storyId,
+    a: snapGrid(a),
+    b: snapGrid(b),
+    width: STAIR_DEFAULT_WIDTH,
+    rises,
+  }
+  return {
+    project: { ...project, stairs: [...project.stairs, stair], updatedAt: Date.now() },
+    stairId: stair.id,
+  }
+}
+
+export function placeRoofRect(
+  project: Project,
+  storyId: string,
+  a: Vec2,
+  b: Vec2,
+): { project: Project; roofId: string | null } {
+  const story = project.stories.find((s) => s.id === storyId)
+  if (!story) return { project, roofId: null }
+  const x0 = Math.min(a.x, b.x)
+  const y0 = Math.min(a.y, b.y)
+  const x1 = Math.max(a.x, b.x)
+  const y1 = Math.max(a.y, b.y)
+  if (x1 - x0 < 0.4 || y1 - y0 < 0.4) return { project, roofId: null }
+  const overhang = 0.3
+  const roof: Roof = {
+    id: uid('roof'),
+    storyId,
+    polygon: rectPolygon(x0 - overhang, y0 - overhang, x1 - x0 + overhang * 2, y1 - y0 + overhang * 2),
+    ridgeHeight: ROOF_DEFAULT_RIDGE,
+    overhang,
+  }
+  return {
+    project: { ...project, roofs: [...project.roofs, roof], updatedAt: Date.now() },
+    roofId: roof.id,
   }
 }

@@ -50,3 +50,15 @@ export const FURNITURE_FAMILIES: FurnitureFamily[] = [
   { id: 'exterieur', label: 'Exterieur', kinds: ['tree', 'car'] },
   { id: 'noyau', label: 'Noyau', kinds: ['elevator', 'staircore', 'balcony', 'curtain'] },
 ]
+
+
+export const OPENING_DEFAULTS = {
+  door: { width: 0.9, height: 2.1, sill: 0 },
+  window: { width: 1.2, height: 1.4, sill: 0.9 },
+  opening: { width: 1.0, height: 2.1, sill: 0 },
+} as const
+
+export const COLUMN_DEFAULT_SIZE = 0.4
+export const SLAB_DEFAULT_THICKNESS = 0.25
+export const STAIR_DEFAULT_WIDTH = 1.0
+export const ROOF_DEFAULT_RIDGE = 1.0

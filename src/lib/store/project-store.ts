@@ -10,11 +10,25 @@ import type {
   Wall,
   FurnitureKind,
   Vec2,
+  OpeningKind,
+  SlabKind,
 } from '../bim/types'
 import { uid } from '../bim/types'
 import { allSeeds, newSketchProject } from '../bim/seed'
 import { generateMassing, type MassingParams } from '../cad/massing'
-import { placeFurniture, trimWall, extendWallDetailed, healWallTJoints, makeTJoint } from '../cad/ops'
+import {
+  placeFurniture,
+  trimWall,
+  extendWallDetailed,
+  healWallTJoints,
+  makeTJoint,
+  placeOpeningAtWall,
+  placeSlabRect,
+  placeColumnAt,
+  placeStairRun,
+  placeRoofRect,
+  snapGrid,
+} from '../cad/ops'
 
 const HISTORY_MAX = 40
 
@@ -76,6 +90,12 @@ type StoreState = {
   setCoupeCut: (v: number) => void
   syncCoupeToStory: () => void
   setArMode: (m: 'poser' | 'cote') => void
+  addOpeningAtWall: (wallId: string, t: number, kind: OpeningKind) => void
+  addSlab: (a: Vec2, b: Vec2, kind?: SlabKind) => void
+  addColumn: (pos: Vec2) => void
+  addStair: (a: Vec2, b: Vec2) => void
+  addRoof: (a: Vec2, b: Vec2) => void
+  placeAtPoint: (pos: Vec2) => void
 }
 
 function seedMap(): Record<string, Project> {
@@ -317,6 +337,98 @@ export const useProjectStore = create<StoreState>()(
           return res.project
         })
         if (note) set({ cadNote: note })
+      },
+
+      addOpeningAtWall: (wallId, t, kind) => {
+        let openingId: string | null = null
+        get().commit((p) => {
+          const res = placeOpeningAtWall(p, wallId, t, kind)
+          openingId = res.openingId
+          return res.project
+        })
+        if (openingId) {
+          get().select({ kind: 'opening', id: openingId })
+          set({ inspectorOpen: true, inspectorTab: 'ouvrage' })
+        }
+      },
+
+      addSlab: (a, b, kind = 'floor') => {
+        const { activeStoryId, getActive } = get()
+        const project = getActive()
+        if (!project) return
+        const storyId = activeStoryId ?? project.stories[0]?.id
+        if (!storyId) return
+        let slabId: string | null = null
+        get().commit((p) => {
+          const res = placeSlabRect(p, storyId, snapGrid(a), snapGrid(b), kind)
+          slabId = res.slabId
+          return res.project
+        })
+        if (slabId) {
+          get().select({ kind: 'slab', id: slabId })
+          set({ inspectorOpen: true, inspectorTab: 'ouvrage' })
+        }
+      },
+
+      addColumn: (pos) => {
+        const { activeStoryId, getActive } = get()
+        const project = getActive()
+        if (!project) return
+        const storyId = activeStoryId ?? project.stories[0]?.id
+        if (!storyId) return
+        let columnId: string | null = null
+        get().commit((p) => {
+          const res = placeColumnAt(p, storyId, pos)
+          columnId = res.columnId
+          return res.project
+        })
+        if (columnId) {
+          get().select({ kind: 'column', id: columnId })
+          set({ inspectorOpen: true, inspectorTab: 'ouvrage' })
+        }
+      },
+
+      addStair: (a, b) => {
+        const { activeStoryId, getActive } = get()
+        const project = getActive()
+        if (!project) return
+        const storyId = activeStoryId ?? project.stories[0]?.id
+        if (!storyId) return
+        let stairId: string | null = null
+        get().commit((p) => {
+          const res = placeStairRun(p, storyId, a, b)
+          stairId = res.stairId
+          return res.project
+        })
+        if (stairId) {
+          get().select({ kind: 'stair', id: stairId })
+          set({ inspectorOpen: true, inspectorTab: 'ouvrage' })
+        }
+      },
+
+      addRoof: (a, b) => {
+        const { activeStoryId, getActive } = get()
+        const project = getActive()
+        if (!project) return
+        const storyId = activeStoryId ?? project.stories[0]?.id
+        if (!storyId) return
+        let roofId: string | null = null
+        get().commit((p) => {
+          const res = placeRoofRect(p, storyId, snapGrid(a), snapGrid(b))
+          roofId = res.roofId
+          return res.project
+        })
+        if (roofId) {
+          get().select({ kind: 'roof', id: roofId })
+          set({ inspectorOpen: true, inspectorTab: 'ouvrage' })
+        }
+      },
+
+      /** One-click place for column (and door/window via wall hit in UI). */
+      placeAtPoint: (pos) => {
+        const tool = get().tool
+        if (tool === 'column') get().addColumn(pos)
+        else if (tool === 'objects') get().addFurnitureAt(pos)
       },
     }),
     {

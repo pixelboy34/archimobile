@@ -1,7 +1,8 @@
-import { useMemo, useRef, useState, useCallback } from 'react'
+import { useMemo, useRef, useState, useCallback, useEffect } from 'react'
 import type { Project, Vec2 } from '../../lib/bim/types'
 import { useProjectStore } from '../../lib/store/project-store'
-import { FURNITURE_PRESETS } from '../../lib/bim/catalog'
+import { FURNITURE_PRESETS, OPENING_DEFAULTS } from '../../lib/bim/catalog'
+import { nearestWallHit } from '../../lib/cad/ops'
 
 type Props = {
   project: Project
@@ -22,8 +23,14 @@ export default function Plan2D({ project, storyId }: Props) {
   const applyExtend = useProjectStore((s) => s.applyExtend)
   const setInspectorOpen = useProjectStore((s) => s.setInspectorOpen)
   const setInspectorTab = useProjectStore((s) => s.setInspectorTab)
+  const addOpeningAtWall = useProjectStore((s) => s.addOpeningAtWall)
+  const addSlab = useProjectStore((s) => s.addSlab)
+  const addColumn = useProjectStore((s) => s.addColumn)
+  const addStair = useProjectStore((s) => s.addStair)
+  const addRoof = useProjectStore((s) => s.addRoof)
 
   const [draft, setDraft] = useState<Vec2 | null>(null)
+  const [hover, setHover] = useState<Vec2 | null>(null)
   /** For trim/extend: first selected wall id awaiting second click */
   const [cadWallId, setCadWallId] = useState<string | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
@@ -32,8 +39,17 @@ export default function Plan2D({ project, storyId }: Props) {
   const walls = project.walls.filter((w) => w.storyId === story?.id)
   const rooms = project.rooms.filter((r) => r.storyId === story?.id)
   const furniture = project.furniture.filter((f) => f.storyId === story?.id)
+  const columns = project.columns.filter((c) => c.storyId === story?.id)
+  const slabs = project.slabs.filter((s) => s.storyId === story?.id)
+  const stairs = project.stairs.filter((s) => s.storyId === story?.id)
+  const roofs = project.roofs.filter((r) => r.storyId === story?.id)
   const wallIds = new Set(walls.map((w) => w.id))
   const openings = project.openings.filter((o) => wallIds.has(o.wallId))
+
+  useEffect(() => {
+    setDraft(null)
+    setCadWallId(null)
+  }, [tool])
 
   const bounds = useMemo(() => {
     let minX = -15,
@@ -52,9 +68,15 @@ export default function Plan2D({ project, storyId }: Props) {
       minY = Math.min(minY, f.position.y)
       maxY = Math.max(maxY, f.position.y)
     }
+    for (const c of columns) {
+      minX = Math.min(minX, c.position.x)
+      maxX = Math.max(maxX, c.position.x)
+      minY = Math.min(minY, c.position.y)
+      maxY = Math.max(maxY, c.position.y)
+    }
     const pad = 4
     return { minX: minX - pad, maxX: maxX + pad, minY: minY - pad, maxY: maxY + pad }
-  }, [walls, furniture])
+  }, [walls, furniture, columns])
 
   const vb = `${bounds.minX} ${bounds.minY} ${bounds.maxX - bounds.minX} ${bounds.maxY - bounds.minY}`
 
@@ -70,7 +92,7 @@ export default function Plan2D({ project, storyId }: Props) {
       const local = pt.matrixTransform(ctm.inverse())
       let x = local.x
       let y = local.y
-      if (ortho && draft) {
+      if (ortho && draft && (tool === 'wall' || tool === 'stair')) {
         const dx = Math.abs(x - draft.x)
         const dy = Math.abs(y - draft.y)
         if (dx > dy) y = draft.y
@@ -78,24 +100,15 @@ export default function Plan2D({ project, storyId }: Props) {
       }
       return { x: Math.round(x * 20) / 20, y: Math.round(y * 20) / 20 }
     },
-    [draft, ortho],
+    [draft, ortho, tool],
   )
 
   const hitWall = (p: Vec2, maxDist = 0.55): string | null => {
-    let best: { id: string; d: number } | null = null
-    for (const w of walls) {
-      const abx = w.b.x - w.a.x
-      const aby = w.b.y - w.a.y
-      const len2 = abx * abx + aby * aby
-      if (len2 < 1e-10) continue
-      let t = ((p.x - w.a.x) * abx + (p.y - w.a.y) * aby) / len2
-      t = Math.max(0, Math.min(1, t))
-      const qx = w.a.x + t * abx
-      const qy = w.a.y + t * aby
-      const d = Math.hypot(p.x - qx, p.y - qy)
-      if (d <= maxDist && (!best || d < best.d)) best = { id: w.id, d }
-    }
-    return best?.id ?? null
+    return nearestWallHit(p, walls, maxDist)?.wall.id ?? null
+  }
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    setHover(clientToWorld(e.clientX, e.clientY))
   }
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -104,6 +117,31 @@ export default function Plan2D({ project, storyId }: Props) {
 
     if (tool === 'objects' && placeKind) {
       addFurnitureAt(p)
+      return
+    }
+
+    if (tool === 'door' || tool === 'window') {
+      const hit = nearestWallHit(p, walls, 0.7)
+      if (hit) {
+        addOpeningAtWall(hit.wall.id, hit.t, tool === 'door' ? 'door' : 'window')
+      }
+      return
+    }
+
+    if (tool === 'column') {
+      addColumn(p)
+      return
+    }
+
+    if (tool === 'slab' || tool === 'roof' || tool === 'stair') {
+      if (!draft) {
+        setDraft(p)
+        return
+      }
+      if (tool === 'slab') addSlab(draft, p)
+      else if (tool === 'roof') addRoof(draft, p)
+      else addStair(draft, p)
+      setDraft(null)
       return
     }
 
@@ -139,7 +177,37 @@ export default function Plan2D({ project, storyId }: Props) {
     }
 
     if (tool !== 'wall' && tool !== 'rect') {
-      // select furniture or clear
+      const col = columns.find(
+        (c) => Math.hypot(c.position.x - p.x, c.position.y - p.y) < Math.max(0.35, c.width),
+      )
+      if (col) {
+        select({ kind: 'column', id: col.id })
+        setInspectorOpen(true)
+        setInspectorTab('ouvrage')
+        return
+      }
+      const stair = stairs.find((s) => {
+        const mx = (s.a.x + s.b.x) / 2
+        const my = (s.a.y + s.b.y) / 2
+        return Math.hypot(mx - p.x, my - p.y) < Math.max(0.5, s.width)
+      })
+      if (stair) {
+        select({ kind: 'stair', id: stair.id })
+        setInspectorOpen(true)
+        setInspectorTab('ouvrage')
+        return
+      }
+      const slab = slabs.find((s) => {
+        const xs = s.polygon.map((pt) => pt.x)
+        const ys = s.polygon.map((pt) => pt.y)
+        return p.x >= Math.min(...xs) && p.x <= Math.max(...xs) && p.y >= Math.min(...ys) && p.y <= Math.max(...ys)
+      })
+      if (slab) {
+        select({ kind: 'slab', id: slab.id })
+        setInspectorOpen(true)
+        setInspectorTab('ouvrage')
+        return
+      }
       const furn = furniture.find(
         (f) => Math.hypot(f.position.x - p.x, f.position.y - p.y) < Math.max(0.4, f.width * 0.35),
       )
@@ -148,6 +216,19 @@ export default function Plan2D({ project, storyId }: Props) {
         setInspectorOpen(true)
         setInspectorTab('ouvrage')
         return
+      }
+      const openHit = nearestWallHit(p, walls, 0.45)
+      if (openHit) {
+        const nearOpen = openings.find((o) => {
+          if (o.wallId !== openHit.wall.id) return false
+          return Math.abs(o.t - openHit.t) * Math.hypot(openHit.wall.b.x - openHit.wall.a.x, openHit.wall.b.y - openHit.wall.a.y) < o.width * 0.6
+        })
+        if (nearOpen) {
+          select({ kind: 'opening', id: nearOpen.id })
+          setInspectorOpen(true)
+          setInspectorTab('ouvrage')
+          return
+        }
       }
       select(null)
       setCadWallId(null)
@@ -193,6 +274,11 @@ export default function Plan2D({ project, storyId }: Props) {
     }
   }
 
+  const openingPreview =
+    (tool === 'door' || tool === 'window') && hover
+      ? nearestWallHit(hover, walls, 0.7)
+      : null
+
   return (
     <div className="absolute inset-0 bg-[#04080c]">
       <div className="absolute top-20 left-3 z-10 flex gap-2 flex-wrap">
@@ -216,6 +302,7 @@ export default function Plan2D({ project, storyId }: Props) {
         className="w-full h-full"
         style={{ touchAction: 'none' }}
         onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
       >
         <defs>
           <pattern id="grid" width="1" height="1" patternUnits="userSpaceOnUse">
@@ -233,6 +320,48 @@ export default function Plan2D({ project, storyId }: Props) {
         {rooms.map((r) => {
           const pts = r.polygon.map((pt) => `${pt.x},${pt.y}`).join(' ')
           return <polygon key={r.id} points={pts} fill="rgba(110,208,195,0.08)" stroke="none" />
+        })}
+
+        {slabs.map((s) => {
+          const pts = s.polygon.map((pt) => `${pt.x},${pt.y}`).join(' ')
+          const active = selection?.kind === 'slab' && selection.id === s.id
+          return (
+            <polygon
+              key={s.id}
+              points={pts}
+              fill={active ? 'rgba(110,208,195,0.22)' : 'rgba(110,208,195,0.06)'}
+              stroke={active ? '#6ed0c3' : '#3a5560'}
+              strokeWidth={0.04}
+              strokeDasharray={s.kind === 'pool' ? '0.15 0.1' : undefined}
+              onPointerDown={(e) => {
+                e.stopPropagation()
+                select({ kind: 'slab', id: s.id })
+                setInspectorOpen(true)
+                setInspectorTab('ouvrage')
+              }}
+            />
+          )
+        })}
+
+        {roofs.map((r) => {
+          const pts = r.polygon.map((pt) => `${pt.x},${pt.y}`).join(' ')
+          const active = selection?.kind === 'roof' && selection.id === r.id
+          return (
+            <polygon
+              key={r.id}
+              points={pts}
+              fill="none"
+              stroke={active ? '#c4784a' : '#8b5a3c'}
+              strokeWidth={0.05}
+              strokeDasharray="0.2 0.12"
+              onPointerDown={(e) => {
+                e.stopPropagation()
+                select({ kind: 'roof', id: r.id })
+                setInspectorOpen(true)
+                setInspectorTab('ouvrage')
+              }}
+            />
+          )
         })}
 
         {furniture.map((f) => {
@@ -272,6 +401,76 @@ export default function Plan2D({ project, storyId }: Props) {
           )
         })}
 
+        {columns.map((c) => {
+          const active = selection?.kind === 'column' && selection.id === c.id
+          return (
+            <rect
+              key={c.id}
+              x={c.position.x - c.width / 2}
+              y={c.position.y - c.depth / 2}
+              width={c.width}
+              height={c.depth}
+              fill={active ? 'rgba(110,208,195,0.5)' : 'rgba(154,163,168,0.55)'}
+              stroke={active ? '#6ed0c3' : '#9aa3a8'}
+              strokeWidth={0.04}
+              onPointerDown={(e) => {
+                e.stopPropagation()
+                select({ kind: 'column', id: c.id })
+                setInspectorOpen(true)
+                setInspectorTab('ouvrage')
+              }}
+            />
+          )
+        })}
+
+        {stairs.map((s) => {
+          const active = selection?.kind === 'stair' && selection.id === s.id
+          const dx = s.b.x - s.a.x
+          const dy = s.b.y - s.a.y
+          const len = Math.hypot(dx, dy) || 1
+          const ang = (Math.atan2(dy, dx) * 180) / Math.PI
+          const cx = (s.a.x + s.b.x) / 2
+          const cy = (s.a.y + s.b.y) / 2
+          return (
+            <g
+              key={s.id}
+              transform={`translate(${cx}, ${cy}) rotate(${ang})`}
+              onPointerDown={(e) => {
+                e.stopPropagation()
+                select({ kind: 'stair', id: s.id })
+                setInspectorOpen(true)
+                setInspectorTab('ouvrage')
+              }}
+            >
+              <rect
+                x={-len / 2}
+                y={-s.width / 2}
+                width={len}
+                height={s.width}
+                fill={active ? 'rgba(110,208,195,0.35)' : 'rgba(110,208,195,0.12)'}
+                stroke={active ? '#6ed0c3' : '#6ed0c3'}
+                strokeWidth={0.04}
+              />
+              {Array.from({ length: Math.min(12, s.rises) }).map((_, i) => {
+                const t = (i + 1) / (Math.min(12, s.rises) + 1)
+                const x = -len / 2 + t * len
+                return (
+                  <line
+                    key={i}
+                    x1={x}
+                    y1={-s.width / 2}
+                    x2={x}
+                    y2={s.width / 2}
+                    stroke="#6ed0c3"
+                    strokeWidth={0.025}
+                    opacity={0.55}
+                  />
+                )
+              })}
+            </g>
+          )
+        })}
+
         {walls.map((w) => {
           const active =
             (selection?.kind === 'wall' && selection.id === w.id) || cadWallId === w.id
@@ -287,6 +486,12 @@ export default function Plan2D({ project, storyId }: Props) {
               strokeLinecap="square"
               onPointerDown={(e) => {
                 e.stopPropagation()
+                if (tool === 'door' || tool === 'window') {
+                  const p = clientToWorld(e.clientX, e.clientY)
+                  const hit = nearestWallHit(p, [w], 2)
+                  if (hit) addOpeningAtWall(w.id, hit.t, tool === 'door' ? 'door' : 'window')
+                  return
+                }
                 if (tool === 'trim' || tool === 'extend') {
                   if (!cadWallId) {
                     setCadWallId(w.id)
@@ -299,7 +504,6 @@ export default function Plan2D({ project, storyId }: Props) {
                       x: (w.a.x + w.b.x) / 2,
                       y: (w.a.y + w.b.y) / 2,
                     }
-                    // if clicking same wall again, use click point
                     const p = clientToWorld(e.clientX, e.clientY)
                     applyTrim(cadWallId, cadWallId === w.id ? p : mid)
                     setCadWallId(null)
@@ -325,16 +529,26 @@ export default function Plan2D({ project, storyId }: Props) {
           const cx = w.a.x + op.t * dx
           const cy = w.a.y + op.t * dy
           const isDoor = op.kind === 'door'
+          const active = selection?.kind === 'opening' && selection.id === op.id
           return (
-            <g key={op.id} transform={`translate(${cx}, ${cy}) rotate(${ang})`}>
+            <g
+              key={op.id}
+              transform={`translate(${cx}, ${cy}) rotate(${ang})`}
+              onPointerDown={(e) => {
+                e.stopPropagation()
+                select({ kind: 'opening', id: op.id })
+                setInspectorOpen(true)
+                setInspectorTab('ouvrage')
+              }}
+            >
               <rect
                 x={-op.width / 2}
                 y={-w.thickness / 2 - 0.02}
                 width={op.width}
                 height={w.thickness + 0.04}
                 fill="#04080c"
-                stroke={isDoor ? '#6ed0c3' : '#7eb8c9'}
-                strokeWidth={0.035}
+                stroke={active ? '#9eefe4' : isDoor ? '#6ed0c3' : '#7eb8c9'}
+                strokeWidth={active ? 0.05 : 0.035}
               />
               {isDoor && (
                 <path
@@ -360,7 +574,71 @@ export default function Plan2D({ project, storyId }: Props) {
           )
         })}
 
+        {/* Opening place preview */}
+        {openingPreview && (
+          (() => {
+            const w = openingPreview.wall
+            const def = OPENING_DEFAULTS[tool === 'door' ? 'door' : 'window']
+            const dx = w.b.x - w.a.x
+            const dy = w.b.y - w.a.y
+            const ang = (Math.atan2(dy, dx) * 180) / Math.PI
+            const cx = w.a.x + openingPreview.t * dx
+            const cy = w.a.y + openingPreview.t * dy
+            return (
+              <g transform={`translate(${cx}, ${cy}) rotate(${ang})`} opacity={0.7}>
+                <rect
+                  x={-def.width / 2}
+                  y={-w.thickness / 2 - 0.03}
+                  width={def.width}
+                  height={w.thickness + 0.06}
+                  fill="none"
+                  stroke="#6ed0c3"
+                  strokeWidth={0.05}
+                  strokeDasharray="0.1 0.08"
+                />
+              </g>
+            )
+          })()
+        )}
+
+        {/* Two-click draft preview (slab / roof / stair / wall / rect) */}
+        {draft && hover && (tool === 'slab' || tool === 'roof' || tool === 'rect') && (
+          <rect
+            x={Math.min(draft.x, hover.x)}
+            y={Math.min(draft.y, hover.y)}
+            width={Math.abs(hover.x - draft.x)}
+            height={Math.abs(hover.y - draft.y)}
+            fill="rgba(110,208,195,0.12)"
+            stroke="#6ed0c3"
+            strokeWidth={0.04}
+            strokeDasharray="0.12 0.08"
+          />
+        )}
+        {draft && hover && (tool === 'stair' || tool === 'wall') && (
+          <line
+            x1={draft.x}
+            y1={draft.y}
+            x2={hover.x}
+            y2={hover.y}
+            stroke="#6ed0c3"
+            strokeWidth={tool === 'stair' ? 1.0 : 0.06}
+            opacity={0.45}
+          />
+        )}
+
         {draft && <circle cx={draft.x} cy={draft.y} r={0.15} fill="#6ed0c3" />}
+        {tool === 'column' && hover && (
+          <rect
+            x={hover.x - 0.2}
+            y={hover.y - 0.2}
+            width={0.4}
+            height={0.4}
+            fill="rgba(154,163,168,0.4)"
+            stroke="#6ed0c3"
+            strokeWidth={0.04}
+            strokeDasharray="0.08 0.06"
+          />
+        )}
 
         <g
           transform={`translate(${bounds.maxX - 2}, ${bounds.minY + 2}) rotate(${-project.meta.north})`}

@@ -66,6 +66,20 @@ export default function PropertiesPanel() {
       selection?.kind === 'furniture'
         ? project.furniture.find((f) => f.id === selection.id)
         : null
+    const opening =
+      selection?.kind === 'opening'
+        ? project.openings.find((o) => o.id === selection.id)
+        : null
+    const slab =
+      selection?.kind === 'slab' ? project.slabs.find((s) => s.id === selection.id) : null
+    const column =
+      selection?.kind === 'column'
+        ? project.columns.find((c) => c.id === selection.id)
+        : null
+    const stair =
+      selection?.kind === 'stair' ? project.stairs.find((s) => s.id === selection.id) : null
+    const roof =
+      selection?.kind === 'roof' ? project.roofs.find((r) => r.id === selection.id) : null
 
     return (
       <div>
@@ -102,6 +116,305 @@ export default function PropertiesPanel() {
               }
             />
             <p className="text-sm text-[#7a8f9c]">Typologie : {wall.typology}</p>
+          </>
+        ) : opening ? (
+          <>
+            <p className="text-xs text-[#7a8f9c] mb-1 font-mono">{opening.id}</p>
+            <p className="text-sm mb-2 capitalize">
+              {opening.kind === 'door' ? 'Porte' : opening.kind === 'window' ? 'Fenetre' : 'Ouverture'}
+            </p>
+            <SliderRow
+              label="Position t"
+              value={opening.t}
+              min={0.05}
+              max={0.95}
+              step={0.01}
+              onChange={(v) =>
+                patchNow((p) => ({
+                  ...p,
+                  openings: p.openings.map((o) => (o.id === opening.id ? { ...o, t: v } : o)),
+                }))
+              }
+            />
+            <SliderRow
+              label="Largeur"
+              value={opening.width}
+              min={0.4}
+              max={3.5}
+              step={0.05}
+              unit=" m"
+              onChange={(v) =>
+                patchNow((p) => ({
+                  ...p,
+                  openings: p.openings.map((o) => (o.id === opening.id ? { ...o, width: v } : o)),
+                }))
+              }
+            />
+            <SliderRow
+              label="Hauteur"
+              value={opening.height}
+              min={0.4}
+              max={3.2}
+              step={0.05}
+              unit=" m"
+              onChange={(v) =>
+                patchNow((p) => ({
+                  ...p,
+                  openings: p.openings.map((o) => (o.id === opening.id ? { ...o, height: v } : o)),
+                }))
+              }
+            />
+            <SliderRow
+              label="Allège"
+              value={opening.sill}
+              min={0}
+              max={2.2}
+              step={0.05}
+              unit=" m"
+              onChange={(v) =>
+                patchNow((p) => ({
+                  ...p,
+                  openings: p.openings.map((o) => (o.id === opening.id ? { ...o, sill: v } : o)),
+                }))
+              }
+            />
+            <button
+              type="button"
+              className="chip mt-2"
+              onClick={() =>
+                commit((p) => ({
+                  ...p,
+                  openings: p.openings.filter((o) => o.id !== opening.id),
+                }))
+              }
+            >
+              Supprimer
+            </button>
+          </>
+        ) : slab ? (
+          <>
+            <p className="text-xs text-[#7a8f9c] mb-1 font-mono">{slab.id}</p>
+            <p className="text-sm mb-2">Dalle ({slab.kind})</p>
+            <SliderRow
+              label="Epaisseur"
+              value={slab.thickness}
+              min={0.08}
+              max={0.6}
+              step={0.01}
+              unit=" m"
+              onChange={(v) =>
+                patchNow((p) => ({
+                  ...p,
+                  slabs: p.slabs.map((s) => (s.id === slab.id ? { ...s, thickness: v } : s)),
+                }))
+              }
+            />
+            <SliderRow
+              label="Elevation"
+              value={slab.elevation}
+              min={-2}
+              max={80}
+              step={0.05}
+              unit=" m"
+              onChange={(v) =>
+                patchNow((p) => ({
+                  ...p,
+                  slabs: p.slabs.map((s) => (s.id === slab.id ? { ...s, elevation: v } : s)),
+                }))
+              }
+            />
+            <button
+              type="button"
+              className="chip mt-2"
+              onClick={() =>
+                commit((p) => ({
+                  ...p,
+                  slabs: p.slabs.filter((s) => s.id !== slab.id),
+                }))
+              }
+            >
+              Supprimer
+            </button>
+          </>
+        ) : column ? (
+          <>
+            <p className="text-xs text-[#7a8f9c] mb-1 font-mono">{column.id}</p>
+            <p className="text-sm mb-2">Pilier</p>
+            <SliderRow
+              label="Pos. X"
+              value={column.position.x}
+              min={-40}
+              max={40}
+              step={0.05}
+              unit=" m"
+              onChange={(v) =>
+                patchNow((p) => ({
+                  ...p,
+                  columns: p.columns.map((c) =>
+                    c.id === column.id ? { ...c, position: { ...c.position, x: v } } : c,
+                  ),
+                }))
+              }
+            />
+            <SliderRow
+              label="Pos. Y"
+              value={column.position.y}
+              min={-40}
+              max={40}
+              step={0.05}
+              unit=" m"
+              onChange={(v) =>
+                patchNow((p) => ({
+                  ...p,
+                  columns: p.columns.map((c) =>
+                    c.id === column.id ? { ...c, position: { ...c.position, y: v } } : c,
+                  ),
+                }))
+              }
+            />
+            <SliderRow
+              label="Section X"
+              value={column.width}
+              min={0.15}
+              max={1.2}
+              step={0.05}
+              unit=" m"
+              onChange={(v) =>
+                patchNow((p) => ({
+                  ...p,
+                  columns: p.columns.map((c) => (c.id === column.id ? { ...c, width: v } : c)),
+                }))
+              }
+            />
+            <SliderRow
+              label="Section Y"
+              value={column.depth}
+              min={0.15}
+              max={1.2}
+              step={0.05}
+              unit=" m"
+              onChange={(v) =>
+                patchNow((p) => ({
+                  ...p,
+                  columns: p.columns.map((c) => (c.id === column.id ? { ...c, depth: v } : c)),
+                }))
+              }
+            />
+            <SliderRow
+              label="Hauteur"
+              value={column.height}
+              min={1}
+              max={6}
+              step={0.05}
+              unit=" m"
+              onChange={(v) =>
+                patchNow((p) => ({
+                  ...p,
+                  columns: p.columns.map((c) => (c.id === column.id ? { ...c, height: v } : c)),
+                }))
+              }
+            />
+            <button
+              type="button"
+              className="chip mt-2"
+              onClick={() =>
+                commit((p) => ({
+                  ...p,
+                  columns: p.columns.filter((c) => c.id !== column.id),
+                }))
+              }
+            >
+              Supprimer
+            </button>
+          </>
+        ) : stair ? (
+          <>
+            <p className="text-xs text-[#7a8f9c] mb-1 font-mono">{stair.id}</p>
+            <p className="text-sm mb-2">Escalier</p>
+            <SliderRow
+              label="Largeur"
+              value={stair.width}
+              min={0.6}
+              max={2.5}
+              step={0.05}
+              unit=" m"
+              onChange={(v) =>
+                patchNow((p) => ({
+                  ...p,
+                  stairs: p.stairs.map((s) => (s.id === stair.id ? { ...s, width: v } : s)),
+                }))
+              }
+            />
+            <SliderRow
+              label="Marches"
+              value={stair.rises}
+              min={3}
+              max={40}
+              step={1}
+              onChange={(v) =>
+                patchNow((p) => ({
+                  ...p,
+                  stairs: p.stairs.map((s) => (s.id === stair.id ? { ...s, rises: v } : s)),
+                }))
+              }
+            />
+            <button
+              type="button"
+              className="chip mt-2"
+              onClick={() =>
+                commit((p) => ({
+                  ...p,
+                  stairs: p.stairs.filter((s) => s.id !== stair.id),
+                }))
+              }
+            >
+              Supprimer
+            </button>
+          </>
+        ) : roof ? (
+          <>
+            <p className="text-xs text-[#7a8f9c] mb-1 font-mono">{roof.id}</p>
+            <p className="text-sm mb-2">Toiture</p>
+            <SliderRow
+              label="Faitage"
+              value={roof.ridgeHeight}
+              min={0.2}
+              max={4}
+              step={0.05}
+              unit=" m"
+              onChange={(v) =>
+                patchNow((p) => ({
+                  ...p,
+                  roofs: p.roofs.map((r) => (r.id === roof.id ? { ...r, ridgeHeight: v } : r)),
+                }))
+              }
+            />
+            <SliderRow
+              label="Debord"
+              value={roof.overhang}
+              min={0}
+              max={1.5}
+              step={0.05}
+              unit=" m"
+              onChange={(v) =>
+                patchNow((p) => ({
+                  ...p,
+                  roofs: p.roofs.map((r) => (r.id === roof.id ? { ...r, overhang: v } : r)),
+                }))
+              }
+            />
+            <button
+              type="button"
+              className="chip mt-2"
+              onClick={() =>
+                commit((p) => ({
+                  ...p,
+                  roofs: p.roofs.filter((r) => r.id !== roof.id),
+                }))
+              }
+            >
+              Supprimer
+            </button>
           </>
         ) : furn ? (
           <>
@@ -188,15 +501,16 @@ export default function PropertiesPanel() {
           </>
         ) : (
           <p className="text-sm text-[#7a8f9c]">
-            Selectionnez un mur ou un objet en plan, ou reglages globaux dans Etages / Site.
+            Selectionnez un mur, une ouverture, une dalle, un pilier, un escalier ou un objet.
           </p>
         )}
         <div className="mt-4">
           <p className="text-xs text-[#7a8f9c] uppercase tracking-wide mb-1">Projet</p>
           <p className="font-display text-lg">{project.meta.name}</p>
           <p className="text-sm text-[#7a8f9c]">
-            {project.walls.length} murs · {project.stories.length} niveaux · {project.furniture.length}{' '}
-            objets
+            {project.walls.length} murs · {project.openings.length} ouvertures ·{' '}
+            {project.slabs.length} dalles · {project.columns.length} piliers ·{' '}
+            {project.stairs.length} escaliers · {project.stories.length} niveaux
           </p>
         </div>
       </div>
