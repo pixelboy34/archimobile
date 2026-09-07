@@ -22,6 +22,7 @@ import { LayersPanel } from "./LayersPanel";
 import { MaterialsPanel } from "./MaterialsPanel";
 import { OuvrageExplorer } from "./OuvrageExplorer";
 import { NavCoach } from "./NavCoach";
+import { NomenclaturePanel } from "./NomenclaturePanel";
 import { NavPad } from "./NavPad";
 import { InstallBanner } from "@/components/pwa/InstallBanner";
 import { OfflineMaquettesPanel } from "@/components/pwa/OfflineMaquettesPanel";
@@ -85,7 +86,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
   const setMeasure = useStudio((s) => s.setMeasure);
 
   const [panel, setPanel] = useState<
-    null | "ai" | "mats" | "chantier" | "help" | "studio" | "ouvrages" | "struct" | "layers" | "analyse" | "building" | "collab" | "offline"
+    null | "ai" | "mats" | "chantier" | "help" | "studio" | "ouvrages" | "struct" | "layers" | "analyse" | "nomen" | "building" | "collab" | "offline"
   >(null);
   const [inspector, setInspector] = useState<ParamsTab | null>(null);
   const [radial, setRadial] = useState(false);
@@ -137,6 +138,16 @@ export function StudioShell({ projectId }: { projectId: string }) {
     window.addEventListener("forma-open-library", onLib);
     return () => window.removeEventListener("forma-open-library", onLib);
   }, [setTool]);
+
+  useEffect(() => {
+    const on = () => {
+      setInspector(null);
+      setRadial(false);
+      setPanel("nomen");
+    };
+    window.addEventListener("forma-open-nomen", on);
+    return () => window.removeEventListener("forma-open-nomen", on);
+  }, []);
 
   useEffect(() => {
     if (inspector) setResources(null);
@@ -474,6 +485,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
             if (id === "building") setPanel("building");
             else if (id === "struct") setPanel("struct");
             else if (id === "analyse") setPanel("analyse");
+            else if (id === "nomen") setPanel("nomen");
             else if (id === "ai") setPanel("ai");
             else if (id === "chantier") setPanel("chantier");
             else if (id === "collab") setPanel("collab");
@@ -576,6 +588,11 @@ export function StudioShell({ projectId }: { projectId: string }) {
               setInspector("rendu");
             }}
           />
+        </SheetContent>
+      </Sheet>
+      <Sheet open={panel === "nomen"} onOpenChange={(o) => !o && setPanel(null)}>
+        <SheetContent title="Nomenclatures" half>
+          <NomenclaturePanel />
         </SheetContent>
       </Sheet>
       <Sheet

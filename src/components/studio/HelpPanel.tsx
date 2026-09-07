@@ -25,6 +25,10 @@ export function HelpPanel() {
           parquet — textures monde, peintes en direct.
         </li>
         <li>
+          <span className="text-fg">Nomenclatures.</span> Plus → Analyser → Nomen. Portes, fenêtres,
+          murs, pièces, objets — listes groupées, CSV, tap pour cadrer.
+        </li>
+        <li>
           <span className="text-fg">Lumière et chantier.</span> Soleil, ombres, phases 4D, métré HT.
         </li>
         <li>

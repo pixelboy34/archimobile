@@ -140,6 +140,28 @@ describe("quantities and analysis", () => {
   });
 });
 
+describe("nomenclatures", () => {
+  it("groups doors windows furniture and walls", async () => {
+    const { buildNomenclature, exportNomenclatureCsv } = await import("./nomenclature.ts");
+    const p = miniHouse();
+    const portes = buildNomenclature(p, "portes");
+    assert.equal(portes.rows.length, 1);
+    assert.equal(portes.rows[0]!.qty, 1);
+    assert.match(portes.rows[0]!.mark, /^P-/);
+    const fen = buildNomenclature(p, "fenetres");
+    assert.equal(fen.rows.length, 1);
+    const objs = buildNomenclature(p, "objets");
+    assert.ok(objs.rows.some((r) => r.label.toLowerCase().includes("canapé") || r.entityIds.includes("f1")));
+    const murs = buildNomenclature(p, "murs");
+    assert.ok(murs.rows.length >= 2);
+    const csv = exportNomenclatureCsv(portes, p.name);
+    assert.match(csv, /Nomenclature/);
+    assert.match(csv, /P-01/);
+    const rdc = buildNomenclature(p, "objets", "s0");
+    assert.equal(rdc.rows.reduce((s, r) => s + r.qty, 0), 2);
+  });
+});
+
 describe("structure", () => {
   it("separates bearing walls from partitions", () => {
     const p = miniHouse();

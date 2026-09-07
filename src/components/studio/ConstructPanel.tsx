@@ -1,4 +1,4 @@
-import { Download, Pause, Play, Printer, Share2, PackageCheck } from "lucide-react";
+import { Download, Pause, Play, Printer, Share2, PackageCheck, Table2 } from "lucide-react";
 import { toast } from "sonner";
 import { BUILD_PHASES, PHASE_DONE } from "@/lib/bim/construction";
 import {
@@ -100,6 +100,14 @@ export function ConstructPanel() {
           Murs {formatArea(bill.wallM2)} · Dalles {formatArea(bill.slabM2)} · Verre{" "}
           {formatArea(bill.glassM2)} · Béton {formatMeters(bill.concreteM3, 1)}³
         </p>
+        <Button
+          variant="outline"
+          className="mt-3 w-full"
+          onClick={() => window.dispatchEvent(new CustomEvent("forma-open-nomen"))}
+        >
+          <Table2 className="size-4" />
+          Nomenclatures (portes, fenêtres, pièces…)
+        </Button>
       </section>
 
       <div className="flex flex-col gap-2">

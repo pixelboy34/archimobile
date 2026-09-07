@@ -16,6 +16,7 @@ import {
   exportQuantitiesCsv,
   formatEuro,
 } from "./quantities";
+import { buildNomenclature, type NomKind } from "./nomenclature";
 import { exportDxf } from "../cad/dxf";
 import { exportIfc } from "../cad/ifc";
 import { TYPOLOGY_LABELS, type Project, type Typology } from "./types";
@@ -84,6 +85,25 @@ export function buildDossierHtml(project: Project): DossierResult {
       (l) =>
         `<tr><td>${esc(l.label)}</td><td class="num">${l.qty.toLocaleString("fr-FR")}</td><td>${esc(l.unit)}</td><td class="num">${l.unitPrice.toLocaleString("fr-FR")}</td><td class="num">${l.total.toLocaleString("fr-FR")}</td></tr>`,
     )
+    .join("");
+
+  const nomKinds: NomKind[] = ["portes", "fenetres", "objets", "murs"];
+  const nomHtml = nomKinds
+    .map((k) => {
+      const n = buildNomenclature(project, k);
+      if (!n.rows.length) return "";
+      const rows = n.rows
+        .map(
+          (r) =>
+            `<tr><td>${esc(r.mark)}</td><td>${esc(r.label)}</td><td>${esc(r.story)}</td><td>${esc(r.spec)}</td><td class="num">${r.qty.toLocaleString("fr-FR")} ${esc(r.unit)}</td><td class="num">${r.total.toLocaleString("fr-FR")}</td></tr>`,
+        )
+        .join("");
+      return `<h2 style="margin-top:28px">Nomenclature — ${esc(n.title)}</h2>
+  <table>
+    <thead><tr><th>Marque</th><th>Désignation</th><th>Niveau</th><th>Cotes</th><th class="num">Qté</th><th class="num">HT</th></tr></thead>
+    <tbody>${rows}<tr class="total"><td></td><td>Total</td><td></td><td></td><td></td><td class="num">${n.totalHT.toLocaleString("fr-FR")} EUR</td></tr></tbody>
+  </table>`;
+    })
     .join("");
 
   const niveauList = stories
@@ -274,6 +294,7 @@ ${planSections}
       <tr class="total"><td>Total HT</td><td></td><td></td><td></td><td class="num">${bill.totalHT.toLocaleString("fr-FR")} EUR</td></tr>
     </tbody>
   </table>
+  ${nomHtml}
   ${
     analysis.rooms.length
       ? `<h2 style="margin-top:28px">Pièces</h2>

@@ -15,6 +15,7 @@ import {
   Sofa,
   Sparkles,
   Sun,
+  Table2,
   Users,
   X,
   type LucideIcon,
@@ -29,6 +30,7 @@ export type OverflowAction =
   | "faisabilite"
   | "struct"
   | "analyse"
+  | "nomen"
   | "ai"
   | "dossier"
   | "chantier"
@@ -56,6 +58,7 @@ const ANALYSER: Tile[] = [
   { kind: "action", id: "faisabilite", label: "Site", icon: MapPinned },
   { kind: "action", id: "struct", label: "Structure", icon: Columns3, pro: true },
   { kind: "action", id: "analyse", label: "Chiffres", icon: Sun },
+  { kind: "action", id: "nomen", label: "Nomen.", icon: Table2 },
   { kind: "action", id: "ai", label: "Copilote", icon: Sparkles },
 ];
 
