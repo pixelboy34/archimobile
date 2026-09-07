@@ -261,6 +261,9 @@ function WallGroup({
           const win = o.kind === "window" || o.variant === "french";
           const glaze = glazingLook(o.glazing);
           const swingDir = o.swing === "right" ? 1 : -1;
+          const reveal = Math.max(0, o.reveal ?? 0);
+          const zFace = wall.thickness * 0.08 + reveal * 0.35;
+          const glassMat = pickMat(mats, "glass");
           return (
             <group key={o.id} position={[p.x + n.x, 0, p.y + n.y]} rotation={[0, -angle, 0]}>
               <mesh
@@ -276,28 +279,22 @@ function WallGroup({
                     <mesh
                       key={i}
                       geometry={box}
+                      material={glassMat}
                       position={[
                         leaves === 1 ? 0 : i === 0 ? -o.width * 0.25 : o.width * 0.25,
                         y,
-                        wall.thickness * 0.08,
+                        zFace,
                       ]}
                       scale={[
                         o.width / leaves - 0.03,
                         o.height - 0.02,
-                        wall.thickness * 0.22,
+                        Math.max(0.018, wall.thickness * 0.12),
                       ]}
                       onClick={(e) => {
                         e.stopPropagation();
                         onSelect(o.id);
                       }}
-                    >
-                      <meshLambertMaterial
-                        color={glaze.color}
-                        transparent
-                        opacity={glaze.opacity}
-                        depthWrite={false}
-                      />
-                    </mesh>
+                    />
                   ))
                 : Array.from({ length: leaves }, (_, i) => (
                     <mesh
@@ -325,17 +322,11 @@ function WallGroup({
                   <mesh
                     key={`pane-${li}`}
                     geometry={box}
-                    position={[0, y, wall.thickness * (0.02 + li * 0.05)]}
-                    scale={[o.width * 0.92, o.height * 0.9, 0.012]}
+                    material={glassMat}
+                    position={[0, y, zFace + 0.012 + li * 0.016]}
+                    scale={[o.width * 0.9, o.height * 0.88, 0.01]}
                     raycast={skipRaycast}
-                  >
-                    <meshLambertMaterial
-                      color={glaze.color}
-                      transparent
-                      opacity={0.18 + li * 0.08}
-                      depthWrite={false}
-                    />
-                  </mesh>
+                  />
                 ))}
               {!win && (
                 <group
@@ -376,19 +367,41 @@ function WallGroup({
               <mesh
                 geometry={box}
                 material={frameMat}
-                position={[0, elev + base + o.sill - 0.03, wall.thickness * 0.35]}
-                scale={[o.width + frame * 2.4, 0.05, 0.12]}
+                position={[0, elev + base + o.sill - 0.03, wall.thickness * 0.2 + reveal * 0.25]}
+                scale={[o.width + frame * 2.4, 0.05, Math.max(0.12, wall.thickness * 0.55 + reveal)]}
                 raycast={skipRaycast}
               />
-              {o.shutter && (
+              {reveal > 0.01 &&
+                [-1, 1].map((side) => (
+                  <mesh
+                    key={`tab-${side}`}
+                    geometry={box}
+                    material={pickMat(mats, wall.materialId)}
+                    position={[side * (o.width / 2 + frame * 0.4), y, reveal * 0.25]}
+                    scale={[0.035, o.height + frame, Math.max(wall.thickness, reveal + 0.06)]}
+                    raycast={skipRaycast}
+                  />
+                ))}
+              {!win && (
                 <mesh
                   geometry={box}
-                  material={pickMat(mats, "darkwood")}
-                  position={[o.width * 0.58, y, wall.thickness * 0.75]}
-                  scale={[0.08, o.height, 0.04]}
+                  material={pickMat(mats, "metal")}
+                  position={[swingDir * o.width * 0.32, y, wall.thickness * 0.42]}
+                  scale={[0.035, 0.14, 0.05]}
                   raycast={skipRaycast}
                 />
               )}
+              {o.shutter &&
+                [-1, 1].map((side) => (
+                  <mesh
+                    key={`sh-${side}`}
+                    geometry={box}
+                    material={pickMat(mats, "darkwood")}
+                    position={[side * o.width * 0.58, y, wall.thickness * 0.75]}
+                    scale={[0.08, o.height, 0.04]}
+                    raycast={skipRaycast}
+                  />
+                ))}
             </group>
           );
         })}
@@ -503,29 +516,45 @@ function GableRoofMesh({
   }
 
   if (roof.kind === "hip") {
+    const short = alongX ? d : w;
+    const long = alongX ? w : d;
+    const hip = short / 2;
+    const hipRise = Math.tan((roof.pitch * Math.PI) / 180) * hip;
+    const hipHyp = Math.hypot(hip, hipRise);
+    const hipPitch = Math.atan2(hipRise, hip);
+    const th = roof.thickness;
     return (
       <group position={[cx, elev, cz]}>
         <mesh
           geometry={box}
           material={material}
-          position={[0, rise / 2, 0]}
-          scale={[w * 0.55, roof.thickness, d * 0.55]}
+          position={alongX ? [0, hipRise / 2, -hip / 2] : [-hip / 2, hipRise / 2, 0]}
+          rotation={alongX ? [hipPitch, 0, 0] : [0, 0, -hipPitch]}
+          scale={alongX ? [long, th, hipHyp] : [hipHyp, th, long]}
           {...shadow}
         />
         <mesh
           geometry={box}
           material={material}
-          position={alongX ? [0, rise / 2, -half / 2] : [-half / 2, rise / 2, 0]}
-          rotation={alongX ? [pitch, 0, 0] : [0, 0, -pitch]}
-          scale={alongX ? [len * 0.85, roof.thickness, hypot] : [hypot, roof.thickness, len * 0.85]}
+          position={alongX ? [0, hipRise / 2, hip / 2] : [hip / 2, hipRise / 2, 0]}
+          rotation={alongX ? [-hipPitch, 0, 0] : [0, 0, hipPitch]}
+          scale={alongX ? [long, th, hipHyp] : [hipHyp, th, long]}
           {...shadow}
         />
         <mesh
           geometry={box}
           material={material}
-          position={alongX ? [0, rise / 2, half / 2] : [half / 2, rise / 2, 0]}
-          rotation={alongX ? [-pitch, 0, 0] : [0, 0, pitch]}
-          scale={alongX ? [len * 0.85, roof.thickness, hypot] : [hypot, roof.thickness, len * 0.85]}
+          position={alongX ? [-long / 2 + hip / 2, hipRise / 2, 0] : [0, hipRise / 2, -long / 2 + hip / 2]}
+          rotation={alongX ? [0, 0, hipPitch] : [hipPitch, 0, 0]}
+          scale={alongX ? [hipHyp, th, short] : [short, th, hipHyp]}
+          {...shadow}
+        />
+        <mesh
+          geometry={box}
+          material={material}
+          position={alongX ? [long / 2 - hip / 2, hipRise / 2, 0] : [0, hipRise / 2, long / 2 - hip / 2]}
+          rotation={alongX ? [0, 0, -hipPitch] : [-hipPitch, 0, 0]}
+          scale={alongX ? [hipHyp, th, short] : [short, th, hipHyp]}
           {...shadow}
         />
       </group>
@@ -740,20 +769,23 @@ function FurnitureMesh({
       )}
       {k === "plant" && (
         <>
-          <mesh geometry={cyl} material={stone} position={[0, 0.18, 0]} scale={[0.32, 0.36, 0.32]} {...pick} />
-          <mesh geometry={sph} material={veg} position={[0, 0.85, 0]} scale={[0.7, 0.9, 0.7]} {...deco} />
-          <mesh geometry={sph} material={veg} position={[0.18, 1.05, 0.1]} scale={[0.45, 0.5, 0.45]} {...deco} />
+          <mesh geometry={cyl} material={stone} position={[0, h * 0.14, 0]} scale={[Math.min(w, d) * 0.55, h * 0.28, Math.min(w, d) * 0.55]} {...pick} />
+          <mesh geometry={sph} material={veg} position={[0, h * 0.62, 0]} scale={[w * 0.95, h * 0.7, d * 0.95]} {...deco} />
+          <mesh geometry={sph} material={veg} position={[w * 0.12, h * 0.78, d * 0.08]} scale={[w * 0.55, h * 0.42, d * 0.55]} {...deco} />
         </>
       )}
       {k === "tree" && (
         <>
-          <mesh geometry={cyl} material={dark} position={[0, 1.15, 0]} scale={[0.32, 2.3, 0.32]} {...pick} />
-          <mesh geometry={sph} material={veg} position={[0, 3.15, 0]} scale={[w, 2.6, d]} {...deco} />
-          <mesh geometry={sph} material={veg} position={[w * 0.18, 3.55, d * 0.1]} scale={[w * 0.7, 1.8, d * 0.7]} {...deco} />
+          <mesh geometry={cyl} material={dark} position={[0, h * 0.28, 0]} scale={[Math.min(w, d) * 0.12, h * 0.55, Math.min(w, d) * 0.12]} {...pick} />
+          <mesh geometry={sph} material={veg} position={[0, h * 0.68, 0]} scale={[w * 0.92, h * 0.62, d * 0.92]} {...deco} />
+          <mesh geometry={sph} material={veg} position={[w * 0.12, h * 0.82, d * 0.08]} scale={[w * 0.62, h * 0.42, d * 0.62]} {...deco} />
         </>
       )}
       {k === "hedge" && (
-        <mesh geometry={box} material={veg} position={[0, h / 2, 0]} scale={[w, h, d]} {...pick} />
+        <>
+          <mesh geometry={box} material={veg} position={[0, h * 0.48, 0]} scale={[w, h * 0.96, d]} {...pick} />
+          <mesh geometry={box} material={veg} position={[0, h * 0.92, 0]} scale={[w * 0.92, h * 0.18, d * 0.85]} {...deco} />
+        </>
       )}
       {k === "fence" && (
         <>
@@ -828,6 +860,30 @@ function FurnitureMesh({
       {k === "panel" && (
         <mesh geometry={box} material={body} position={[0, Math.max(h / 2, 0.06), 0]} scale={[w, Math.max(h, 0.06), d]} {...pick} />
       )}
+      {k !== "sofa" &&
+        k !== "chair" &&
+        k !== "table" &&
+        k !== "bed" &&
+        k !== "cabinet" &&
+        k !== "appliance" &&
+        k !== "box" &&
+        k !== "sanitary" &&
+        k !== "lamp" &&
+        k !== "screen" &&
+        k !== "plant" &&
+        k !== "tree" &&
+        k !== "hedge" &&
+        k !== "fence" &&
+        k !== "pergola" &&
+        k !== "vehicle" &&
+        k !== "pool" &&
+        k !== "people" &&
+        k !== "rug" &&
+        k !== "fire" &&
+        k !== "post" &&
+        k !== "panel" && (
+          <mesh geometry={box} material={body} position={[0, h / 2, 0]} scale={[w, h, d]} {...pick} />
+        )}
     </group>
   );
 }
@@ -863,7 +919,7 @@ function StairMesh({
         stair.origin.y + fz * (i + 0.5) * tread,
       );
       dummy.rotation.set(0, -stair.direction, 0);
-      dummy.scale.set(stair.width, rise, tread);
+      dummy.scale.set(stair.width, rise * 0.92, tread * 1.08);
       dummy.updateMatrix();
       inst.setMatrixAt(i, dummy.matrix);
     }
@@ -886,18 +942,32 @@ function StairMesh({
         }}
       />
       {stair.railing && (
-        <mesh
-          geometry={box}
-          material={material}
-          position={[
-            stair.origin.x + fx * (stair.run / 2) + fz * (stair.width / 2 + 0.04),
-            elev + stair.rise / 2 + 0.45,
-            stair.origin.y + fz * (stair.run / 2) - fx * (stair.width / 2 + 0.04),
-          ]}
-          rotation={[0, -stair.direction, Math.atan2(stair.rise, stair.run)]}
-          scale={[0.04, 0.04, Math.hypot(stair.run, stair.rise)]}
-          raycast={skipRaycast}
-        />
+        <>
+          <mesh
+            geometry={box}
+            material={material}
+            position={[
+              stair.origin.x + fx * (stair.run / 2) + fz * (stair.width / 2 + 0.04),
+              elev + stair.rise / 2 + 0.45,
+              stair.origin.y + fz * (stair.run / 2) - fx * (stair.width / 2 + 0.04),
+            ]}
+            rotation={[0, -stair.direction, Math.atan2(stair.rise, stair.run)]}
+            scale={[0.04, 0.04, Math.hypot(stair.run, stair.rise)]}
+            raycast={skipRaycast}
+          />
+          <mesh
+            geometry={box}
+            material={material}
+            position={[
+              stair.origin.x + fx * (stair.run / 2) - fz * (stair.width / 2 + 0.04),
+              elev + stair.rise / 2 + 0.45,
+              stair.origin.y + fz * (stair.run / 2) + fx * (stair.width / 2 + 0.04),
+            ]}
+            rotation={[0, -stair.direction, Math.atan2(stair.rise, stair.run)]}
+            scale={[0.04, 0.04, Math.hypot(stair.run, stair.rise)]}
+            raycast={skipRaycast}
+          />
+        </>
       )}
     </group>
   );

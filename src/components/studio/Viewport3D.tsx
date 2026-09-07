@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
-import { OrthographicCamera } from "@react-three/drei";
+import { ContactShadows, OrthographicCamera } from "@react-three/drei";
 import * as THREE from "three";
 import { BuildingScene, Ground, sunPosition } from "./BuildingScene";
 import { OrbitRig } from "./OrbitRig";
@@ -85,6 +85,32 @@ function Invalidate({ tick }: { tick: string }) {
   useEffect(() => {
     invalidate();
   }, [invalidate, tick]);
+  return null;
+}
+
+function StudioEnv({ sky, gain }: { sky: string; gain: number }) {
+  const scene = useThree((s) => s.scene);
+  const gl = useThree((s) => s.gl);
+  const invalidate = useThree((s) => s.invalidate);
+  useEffect(() => {
+    const pmrem = new THREE.PMREMGenerator(gl);
+    const env = new THREE.Scene();
+    const geo = new THREE.SphereGeometry(8, 16, 10);
+    const mat = new THREE.MeshBasicMaterial({ color: sky, side: THREE.BackSide });
+    env.add(new THREE.Mesh(geo, mat));
+    env.add(new THREE.HemisphereLight("#f3f0e8", "#6a5e50", 1));
+    const rt = pmrem.fromScene(env, 0.06);
+    scene.environment = rt.texture;
+    if ("environmentIntensity" in scene) scene.environmentIntensity = gain;
+    geo.dispose();
+    mat.dispose();
+    pmrem.dispose();
+    invalidate();
+    return () => {
+      rt.dispose();
+      if (scene.environment === rt.texture) scene.environment = null;
+    };
+  }, [gl, scene, sky, gain, invalidate]);
   return null;
 }
 
@@ -432,6 +458,7 @@ export function Viewport3D({
         />
       )}
       <AdaptiveGpu mobile={quality.mobile} />
+      <StudioEnv sky={sky} gain={night ? 0.28 : 0.62} />
       <Invalidate
         tick={`${project.updatedAt}|${selectedIds.join(",")}|${hour}|${clipY}|${view}|${lighting.month}|${lighting.sunIntensity}|${lighting.fill}|${lighting.ambient}|${lighting.hemi}|${lighting.exposure}|${shadows}|${lighting.shadowSoftness}|${lighting.interior}|${lighting.interiorGain}|${buildPhase}|${tool}|${draft ? "d" : ""}|${showGrid ? "g" : ""}|${isolateStory ? storyId : "all"}|${showStructure ? "st" : ""}|${orthoCam ? "o" : ""}|${fov}|${gizmoMode}`}
       />
@@ -499,6 +526,18 @@ export function Viewport3D({
         showStructure={showStructure}
       />
       <Ground size={site} shadows={shadows} plot={plotSide} cx={cx} cz={cz} parcelRing={project.meta.parcelle?.ring} />
+      {!quality.weak && !walking && (
+        <ContactShadows
+          position={[cx, elev + 0.015, cz]}
+          opacity={night ? 0.22 : 0.38}
+          scale={Math.max(16, span * 1.55)}
+          blur={quality.mobile ? 2.4 : 1.6}
+          far={6}
+          resolution={quality.mobile ? 256 : 512}
+          frames={1}
+          color="#1a1814"
+        />
+      )}
       <NorthMark cx={cx} cz={cz} elev={elev} north={project.meta.north} span={span} />
       {showGrid && !walking && (
       <gridHelper
