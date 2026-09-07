@@ -37,7 +37,7 @@ export function HelpPanel() {
       </ol>
       <p className="text-xs text-muted">
         Raccourcis : Espace dernier outil · W mur · D porte · E fenêtre · T objet · M cote · Tab étage ·
-        Maj+clic multi-sélection · Échap · Suppr · Ctrl+Z · Ctrl+D.
+        Maj+clic multi-sélection · Réseau ×3 · Échap · Suppr · Ctrl+Z · Ctrl+D.
       </p>
     </div>
   );

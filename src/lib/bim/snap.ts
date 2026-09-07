@@ -1,4 +1,4 @@
-import { dist, distToSegment, snapVec } from "./geometry";
+import { SNAP, dist, distToSegment, snapVec } from "./geometry";
 import type { Project, Vec2 } from "./types";
 
 export type SnapKind = "end" | "mid" | "col" | "grid" | "none";
@@ -11,6 +11,7 @@ export function snapDetail(
   storyId: string,
   useGrid: boolean,
   radius = 0.35,
+  step = SNAP,
 ): SnapHit {
   let best: SnapHit = { point: p, kind: "none" };
   let bestD = radius;
@@ -47,7 +48,7 @@ export function snapDetail(
     }
   }
   if (best.kind !== "none") return best;
-  if (useGrid) return { point: snapVec(p), kind: "grid" };
+  if (useGrid) return { point: snapVec(p, step), kind: "grid" };
   return { point: p, kind: "none" };
 }
 
@@ -57,6 +58,7 @@ export function snapToSketch(
   storyId: string,
   useGrid: boolean,
   radius = 0.35,
+  step = SNAP,
 ): Vec2 {
-  return snapDetail(p, project, storyId, useGrid, radius).point;
+  return snapDetail(p, project, storyId, useGrid, radius, step).point;
 }

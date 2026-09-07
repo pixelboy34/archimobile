@@ -18,8 +18,10 @@ import { strokesToWalls, surveyPolygonToWalls } from "@/lib/bim/survey-to-walls"
 import type {
   FireRating,
   FurnitureKind,
+  Glazing,
   MaterialId,
   MaterialStyle,
+  OpeningVariant,
   Project,
   SketchLayer,
   SurveyUnderlay,
@@ -41,7 +43,7 @@ import type { PeerInfo } from "@/lib/multiplayer/p2p";
 import { toast } from "sonner";
 import { DEFAULT_LIGHTING, type Lighting } from "@/lib/render/lighting";
 import { DEFAULT_NAV, type NavPrefs } from "@/lib/nav/prefs";
-import { addRectWalls, copyStory as duplicateStoryLevel, healWallEnds, orthoPoint, repeatStories as stackStories, restackStories, splitWallAt as splitWallOp, syncStoryGeometry, translateSelection } from "@/lib/cad/ops";
+import { addRectWalls, cloneSelection, copyStory as duplicateStoryLevel, healWallEnds, orthoPoint, repeatStories as stackStories, restackStories, splitWallAt as splitWallOp, syncStoryGeometry, translateSelection } from "@/lib/cad/ops";
 import { generateMassing, insertBasement, nameStories, propagateTypicalFloor, type MassingOpts } from "@/lib/cad/massing";
 import {
   inferStoryRoles,
@@ -61,6 +63,17 @@ import {
 const HISTORY_LIMIT = 40;
 
 const DRAW_MEMORY: Tool[] = ["wall", "rect", "door", "window", "room", "column", "stair", "slab", "roof", "furniture", "pen", "survey"];
+
+const DEFAULT_OPENING_DRAFT = {
+  door: { width: 0.9, height: 2.1, sill: 0, variant: "single" as OpeningVariant },
+  window: {
+    width: 1.4,
+    height: 1.35,
+    sill: 0.9,
+    variant: "casement" as OpeningVariant,
+    glazing: "double" as Glazing,
+  },
+};
 
 const DEFAULT_WALL_DRAFT = {
   thickness: 0.2,
@@ -86,6 +99,7 @@ interface StudioState {
   lighting: Lighting;
   grid: boolean;
   snap: boolean;
+  snapStep: number;
   ortho: boolean;
   clipY: number;
   furnitureKind: FurnitureKind;
@@ -102,6 +116,7 @@ interface StudioState {
     alignment: WallAlign;
     fireRating: FireRating;
   };
+  openingDraft: typeof DEFAULT_OPENING_DRAFT;
   activeMaterialId: MaterialId;
   draft: Vec2 | null;
   measure: { a: Vec2; b: Vec2 } | null;
@@ -125,9 +140,11 @@ interface StudioState {
   setClipY: (y: number) => void;
   setGrid: (v: boolean) => void;
   setSnap: (v: boolean) => void;
+  setSnapStep: (v: number) => void;
   setOrtho: (v: boolean) => void;
   setFurnitureKind: (k: FurnitureKind) => void;
   setWallDraft: (patch: Partial<StudioState["wallDraft"]>) => void;
+  setOpeningDraft: (kind: "door" | "window", patch: Partial<typeof DEFAULT_OPENING_DRAFT.door & typeof DEFAULT_OPENING_DRAFT.window>) => void;
   copyToNextStory: () => void;
   cycleStory: (dir?: 1 | -1) => void;
   setActiveMaterial: (id: MaterialId) => void;
@@ -143,6 +160,7 @@ interface StudioState {
   resetExamples: () => void;
   duplicateProjectById: (id: string) => string | null;
   duplicateSelected: () => void;
+  arraySelected: (count?: number) => void;
   commit: (mutator: (p: Project) => Project) => void;
   undo: () => void;
   redo: () => void;
@@ -318,12 +336,17 @@ export const useStudio = create<StudioState>()(
       lighting: { ...DEFAULT_LIGHTING },
       grid: true,
       snap: true,
+      snapStep: 0.25,
       ortho: true,
       clipY: 1,
       furnitureKind: "sofa",
       recentKinds: ["sofa", "table", "bed", "kitchen", "chair", "plant"],
       lastDrawTool: "wall",
       wallDraft: { ...DEFAULT_WALL_DRAFT },
+      openingDraft: {
+        door: { ...DEFAULT_OPENING_DRAFT.door },
+        window: { ...DEFAULT_OPENING_DRAFT.window },
+      },
       activeMaterialId: "plaster",
       draft: null,
       measure: null,
@@ -371,6 +394,7 @@ export const useStudio = create<StudioState>()(
       setClipY: (clipY) => set({ clipY }),
       setGrid: (grid) => set({ grid }),
       setSnap: (snap) => set({ snap }),
+      setSnapStep: (snapStep) => set({ snapStep }),
       setOrtho: (ortho) => set({ ortho }),
       setFurnitureKind: (furnitureKind) =>
         set((s) => ({
@@ -378,6 +402,13 @@ export const useStudio = create<StudioState>()(
           recentKinds: [furnitureKind, ...s.recentKinds.filter((k) => k !== furnitureKind)].slice(0, 8),
         })),
       setWallDraft: (patch) => set((s) => ({ wallDraft: { ...s.wallDraft, ...patch } })),
+      setOpeningDraft: (kind, patch) =>
+        set((s) => ({
+          openingDraft: {
+            ...s.openingDraft,
+            [kind]: { ...s.openingDraft[kind], ...patch },
+          },
+        })),
       setActiveMaterial: (activeMaterialId) => set({ activeMaterialId }),
       select: (selectedIds) => set({ selectedIds }),
       current: () => {
@@ -442,59 +473,26 @@ export const useStudio = create<StudioState>()(
         return copy.id;
       },
       duplicateSelected: () => {
-        const s = get();
-        const cur = s.current();
-        const id = s.selectedIds[0];
-        if (!cur || !id) return;
-        const dx = 0.6;
-        let nextId: string | null = null;
-        s.commit((p) => {
-          const shift = (pt: { x: number; y: number }) => ({ x: pt.x + dx, y: pt.y });
-          const w = p.walls.find((x) => x.id === id);
-          if (w) {
-            nextId = uid("w");
-            p.walls.push({ ...w, id: nextId, a: shift(w.a), b: shift(w.b) });
-            return p;
-          }
-          const f = p.furniture.find((x) => x.id === id);
-          if (f) {
-            nextId = uid("fur");
-            p.furniture.push({ ...f, id: nextId, position: shift(f.position) });
-            return p;
-          }
-          const c = p.columns.find((x) => x.id === id);
-          if (c) {
-            nextId = uid("col");
-            p.columns.push({ ...c, id: nextId, position: shift(c.position) });
-            return p;
-          }
-          const st = p.stairs.find((x) => x.id === id);
-          if (st) {
-            nextId = uid("stair");
-            p.stairs.push({ ...st, id: nextId, origin: shift(st.origin) });
-            return p;
-          }
-          const o = p.openings.find((x) => x.id === id);
-          if (o) {
-            nextId = uid("op");
-            p.openings.push({ ...o, id: nextId, t: Math.min(0.9, o.t + 0.12) });
-            return p;
-          }
-          const sl = p.slabs.find((x) => x.id === id);
-          if (sl) {
-            nextId = uid("sl");
-            p.slabs.push({ ...sl, id: nextId, polygon: sl.polygon.map(shift) });
-            return p;
-          }
-          const rf = p.roofs.find((x) => x.id === id);
-          if (rf) {
-            nextId = uid("rf");
-            p.roofs.push({ ...rf, id: nextId, polygon: rf.polygon.map(shift) });
-            return p;
-          }
+        const ids = get().selectedIds;
+        if (!ids.length) return;
+        let nextIds: string[] = [];
+        get().commit((p) => {
+          nextIds = cloneSelection(p, ids, 0.6, 0);
           return p;
         });
-        if (nextId) set({ selectedIds: [nextId] });
+        if (nextIds.length) set({ selectedIds: nextIds });
+      },
+      arraySelected: (count = 3) => {
+        const ids = get().selectedIds;
+        if (!ids.length) return;
+        const n = Math.max(1, Math.min(24, Math.round(count)));
+        let last: string[] = [];
+        get().commit((p) => {
+          for (let i = 1; i <= n; i++) last = cloneSelection(p, ids, 0.6 * i, 0);
+          return p;
+        });
+        if (last.length) set({ selectedIds: last });
+        toast.success(`Réseau ×${n}`);
       },
       commit: (mutator) => {
         const cur = get().current();
@@ -537,8 +535,8 @@ export const useStudio = create<StudioState>()(
         const cur = s.current();
         const storyId = s.storyId;
         if (!cur || !storyId) return;
-        const pa = snapToSketch(a, cur, storyId, s.snap);
-        const pb = snapToSketch(b, cur, storyId, s.snap);
+        const pa = snapToSketch(a, cur, storyId, s.snap, 0.35, s.snapStep);
+        const pb = snapToSketch(b, cur, storyId, s.snap, 0.35, s.snapStep);
         if (Math.hypot(pb.x - pa.x, pb.y - pa.y) < 0.3) return;
         const story = cur.stories.find((st) => st.id === storyId);
         s.commit((p) => {
@@ -573,14 +571,23 @@ export const useStudio = create<StudioState>()(
         if (!cur || !storyId) return;
         const hit = findWallAt(cur, storyId, point, 0.6);
         if (!hit) return;
-        s.commit((p) => addOpeningOnWall(p, hit.wall, kind, hit.t));
+        s.commit((p) => {
+          const d = s.openingDraft[kind];
+          const next = addOpeningOnWall(p, hit.wall, kind, hit.t, d.width, d.height, d.sill);
+          const last = next.openings[next.openings.length - 1];
+          if (last) {
+            last.variant = d.variant;
+            if (kind === "window" && "glazing" in d) last.glazing = d.glazing;
+          }
+          return next;
+        });
       },
       addFurniture: (point) => {
         const s = get();
         const cur = s.current();
         const storyId = s.storyId;
         if (!cur || !storyId) return;
-        const pos = s.snap ? snapVec(point) : point;
+        const pos = s.snap ? snapVec(point, s.snapStep) : point;
         s.commit((p) => addFurnitureAt(p, storyId, s.furnitureKind, pos, 0));
       },
       addColumnAt: (point) => {
@@ -588,7 +595,7 @@ export const useStudio = create<StudioState>()(
         const cur = s.current();
         const storyId = s.storyId;
         if (!cur || !storyId) return;
-        const pos = s.snap ? snapVec(point) : point;
+        const pos = s.snap ? snapVec(point, s.snapStep) : point;
         const story = cur.stories.find((st) => st.id === storyId);
         s.commit((p) => {
           p.columns.push({
@@ -610,7 +617,7 @@ export const useStudio = create<StudioState>()(
         const cur = s.current();
         const storyId = s.storyId;
         if (!cur || !storyId) return;
-        const pos = s.snap ? snapVec(point) : point;
+        const pos = s.snap ? snapVec(point, s.snapStep) : point;
         const story = cur.stories.find((st) => st.id === storyId);
         s.commit((p) => {
           p.stairs.push({
@@ -632,7 +639,7 @@ export const useStudio = create<StudioState>()(
         const s = get();
         const storyId = s.storyId;
         if (!s.current() || !storyId) return;
-        const pos = s.snap ? snapVec(point) : point;
+        const pos = s.snap ? snapVec(point, s.snapStep) : point;
         const w = 4;
         const d = 4;
         s.commit((p) => {
@@ -655,7 +662,7 @@ export const useStudio = create<StudioState>()(
         const s = get();
         const storyId = s.storyId;
         if (!s.current() || !storyId) return;
-        const pos = s.snap ? snapVec(point) : point;
+        const pos = s.snap ? snapVec(point, s.snapStep) : point;
         const w = 6;
         const d = 5;
         s.commit((p) => {
@@ -747,6 +754,19 @@ export const useStudio = create<StudioState>()(
           if (typeof patch.alignment === "string") d.alignment = patch.alignment as WallAlign;
           if (typeof patch.fireRating === "string") d.fireRating = patch.fireRating as FireRating;
           if (Object.keys(d).length) get().setWallDraft(d);
+        }
+        const isOpen = cur?.openings.some((o) => ids.includes(o.id));
+        if (isOpen) {
+          const o = cur!.openings.find((x) => ids.includes(x.id));
+          if (o) {
+            get().setOpeningDraft(o.kind, {
+              width: typeof patch.width === "number" ? patch.width : o.width,
+              height: typeof patch.height === "number" ? patch.height : o.height,
+              sill: typeof patch.sill === "number" ? patch.sill : o.sill,
+              variant: (typeof patch.variant === "string" ? patch.variant : o.variant) as OpeningVariant,
+              glazing: (typeof patch.glazing === "string" ? patch.glazing : o.glazing) as Glazing,
+            });
+          }
         }
       },
       updateStory: (id, patch) => {
@@ -1015,7 +1035,7 @@ export const useStudio = create<StudioState>()(
         const cur = s.current();
         const storyId = s.storyId;
         if (!cur || !storyId) return;
-        const pos = s.snap ? snapVec(point) : point;
+        const pos = s.snap ? snapVec(point, s.snapStep) : point;
         s.commit((p) => {
           const n = ensureSketch(p);
           n.survey = [...(n.survey ?? []), { id: uid("sv"), storyId, position: pos }];
@@ -1140,10 +1160,10 @@ export const useStudio = create<StudioState>()(
         const cur = s.current();
         const storyId = s.storyId;
         if (!cur || !storyId) return;
-        let wp = snapToSketch(p, cur, storyId, s.snap);
+        let wp = snapToSketch(p, cur, storyId, s.snap, 0.35, s.snapStep);
         const tool = s.tool;
         if (s.draft && s.ortho && (tool === "wall" || tool === "rect" || tool === "measure")) {
-          wp = snapToSketch(orthoPoint(s.draft, wp, true), cur, storyId, false);
+          wp = snapToSketch(orthoPoint(s.draft, wp, true), cur, storyId, false, 0.35, s.snapStep);
         }
         if (tool === "wall") {
           if (!s.draft) {
@@ -1498,7 +1518,11 @@ export const useStudio = create<StudioState>()(
         recentKinds: s.recentKinds,
         lastDrawTool: s.lastDrawTool,
         wallDraft: s.wallDraft,
+        openingDraft: s.openingDraft,
         furnitureKind: s.furnitureKind,
+        snap: s.snap,
+        snapStep: s.snapStep,
+        grid: s.grid,
       }),
       merge: (persisted, current) => {
         const p = persisted as Partial<StudioState> | undefined;
@@ -1516,8 +1540,15 @@ export const useStudio = create<StudioState>()(
           recentKinds: p?.recentKinds?.length ? p.recentKinds : current.recentKinds,
           lastDrawTool: p?.lastDrawTool ?? current.lastDrawTool,
           wallDraft: { ...DEFAULT_WALL_DRAFT, ...(p?.wallDraft ?? {}) },
+          openingDraft: {
+            door: { ...DEFAULT_OPENING_DRAFT.door, ...(p?.openingDraft?.door ?? {}) },
+            window: { ...DEFAULT_OPENING_DRAFT.window, ...(p?.openingDraft?.window ?? {}) },
+          },
           furnitureKind: p?.furnitureKind ?? current.furnitureKind,
           currentId: p?.currentId ?? current.currentId,
+          snap: p?.snap ?? current.snap,
+          snapStep: p?.snapStep ?? current.snapStep,
+          grid: p?.grid ?? current.grid,
           nav: {
             ...DEFAULT_NAV,
             ...(p?.nav ?? {}),

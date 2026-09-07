@@ -33,6 +33,64 @@ export function translateSelection(p: Project, ids: string[], dx: number, dy: nu
   return p;
 }
 
+/** Clone selection by offset. Returns new ids (includes openings copied with walls). */
+export function cloneSelection(p: Project, ids: string[], dx: number, dy: number): string[] {
+  const hit = new Set(ids);
+  const shift = (v: Vec2): Vec2 => ({ x: v.x + dx, y: v.y + dy });
+  const nextIds: string[] = [];
+  const wallMap = new Map<string, string>();
+  for (const w of [...p.walls]) {
+    if (!hit.has(w.id)) continue;
+    const nid = uid("w");
+    wallMap.set(w.id, nid);
+    p.walls.push({ ...w, id: nid, a: shift(w.a), b: shift(w.b) });
+    nextIds.push(nid);
+  }
+  for (const o of [...p.openings]) {
+    const mapped = wallMap.get(o.wallId);
+    if (mapped) {
+      const nid = uid("op");
+      p.openings.push({ ...o, id: nid, wallId: mapped });
+      nextIds.push(nid);
+    } else if (hit.has(o.id)) {
+      const nid = uid("op");
+      p.openings.push({ ...o, id: nid, t: Math.min(0.92, o.t + 0.12) });
+      nextIds.push(nid);
+    }
+  }
+  for (const f of [...p.furniture]) {
+    if (!hit.has(f.id)) continue;
+    const nid = uid("fur");
+    p.furniture.push({ ...f, id: nid, position: shift(f.position) });
+    nextIds.push(nid);
+  }
+  for (const c of [...p.columns]) {
+    if (!hit.has(c.id)) continue;
+    const nid = uid("col");
+    p.columns.push({ ...c, id: nid, position: shift(c.position) });
+    nextIds.push(nid);
+  }
+  for (const st of [...p.stairs]) {
+    if (!hit.has(st.id)) continue;
+    const nid = uid("stair");
+    p.stairs.push({ ...st, id: nid, origin: shift(st.origin) });
+    nextIds.push(nid);
+  }
+  for (const sl of [...p.slabs]) {
+    if (!hit.has(sl.id)) continue;
+    const nid = uid("sl");
+    p.slabs.push({ ...sl, id: nid, polygon: sl.polygon.map(shift) });
+    nextIds.push(nid);
+  }
+  for (const rf of [...p.roofs]) {
+    if (!hit.has(rf.id)) continue;
+    const nid = uid("rf");
+    p.roofs.push({ ...rf, id: nid, polygon: rf.polygon.map(shift) });
+    nextIds.push(nid);
+  }
+  return nextIds;
+}
+
 export function addRectWalls(p: Project, storyId: string, a: Vec2, b: Vec2, proto: Partial<Wall>): Project {
   const minX = Math.min(a.x, b.x);
   const maxX = Math.max(a.x, b.x);

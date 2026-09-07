@@ -24,6 +24,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { TOOL_LABELS, type Tool } from "@/lib/bim/types";
+import { DOOR_PRESETS, WALL_PRESETS, WINDOW_PRESETS } from "@/lib/bim/catalog";
 import { useStudio } from "@/lib/store/project-store";
 import { ToolDock } from "./ToolDock";
 
@@ -77,7 +78,14 @@ export function CommandOrb({
   const setGizmoMode = useStudio((s) => s.setGizmoMode);
   const propagateTypical = useStudio((s) => s.propagateTypical);
   const copyToNextStory = useStudio((s) => s.copyToNextStory);
+  const arraySelected = useStudio((s) => s.arraySelected);
   const cycleStory = useStudio((s) => s.cycleStory);
+  const wallDraft = useStudio((s) => s.wallDraft);
+  const setWallDraft = useStudio((s) => s.setWallDraft);
+  const openingDraft = useStudio((s) => s.openingDraft);
+  const setOpeningDraft = useStudio((s) => s.setOpeningDraft);
+  const snapStep = useStudio((s) => s.snapStep);
+  const setSnapStep = useStudio((s) => s.setSnapStep);
   const storyId = useStudio((s) => s.storyId);
   const project = useStudio((s) => s.projects.find((p) => p.id === s.currentId) ?? null);
 
@@ -230,6 +238,12 @@ export function CommandOrb({
             <OrbBtn label="Dupliquer" onClick={duplicateSelected}>
               <Copy className="size-4" />
             </OrbBtn>
+            <OrbBtn
+              label="Réseau ×3"
+              onClick={() => arraySelected(3)}
+            >
+              <CopyPlus className="size-4" />
+            </OrbBtn>
             <OrbBtn label="Pivoter" onClick={() => rotateSelected(Math.PI / 2)}>
               <RotateCw className="size-4" />
             </OrbBtn>
@@ -259,6 +273,89 @@ export function CommandOrb({
               <OrbBtn label="Ortho" active={ortho} onClick={() => setOrtho(!ortho)}>
                 <MoveHorizontal className="size-4" />
               </OrbBtn>
+              {([0.1, 0.25, 0.5] as const).map((st) => (
+                <OrbBtn
+                  key={st}
+                  label={`${Math.round(st * 100)} cm`}
+                  active={snapStep === st}
+                  onClick={() => {
+                    setSnapStep(st);
+                    setSnap(true);
+                  }}
+                >
+                  <Grid3x3 className="size-3.5" />
+                </OrbBtn>
+              ))}
+            </div>
+          )}
+          {(tool === "wall" || tool === "door" || tool === "window") && (
+            <div className="flex gap-0.5 overflow-x-auto px-0.5">
+              {tool === "wall" &&
+                WALL_PRESETS.slice(0, 6).map((pr) => (
+                  <button
+                    key={pr.id}
+                    type="button"
+                    onClick={() =>
+                      setWallDraft({
+                        thickness: pr.thickness,
+                        partition: pr.partition,
+                        loadBearing: pr.loadBearing,
+                        insulationMm: pr.insulationMm,
+                        role: pr.role,
+                        alignment: pr.alignment,
+                        fireRating: pr.fireRating,
+                      })
+                    }
+                    className={cn(
+                      "h-7 shrink-0 rounded-md px-2 text-[10px] font-medium",
+                      Math.abs(wallDraft.thickness - pr.thickness) < 0.011 && wallDraft.role === pr.role
+                        ? "bg-accent/15 text-accent ring-1 ring-accent/40"
+                        : "bg-elevated text-fg/75",
+                    )}
+                  >
+                    {pr.label}
+                  </button>
+                ))}
+              {tool === "door" &&
+                DOOR_PRESETS.slice(0, 5).map((pr) => (
+                  <button
+                    key={pr.id}
+                    type="button"
+                    onClick={() => setOpeningDraft("door", { width: pr.width, height: pr.height, sill: pr.sill, variant: pr.variant })}
+                    className={cn(
+                      "h-7 shrink-0 rounded-md px-2 text-[10px] font-medium",
+                      Math.abs(openingDraft.door.width - pr.width) < 0.06
+                        ? "bg-accent/15 text-accent ring-1 ring-accent/40"
+                        : "bg-elevated text-fg/75",
+                    )}
+                  >
+                    {pr.label}
+                  </button>
+                ))}
+              {tool === "window" &&
+                WINDOW_PRESETS.slice(0, 5).map((pr) => (
+                  <button
+                    key={pr.id}
+                    type="button"
+                    onClick={() =>
+                      setOpeningDraft("window", {
+                        width: pr.width,
+                        height: pr.height,
+                        sill: pr.sill,
+                        variant: pr.variant,
+                        glazing: pr.glazing,
+                      })
+                    }
+                    className={cn(
+                      "h-7 shrink-0 rounded-md px-2 text-[10px] font-medium",
+                      Math.abs(openingDraft.window.width - pr.width) < 0.06
+                        ? "bg-accent/15 text-accent ring-1 ring-accent/40"
+                        : "bg-elevated text-fg/75",
+                    )}
+                  >
+                    {pr.label}
+                  </button>
+                ))}
             </div>
           )}
           <div className="flex gap-0.5 overflow-x-auto">

@@ -261,6 +261,7 @@ export function PropertiesPanel({
                 {opening.kind === "door" && (
                   <Chips label="Sens" value={opening.swing ?? "left"} options={Object.keys(SWING_LABELS)} labels={SWING_LABELS} onChange={(m) => commitSelected({ swing: m })} />
                 )}
+                <ToggleRow label="Volet" on={Boolean(opening.shutter)} onChange={(v) => commitSelected({ shutter: v })} />
               </More>
             </Section>
           )}
@@ -289,6 +290,16 @@ export function PropertiesPanel({
                 className="flex h-9 w-full items-center justify-center rounded-md bg-elevated text-[11px] font-medium text-accent ring-1 ring-accent/30"
               >
                 Bibliothèque
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const sz = OBJECT_SIZES[furn.kind];
+                  if (sz) commitSelected({ w: sz.w, d: sz.d, h: sz.h });
+                }}
+                className="flex h-8 w-full items-center justify-center rounded-md text-[11px] font-medium text-muted hover:bg-elevated hover:text-fg"
+              >
+                Taille catalogue
               </button>
               <ParamGrid>
               <Param label="Largeur" value={furn.w} min={0.1} max={12} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ w: v })} />
