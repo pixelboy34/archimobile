@@ -182,7 +182,15 @@ export type FurnitureKind =
   | "truck"
   | "child"
   | "container"
-  | "bikeshade";
+  | "bikeshade"
+  | "sofabed"
+  | "diningbench"
+  | "wallcab"
+  | "coat"
+  | "outdoortable"
+  | "bollard"
+  | "vanity"
+  | "linen";
 
 export type Tool =
   | "select"
@@ -613,6 +621,14 @@ export const FURNITURE_LABELS: Record<FurnitureKind, string> = {
   child: "Aire jeux",
   container: "Conteneur",
   bikeshade: "Abri vélos",
+  sofabed: "Banquette-lit",
+  diningbench: "Banc repas",
+  wallcab: "Meuble haut",
+  coat: "Portemanteau",
+  outdoortable: "Table jardin",
+  bollard: "Borne",
+  vanity: "Meuble vasque",
+  linen: "Armoire linge",
 };
 
 export const TOOL_LABELS: Record<Tool, string> = {

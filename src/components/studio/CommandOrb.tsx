@@ -76,7 +76,6 @@ export function CommandOrb({
   const moveSelected = useStudio((s) => s.moveSelected);
   const gizmoMode = useStudio((s) => s.gizmoMode);
   const setGizmoMode = useStudio((s) => s.setGizmoMode);
-  const propagateTypical = useStudio((s) => s.propagateTypical);
   const copyToNextStory = useStudio((s) => s.copyToNextStory);
   const arraySelected = useStudio((s) => s.arraySelected);
   const applyDraftToSelection = useStudio((s) => s.applyDraftToSelection);
@@ -112,7 +111,6 @@ export function CommandOrb({
 
   if (view === "ar" || view === "visite") return null;
 
-  const multiStory = (project?.stories.length ?? 0) > 1;
   const movable = (() => {
     if (!project || !selectedIds[0]) return false;
     const id = selectedIds[0];
@@ -379,18 +377,6 @@ export function CommandOrb({
             <OrbBtn label="Ressources" onClick={() => onResources("both")}>
               <LayoutGrid className="size-4" />
             </OrbBtn>
-            {multiStory && (
-              <OrbBtn
-                label="Propager"
-                accent
-                onClick={() => {
-                  propagateTypical();
-                  toast.success("Étage type propagé");
-                }}
-              >
-                <CopyPlus className="size-4" />
-              </OrbBtn>
-            )}
             <OrbBtn
               label="Copier étage"
               onClick={() => {

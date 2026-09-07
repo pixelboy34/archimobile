@@ -234,6 +234,15 @@ export const TEXTURE_LABELS: Record<TextureKind, string> = {
   glass: "Reflet",
 };
 
+export const MATERIAL_GROUPS: { id: string; label: string; ids: MaterialId[] }[] = [
+  { id: "murs", label: "Murs", ids: ["plaster", "stucco", "lime", "brick", "concrete", "stone", "travertine"] },
+  { id: "sols", label: "Sols", ids: ["parquet", "wood", "darkwood", "marble", "gravel", "white"] },
+  { id: "toit", label: "Toit", ids: ["terracotta", "slate", "zinc", "copper", "corten"] },
+  { id: "menu", label: "Menuis.", ids: ["wood", "darkwood", "clt", "white", "glass", "polycarb"] },
+  { id: "metal", label: "Métal", ids: ["metal", "zinc", "corten", "copper"] },
+  { id: "ext", label: "Ext.", ids: ["vegetation", "water", "gravel", "stone"] },
+];
+
 export function resolveMaterial(id: MaterialId, overrides?: MaterialStyles): MaterialStyle {
   return { ...MATERIAL_CATALOG[id], ...overrides?.[id] };
 }

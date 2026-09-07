@@ -17,7 +17,7 @@ export function NavOptions() {
           type="button"
           aria-pressed={maquette}
           onClick={() => setNav({ orbitMode: "maquette" })}
-          className={`flex h-16 flex-col items-center justify-center rounded-lg text-sm ${
+          className={`flex h-11 flex-col items-center justify-center rounded-lg text-sm ${
             maquette ? "bg-primary text-primary-fg" : "bg-elevated text-muted"
           }`}
         >
@@ -28,7 +28,7 @@ export function NavOptions() {
           type="button"
           aria-pressed={!maquette}
           onClick={() => setNav({ orbitMode: "regard" })}
-          className={`flex h-16 flex-col items-center justify-center rounded-lg text-sm ${
+          className={`flex h-11 flex-col items-center justify-center rounded-lg text-sm ${
             !maquette ? "bg-primary text-primary-fg" : "bg-elevated text-muted"
           }`}
         >
@@ -115,7 +115,7 @@ function Toggle({ label, on, onChange }: { label: string; on: boolean; onChange:
       type="button"
       aria-pressed={on}
       onClick={() => onChange(!on)}
-      className="flex h-11 items-center justify-between rounded-lg bg-elevated px-3 text-sm"
+      className="flex h-9 items-center justify-between rounded-lg bg-elevated px-3 text-sm"
     >
       <span>{label}</span>
       <span className={`flex h-6 w-11 items-center rounded-full px-0.5 ${on ? "bg-accent" : "bg-border"}`}>

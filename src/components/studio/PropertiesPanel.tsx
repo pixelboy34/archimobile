@@ -23,7 +23,6 @@ import {
   WIND_LABELS,
   type ClimateZone,
   type EnergyClass,
-  type FurnitureKind,
   type MaterialId,
   type RoomFunction,
   type SeismicZone,
@@ -33,12 +32,14 @@ import {
 } from "@/lib/bim/types";
 import {
   DOOR_PRESETS,
+  OBJECT_CATALOG,
   OBJECT_SIZES,
   ROOF_PRESETS,
   SLAB_PRESETS,
   STAIR_PRESETS,
   WALL_PRESETS,
   WINDOW_PRESETS,
+  objectDef,
 } from "@/lib/bim/catalog";
 import type { ProjectAnalysis } from "@/lib/bim/analysis";
 import {
@@ -67,7 +68,6 @@ import {
 import type { BanHit } from "@/lib/geo/types";
 import { Input } from "@/components/ui/input";
 import { LIGHT_PRESETS, MONTH_LABELS } from "@/lib/render/lighting";
-import { MaterialSwatches } from "./MaterialsPanel";
 import { NavOptions } from "./NavOptions";
 
 const MATS = Object.keys(MATERIAL_LABELS) as MaterialId[];
@@ -97,12 +97,8 @@ export function PropertiesPanel({
   const patchSelected = useStudio((s) => s.patchSelected);
   const commitSelected = useStudio((s) => s.commitSelected);
   const deleteSelected = useStudio((s) => s.deleteSelected);
-  const duplicateSelected = useStudio((s) => s.duplicateSelected);
   const renameCurrent = useStudio((s) => s.renameCurrent);
   const patchMeta = useStudio((s) => s.patchMeta);
-  const activeMaterialId = useStudio((s) => s.activeMaterialId);
-  const setActiveMaterial = useStudio((s) => s.setActiveMaterial);
-  const applyMaterial = useStudio((s) => s.applyMaterial);
   if (!project) return null;
   const id = selectedIds[0];
   const wall = project.walls.find((w) => w.id === id);
@@ -287,13 +283,32 @@ export function PropertiesPanel({
           )}
           {furn && (
             <Section title={FURNITURE_LABELS[furn.kind] ?? "Objet"}>
-              <button
-                type="button"
-                onClick={() => window.dispatchEvent(new CustomEvent("forma-open-library"))}
-                className="flex h-9 w-full items-center justify-center rounded-md bg-elevated text-[11px] font-medium text-accent ring-1 ring-accent/30"
-              >
-                Bibliothèque
-              </button>
+              <div className="flex flex-wrap gap-1">
+                {OBJECT_CATALOG.filter((o) => o.group === (objectDef(furn.kind)?.group ?? "living"))
+                  .slice(0, 6)
+                  .map((o) => (
+                    <button
+                      key={o.kind}
+                      type="button"
+                      onClick={() => {
+                        const sz = OBJECT_SIZES[o.kind];
+                        commitSelected({ kind: o.kind, ...(sz ?? {}) });
+                      }}
+                      className={`h-8 rounded-md px-2 text-[11px] font-medium ${
+                        furn.kind === o.kind ? "bg-accent/15 text-accent ring-1 ring-accent/40" : "bg-elevated text-fg/80"
+                      }`}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent("forma-open-library"))}
+                  className="h-8 rounded-md px-2 text-[11px] font-medium text-accent ring-1 ring-accent/30"
+                >
+                  Tous…
+                </button>
+              </div>
               <button
                 type="button"
                 onClick={() => {
@@ -381,14 +396,9 @@ export function PropertiesPanel({
           )}
           {id && (
             <More label="Actions">
-            <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={duplicateSelected}>
-                Dupliquer
-              </Button>
-              <Button variant="danger" className="flex-1" onClick={deleteSelected}>
+              <Button variant="danger" className="w-full" onClick={deleteSelected}>
                 Supprimer
               </Button>
-            </div>
             </More>
           )}
           {!id && !compact && (
@@ -444,15 +454,6 @@ export function PropertiesPanel({
               <Chips label="Vent" value={project.meta.wind ?? "2"} options={["1", "2", "3", "4", "5"] as WindRegion[]} labels={WIND_LABELS} onChange={(z) => patchMeta({ wind: z })} />
             </More>
           </Section>
-          <More label="Matières">
-            <MaterialSwatches
-              value={activeMaterialId}
-              onChange={(id) => {
-                setActiveMaterial(id);
-                applyMaterial(id, selectedIds.length ? "selected" : "walls");
-              }}
-            />
-          </More>
         </>
       )}
 
@@ -500,6 +501,7 @@ export function PropertiesPanel({
             <Param label="Ambiance" value={lighting.ambient} min={0} max={1.2} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ ambient: v })} />
             <Param label="Fill" value={lighting.fill} min={0} max={1.2} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ fill: v })} />
             <Param label="Exposition" value={lighting.exposure} min={0.4} max={2} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ exposure: v })} />
+            <Param label="Gain intérieur" value={lighting.interiorGain} min={0.2} max={2} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ interiorGain: v })} />
             <Chips label="Intérieur" value={lighting.interior} options={["off", "auto", "on"]} labels={{ off: "Éteint", auto: "Auto", on: "Allumé" }} onChange={(v) => setLighting({ interior: v as "off" | "auto" | "on" })} />
             </More>
           </Section>

@@ -180,6 +180,14 @@ export const OBJECT_CATALOG: ObjectDef[] = [
   { kind: "truck", label: FURNITURE_LABELS.truck, group: "site", w: 7.2, d: 2.5, h: 3.2, style: "vehicle", mat: "metal", site: true },
   { kind: "child", label: FURNITURE_LABELS.child, group: "site", w: 3.0, d: 3.0, h: 2.2, style: "people", mat: "lime", site: true },
   { kind: "container", label: FURNITURE_LABELS.container, group: "site", w: 6.0, d: 2.4, h: 2.6, style: "box", mat: "corten", site: true },
+  { kind: "sofabed", label: FURNITURE_LABELS.sofabed, group: "living", w: 2.0, d: 0.95, h: 0.85, style: "sofa", mat: "wood" },
+  { kind: "diningbench", label: FURNITURE_LABELS.diningbench, group: "dining", w: 1.6, d: 0.4, h: 0.45, style: "box", mat: "wood" },
+  { kind: "wallcab", label: FURNITURE_LABELS.wallcab, group: "cook", w: 0.8, d: 0.35, h: 0.7, style: "cabinet", mat: "white" },
+  { kind: "coat", label: FURNITURE_LABELS.coat, group: "living", w: 0.4, d: 0.4, h: 1.7, style: "post", mat: "metal" },
+  { kind: "outdoortable", label: FURNITURE_LABELS.outdoortable, group: "garden", w: 1.8, d: 0.9, h: 0.75, style: "table", mat: "wood", site: true },
+  { kind: "bollard", label: FURNITURE_LABELS.bollard, group: "site", w: 0.22, d: 0.22, h: 0.9, style: "post", mat: "corten", site: true },
+  { kind: "vanity", label: FURNITURE_LABELS.vanity, group: "wet", w: 1.0, d: 0.48, h: 0.85, style: "cabinet", mat: "white" },
+  { kind: "linen", label: FURNITURE_LABELS.linen, group: "sleep", w: 0.8, d: 0.55, h: 2.0, style: "cabinet", mat: "white" },
 ];
 
 export const OBJECT_GROUPS: { id: string; label: string; kinds: FurnitureKind[] }[] = GROUP_META.map((g) => ({

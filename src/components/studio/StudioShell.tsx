@@ -19,8 +19,6 @@ import { CopilotPanel } from "./CopilotPanel";
 import { HelpPanel } from "./HelpPanel";
 import { Joystick } from "./Joystick";
 import { LayersPanel } from "./LayersPanel";
-import { MaterialsPanel } from "./MaterialsPanel";
-import { OuvrageExplorer } from "./OuvrageExplorer";
 import { NavCoach } from "./NavCoach";
 import { NomenclaturePanel } from "./NomenclaturePanel";
 import { NavPad } from "./NavPad";
@@ -477,15 +475,6 @@ export function StudioShell({ projectId }: { projectId: string }) {
               setInspector("projet");
               return;
             }
-            if (id === "objects") {
-              setResources("objects");
-              setTool("furniture");
-              return;
-            }
-            if (id === "materials") {
-              setResources("materials");
-              return;
-            }
             if (id === "building") setPanel("building");
             else if (id === "struct") setPanel("struct");
             else if (id === "analyse") setPanel("analyse");
@@ -552,16 +541,6 @@ export function StudioShell({ projectId }: { projectId: string }) {
       <Sheet open={panel === "layers"} onOpenChange={(o) => !o && setPanel(null)}>
         <SheetContent title="Calques">
           <LayersPanel />
-        </SheetContent>
-      </Sheet>
-      <Sheet open={panel === "mats"} onOpenChange={(o) => !o && setPanel(null)}>
-        <SheetContent title="Matériaux" half>
-          <MaterialsPanel />
-        </SheetContent>
-      </Sheet>
-      <Sheet open={panel === "ouvrages"} onOpenChange={(o) => !o && setPanel(null)}>
-        <SheetContent title="Ouvrages" half>
-          <OuvrageExplorer />
         </SheetContent>
       </Sheet>
       <Sheet open={panel === "struct"} onOpenChange={(o) => !o && setPanel(null)}>

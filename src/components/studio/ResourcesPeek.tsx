@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
 import { OBJECT_CATALOG, OBJECT_GROUPS, OBJECT_SIZES, objectDef } from "@/lib/bim/catalog";
-import { MATERIAL_CATALOG, MATERIAL_COLORS, resolveMaterial } from "@/lib/bim/materials";
+import { MATERIAL_CATALOG, MATERIAL_COLORS, MATERIAL_GROUPS, resolveMaterial } from "@/lib/bim/materials";
 import { MATERIAL_LABELS, type FurnitureKind, type MaterialId, type TextureKind } from "@/lib/bim/types";
 import { paintSwatch } from "@/lib/render/procedural-textures";
 import { cn } from "@/lib/utils";
@@ -30,6 +30,7 @@ export function ResourcesPeek({
   const project = useStudio((s) => s.projects.find((p) => p.id === s.currentId) ?? null);
   const [q, setQ] = useState("");
   const [group, setGroup] = useState<string>("all");
+  const [matGroup, setMatGroup] = useState<string>("all");
   const [tab, setTab] = useState<"mats" | "objs">(
     mode === "materials" ? "mats" : mode === "objects" ? "objs" : "objs",
   );
@@ -45,6 +46,7 @@ export function ResourcesPeek({
     const needle = q.trim().toLowerCase();
     return OBJECT_CATALOG.filter((o) => {
       if (group === "recent") return recents.includes(o.kind);
+      if (group === "essential") return Boolean(o.essential);
       if (group !== "all" && o.group !== group) return false;
       if (!needle) return true;
       return o.label.toLowerCase().includes(needle) || o.kind.includes(needle) || o.group.includes(needle);
@@ -53,6 +55,16 @@ export function ResourcesPeek({
       return recents.indexOf(a.kind) - recents.indexOf(b.kind);
     });
   }, [q, group, recents]);
+
+  const materials = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    const fam = MATERIAL_GROUPS.find((g) => g.id === matGroup);
+    return MAT_IDS.filter((id) => {
+      if (fam && !fam.ids.includes(id)) return false;
+      if (!needle) return true;
+      return MATERIAL_LABELS[id].toLowerCase().includes(needle) || id.includes(needle);
+    });
+  }, [q, matGroup]);
 
   if (!open) return null;
 
@@ -84,18 +96,16 @@ export function ResourcesPeek({
             </button>
           )}
         </div>
-        {tab === "objs" && (
-          <label className="flex h-8 min-w-0 max-w-[9.5rem] items-center gap-1 rounded-md bg-elevated px-2 text-muted">
-            <Search className="size-3 shrink-0" />
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Chercher…"
-              aria-label="Chercher un objet"
-              className="min-w-0 flex-1 bg-transparent text-[11px] text-fg outline-none placeholder:text-subtle"
-            />
-          </label>
-        )}
+        <label className="flex h-8 min-w-0 max-w-[9.5rem] items-center gap-1 rounded-md bg-elevated px-2 text-muted">
+          <Search className="size-3 shrink-0" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Chercher…"
+            aria-label="Chercher"
+            className="min-w-0 flex-1 bg-transparent text-[11px] text-fg outline-none placeholder:text-subtle"
+          />
+        </label>
         <button
           type="button"
           aria-label="Fermer ressources"
@@ -109,6 +119,12 @@ export function ResourcesPeek({
       {tab === "objs" && (
         <div className="flex shrink-0 gap-1 overflow-x-auto px-2 py-1.5">
           <GroupChip label="Tous" on={group === "all"} count={OBJECT_CATALOG.length} onClick={() => setGroup("all")} />
+          <GroupChip
+            label="Essentiels"
+            on={group === "essential"}
+            count={OBJECT_CATALOG.filter((o) => o.essential).length}
+            onClick={() => setGroup("essential")}
+          />
           {recents.length > 0 && (
             <GroupChip label="Récents" on={group === "recent"} count={recents.length} onClick={() => setGroup("recent")} />
           )}
@@ -124,10 +140,25 @@ export function ResourcesPeek({
         </div>
       )}
 
+      {tab === "mats" && (
+        <div className="flex shrink-0 gap-1 overflow-x-auto px-2 py-1.5">
+          <GroupChip label="Toutes" on={matGroup === "all"} count={MAT_IDS.length} onClick={() => setMatGroup("all")} />
+          {MATERIAL_GROUPS.map((g) => (
+            <GroupChip
+              key={g.id}
+              label={g.label}
+              on={matGroup === g.id}
+              count={g.ids.length}
+              onClick={() => setMatGroup(g.id)}
+            />
+          ))}
+        </div>
+      )}
+
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-2">
         {tab === "mats" ? (
-          <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-6">
-            {MAT_IDS.map((id) => {
+          <div className="grid grid-cols-5 gap-1.5">
+            {materials.map((id) => {
               const st = resolveMaterial(id, project?.materials);
               const on = id === activeMat;
               return (

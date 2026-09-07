@@ -11,8 +11,6 @@ import {
   Layers,
   MapPinned,
   PackageCheck,
-  Palette,
-  Sofa,
   Sparkles,
   Sun,
   Table2,
@@ -25,8 +23,6 @@ import { cn } from "@/lib/utils";
 
 export type OverflowAction =
   | "building"
-  | "objects"
-  | "materials"
   | "faisabilite"
   | "struct"
   | "analyse"
@@ -47,8 +43,6 @@ type Tile =
 
 const ROOT: Tile[] = [
   { kind: "action", id: "building", label: "Bâtiment", icon: Building2 },
-  { kind: "action", id: "objects", label: "Objets", icon: Sofa },
-  { kind: "action", id: "materials", label: "Matières", icon: Palette },
   { kind: "action", id: "dossier", label: "Dossier", icon: PackageCheck },
   { kind: "folder", id: "analyser", label: "Analyser", icon: Sun },
   { kind: "folder", id: "livrer", label: "Livrer", icon: Archive },
@@ -76,7 +70,7 @@ const FOLDER_TITLE: Record<Folder, string> = {
   livrer: "Livrer",
 };
 
-/** Compact atelier — 4 actions + 2 sous-menus. Surplus never on the first screen. */
+/** Atelier — Bâtiment, Dossier, Analyser, Livrer. Objets et matières : rail Ressources. */
 export function RadialMenu({
   open,
   onClose,

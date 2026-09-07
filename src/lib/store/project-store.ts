@@ -1565,6 +1565,11 @@ export const useStudio = create<StudioState>()(
         snap: s.snap,
         snapStep: s.snapStep,
         grid: s.grid,
+        physics: s.physics,
+        isolateStory: s.isolateStory,
+        showStructure: s.showStructure,
+        clipY: s.clipY,
+        activeMaterialId: s.activeMaterialId,
       }),
       merge: (persisted, current) => {
         const p = persisted as Partial<StudioState> | undefined;
@@ -1591,13 +1596,18 @@ export const useStudio = create<StudioState>()(
           snap: p?.snap ?? current.snap,
           snapStep: p?.snapStep ?? current.snapStep,
           grid: p?.grid ?? current.grid,
+          physics: p?.physics ?? current.physics,
+          isolateStory: p?.isolateStory ?? current.isolateStory,
+          showStructure: p?.showStructure ?? current.showStructure,
+          clipY: p?.clipY ?? current.clipY,
+          activeMaterialId: p?.activeMaterialId ?? current.activeMaterialId,
           nav: {
             ...DEFAULT_NAV,
             ...(p?.nav ?? {}),
             ...(!p?.nav || !("orbitMode" in p.nav)
               ? { orbitMode: "maquette" as const, invertOrbitX: false, invertOrbitY: false, invertPan: false }
               : {}),
-            fov: Math.max(56, p?.nav?.fov ?? DEFAULT_NAV.fov),
+            fov: typeof p?.nav?.fov === "number" && p.nav.fov <= 54 ? p.nav.fov : DEFAULT_NAV.fov,
           },
         };
       },

@@ -13,16 +13,17 @@ export function HelpPanel() {
           comme une caméra.
         </li>
         <li>
-          <span className="text-fg">Bibliothèque.</span> 110 objets : salon, nuit,
-          cuisine, eau, bureau, technique, extérieur. Récents en tête. Tapez pour poser.
+          <span className="text-fg">Bibliothèque.</span> Objets et matières : rail
+          Ressources. Essentiels, récents, salon, nuit, cuisine, eau, bureau, technique,
+          jardin, site. Chercher, puis poser.
         </li>
         <li>
           <span className="text-fg">Paramètres.</span> L’essentiel d’abord (géométrie). Avancé
           ouvre thermique, feu, urbanisme. Dupliquez un niveau pour les grands projets.
         </li>
         <li>
-          <span className="text-fg">Matières.</span> Plus → Matières. Enduit, brique, zinc, marbre,
-          parquet — textures monde, peintes en direct.
+          <span className="text-fg">Matières.</span> Ressources → Matières. Murs, sols,
+          toit, menuiserie, métal, extérieur — peintes sur l’ouvrage.
         </li>
         <li>
           <span className="text-fg">Nomenclatures.</span> Plus → Analyser → Nomen. Portes, fenêtres,
