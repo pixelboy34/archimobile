@@ -22,7 +22,7 @@ export function NavPad() {
   const rose = ((theta - (north * Math.PI) / 180 + Math.PI / 2) * 180) / Math.PI;
 
   return (
-    <div className="pointer-events-auto absolute top-[calc(env(safe-area-inset-top)+3.1rem)] right-2 z-10 flex flex-col items-end gap-1.5">
+    <div className="nav-pad pointer-events-auto absolute top-[calc(env(safe-area-inset-top)+3.1rem)] right-2 z-10 flex flex-col items-end gap-1.5">
       {showCompass && (
         <button
           type="button"

@@ -1,0 +1,23 @@
+FORMA — copie locale
+====================
+
+Archive complète du studio BIM (source, sans node_modules).
+Date : 2026-09-07
+
+1) Sur votre PC
+   - Dézipper forma-studio.zip
+   - Dans le dossier forma-studio :  npm install
+   - Lancer :  npm run dev
+   - Ouvrir l’URL indiquée (souvent http://localhost:8080)
+
+2) Sauvegarde GitHub (miroir)
+   https://github.com/pixelboy34/archimobile
+
+3) Données projets
+   Les maquettes sont dans le navigateur (localStorage, clé forma-studio-v9).
+   Exportez IFC / DXF / JSON depuis Studio pour un fichier réel.
+
+4) Contenu
+   src/           application (3D, BIM, PWA)
+   public/        icônes PWA
+   package.json   dépendances (Three.js, React, etc.)

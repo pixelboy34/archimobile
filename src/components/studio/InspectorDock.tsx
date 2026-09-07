@@ -7,7 +7,7 @@ import { useStudio } from "@/lib/store/project-store";
 import { PropertiesPanel, type ParamsTab } from "./PropertiesPanel";
 
 const TABS: { id: ParamsTab; label: string }[] = [
-  { id: "ouvrage", label: "Ouvrage" },
+  { id: "ouvrage", label: "Ouvr." },
   { id: "niveaux", label: "Étages" },
   { id: "projet", label: "Site" },
   { id: "rendu", label: "Vue" },
@@ -46,7 +46,7 @@ function selectionChip(project: Project, id: string | undefined) {
   return { type: "Élément", dims: id.slice(0, 8) };
 }
 
-/** Compact inspector — default ~36dvh, expandable to 52dvh. Never fullscreen. */
+/** Compact inspector: bottom sheet on phone, right rail from lg. Never fullscreen. */
 export function InspectorDock({
   tab,
   onTab,
@@ -60,70 +60,52 @@ export function InspectorDock({
   const selectedIds = useStudio((s) => s.selectedIds);
   const chip = project ? selectionChip(project, selectedIds[0]) : { type: "Projet", dims: "" };
   const [expanded, setExpanded] = useState(false);
-  const hasSel = selectedIds.length > 0;
 
   return (
     <div
       className={cn(
-        "inspector-dock pointer-events-auto absolute inset-x-0 bottom-0 z-30 flex flex-col",
-        "border-t border-accent/40 bg-surface/97 shadow-[0_-12px_40px_rgba(0,0,0,0.55),0_0_0_1px_rgba(110,208,195,0.12)] backdrop-blur-xl",
-        "animate-in slide-in-from-bottom duration-300",
-        expanded ? "max-h-[min(52dvh,28rem)]" : "max-h-[min(36dvh,22rem)]",
+        "inspector-dock pointer-events-auto absolute z-30 flex flex-col bg-surface/98 shadow-border",
+        "inset-x-0 bottom-0 border-t border-border",
+        expanded ? "max-h-[min(48dvh,26rem)]" : "max-h-[min(32dvh,18.5rem)]",
+        "lg:inset-x-auto lg:top-[calc(env(safe-area-inset-top)+3.15rem)] lg:right-0 lg:bottom-0 lg:w-[22rem] lg:max-h-none lg:border-t-0 lg:border-l",
       )}
     >
-      <button
-        type="button"
-        aria-label={expanded ? "Réduire le panneau" : "Agrandir le panneau"}
-        onClick={() => setExpanded((v) => !v)}
-        className="flex w-full flex-col items-center pt-1.5 pb-0.5"
-      >
-        <span className="h-1 w-10 rounded-full bg-accent/60 shadow-[0_0_8px_rgba(110,208,195,0.45)]" />
-        <span className="mt-0.5 flex items-center gap-1 text-[9px] tracking-wide text-muted uppercase">
-          <ChevronUp className={cn("size-3 transition-transform duration-200", expanded && "rotate-180")} />
-          {expanded ? "Réduire" : "Agrandir"}
-        </span>
-      </button>
-
-      <div className="flex items-center gap-2 border-b border-border/60 px-2 pb-1.5">
-        <div className="min-w-0 flex-1">
-          <div className="mb-1 flex items-center gap-2 px-1">
-            <span
-              className={cn(
-                "sel-chip inline-flex max-w-[58%] items-center truncate rounded-full border border-accent/40 bg-accent/10 px-2.5 py-0.5 text-[11px] font-semibold tracking-wide text-accent uppercase",
-                hasSel && "sel-chip-pulse",
-              )}
+      <div className="flex shrink-0 items-center gap-1 border-b border-border px-1.5 py-1">
+        <button
+          type="button"
+          aria-label={expanded ? "Réduire le panneau" : "Agrandir le panneau"}
+          onClick={() => setExpanded((v) => !v)}
+          className="flex size-9 shrink-0 flex-col items-center justify-center text-muted lg:hidden"
+        >
+          <span className="h-0.5 w-7 rounded-full bg-border" />
+          <ChevronUp className={cn("mt-0.5 size-3 transition-transform duration-200", expanded && "rotate-180")} />
+        </button>
+        <div className="seg seg-fill min-w-0 flex-1 overflow-x-auto">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => onTab(t.id)}
+              className={cn("seg-item h-8 min-h-8 flex-1 px-2 text-[11px]", tab === t.id && "seg-item-on")}
             >
-              {chip.type}
-            </span>
-            <span className="truncate font-mono text-[11px] text-muted tabular">{chip.dims}</span>
-          </div>
-          <div className="flex min-w-0 gap-0.5 overflow-x-auto">
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => onTab(t.id)}
-                className={cn(
-                  "relative h-8 shrink-0 px-3 text-xs font-medium tracking-[0.14em] uppercase transition-colors",
-                  tab === t.id ? "text-fg" : "text-muted hover:text-fg",
-                )}
-              >
-                {t.label}
-                {tab === t.id && <span className="tab-underline" />}
-              </button>
-            ))}
-          </div>
+              {t.label}
+            </button>
+          ))}
         </div>
         <button
           type="button"
           aria-label="Fermer"
           onClick={onClose}
-          className="mb-0.5 flex size-10 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-elevated hover:text-fg"
+          className="flex size-9 shrink-0 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg"
         >
           <X className="size-4" />
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2.5 pt-1.5 pb-[max(0.6rem,env(safe-area-inset-bottom))]">
+        <p className="mb-1.5 flex items-baseline gap-2 px-0.5">
+          <span className="text-[11px] font-medium tracking-tight text-fg">{chip.type}</span>
+          <span className="min-w-0 truncate font-mono text-[10px] text-muted tabular">{chip.dims}</span>
+        </p>
         <PropertiesPanel tab={tab} onTab={onTab} />
       </div>
     </div>

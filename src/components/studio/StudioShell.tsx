@@ -253,12 +253,12 @@ export function StudioShell({ projectId }: { projectId: string }) {
    * TOP-LEFT — ViewBar (vues + niveaux only)
    * TOP under — thin StudioHud status line (mode · outil · dims · types liés)
    * BOTTOM — CommandOrb (Concevoir | Modifier capsule) + ResourcesPeek strip
-   * BOTTOM dock — InspectorDock replaces CommandOrb when open (~36dvh → 52)
+   * BOTTOM — CommandOrb; InspectorDock bottom sheet (phone) / right rail (lg)
    */
   return (
     <div className="relative h-dvh overflow-hidden bg-bg text-fg">
       <Toaster theme="dark" position="top-center" />
-      <div className="absolute inset-0 studio-canvas bg-elevated">
+      <div className={`absolute inset-0 studio-canvas bg-elevated ${inspector ? "has-inspector" : ""}`}>
         {view === "ar" ? (
           <ArGate project={current} />
         ) : view === "plan" || workspace === "esquisse" || workspace === "releve" ? (
@@ -426,8 +426,11 @@ export function StudioShell({ projectId }: { projectId: string }) {
           </div>
         </header>
 
-        {!inspector && (
-        <div className="pointer-events-none absolute right-0 bottom-0 left-0 z-20">
+        <div
+          className={`pointer-events-none absolute right-0 bottom-0 left-0 z-20 ${
+            inspector ? "hidden lg:block lg:pr-[22.5rem]" : ""
+          }`}
+        >
           <div className="pointer-events-auto flex flex-col items-center bg-gradient-to-t from-bg/85 via-bg/30 to-transparent px-3 pt-5 pb-[max(0.45rem,env(safe-area-inset-bottom))]">
             <ReleveBar />
             <CommandOrb
@@ -437,7 +440,6 @@ export function StudioShell({ projectId }: { projectId: string }) {
             />
           </div>
         </div>
-        )}
         {inspector && (
           <InspectorDock tab={inspector} onTab={setInspector} onClose={() => setInspector(null)} />
         )}
