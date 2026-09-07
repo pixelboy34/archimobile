@@ -58,6 +58,13 @@ import { useStudio } from "@/lib/store/project-store";
 import { isLiveTypical, typicalGroupSize } from "@/lib/cad/typical";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { geoSearchAddress, geoParcelleAt } from "@/lib/geo/client";
+import {
+  CADASTRE_DISCLAIMER,
+  formatCadastralRef,
+  parcelleToMetaPatch,
+} from "@/lib/geo/cadastre";
+import type { BanHit } from "@/lib/geo/types";
 import { Input } from "@/components/ui/input";
 import { LIGHT_PRESETS, MONTH_LABELS } from "@/lib/render/lighting";
 import { MaterialSwatches } from "./MaterialsPanel";
@@ -333,6 +340,13 @@ export function PropertiesPanel({
             <Param label="Latitude" value={project.meta.latitude} min={-45} max={65} step={0.5} unit="°" digits={1} onBegin={beginEdit} onChange={(v) => patchMeta({ latitude: v })} />
             <Param label="Nord" value={project.meta.north} min={0} max={360} step={5} unit="°" digits={0} onBegin={beginEdit} onChange={(v) => patchMeta({ north: v })} />
             <Chips label="Typologie" value={project.meta.typology ?? "house"} options={["house", "villa", "collective", "office", "atelier"] as Typology[]} labels={TYPOLOGY_LABELS} onChange={(t) => patchMeta({ typology: t })} />
+            <ParcelAddressSearch
+              project={project}
+              onApply={(patch) => {
+                beginEdit();
+                patchMeta(patch);
+              }}
+            />
             <Param label="Parcelle" value={project.meta.plotM2 ?? 0} min={80} max={100000} step={50} unit="m²" digits={0} onBegin={beginEdit} onChange={(v) => patchMeta({ plotM2: v })} />
             <Param label="CES max" value={project.meta.ces ?? 0.4} min={0.1} max={1} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => patchMeta({ ces: v })} />
             <Param label="COS max" value={project.meta.cos ?? 0.6} min={0.1} max={8} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => patchMeta({ cos: v })} />
@@ -917,6 +931,106 @@ function MiniStat({ label, value }: { label: string; value: string }) {
     <div className="rounded-md bg-elevated/35 px-1.5 py-1.5 text-center">
       <p className="text-[9px] tracking-wide text-muted uppercase">{label}</p>
       <p className="font-mono text-[11px] tabular text-fg">{value}</p>
+    </div>
+  );
+}
+
+
+function ParcelAddressSearch({
+  project,
+  onApply,
+}: {
+  project: Project;
+  onApply: (patch: Partial<Project["meta"]>) => void;
+}) {
+  const [q, setQ] = useState("");
+  const [hits, setHits] = useState<BanHit[]>([]);
+  const [busy, setBusy] = useState(false);
+  const parcelle = project.meta.parcelle;
+
+  async function runSearch() {
+    const query = q.trim();
+    if (query.length < 3) {
+      toast.message("Saisissez une adresse (3 caractères min.)");
+      return;
+    }
+    setBusy(true);
+    try {
+      const results = await geoSearchAddress(query);
+      setHits(results);
+      if (results.length === 0) toast.message("Aucune adresse trouvée");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Cadastre indisponible hors ligne";
+      toast.error(msg.includes("hors ligne") || msg.includes("indisponible") ? "Cadastre indisponible hors ligne" : msg);
+      setHits([]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function pick(hit: BanHit) {
+    setBusy(true);
+    try {
+      const parcelle = await geoParcelleAt(hit.lon, hit.lat, hit.label);
+      const patch = parcelleToMetaPatch(parcelle);
+      onApply(patch);
+      setHits([]);
+      setQ(hit.label);
+      toast.success(
+        `Parcelle ${formatCadastralRef(parcelle)} · ${Math.round(parcelle.areaM2).toLocaleString("fr-FR")} m²`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Cadastre indisponible hors ligne";
+      toast.error(msg.includes("hors ligne") || /fetch|network|503/i.test(msg) ? "Cadastre indisponible hors ligne" : msg);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5 rounded-lg border border-border/60 bg-elevated/30 p-2.5">
+      <p className="text-[10px] font-semibold tracking-[0.12em] text-muted uppercase">Adresse / parcelle</p>
+      <div className="flex gap-1.5">
+        <Input
+          value={q}
+          placeholder="ex. 10 rue de Rivoli Paris"
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              void runSearch();
+            }
+          }}
+          className="h-9 flex-1 text-xs"
+        />
+        <Button type="button" variant="outline" className="h-9 shrink-0 px-3 text-xs" disabled={busy} onClick={() => void runSearch()}>
+          {busy ? "…" : "Chercher"}
+        </Button>
+      </div>
+      {hits.length > 0 && (
+        <ul className="max-h-36 overflow-y-auto rounded-md border border-border/50 bg-panel">
+          {hits.map((h) => (
+            <li key={`${h.label}-${h.lon}-${h.lat}`}>
+              <button
+                type="button"
+                className="w-full px-2.5 py-2 text-left text-[11px] text-fg hover:bg-accent/10"
+                onClick={() => void pick(h)}
+                disabled={busy}
+              >
+                {h.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {parcelle && (
+        <p className="font-mono text-[10px] leading-snug text-accent">
+          {formatCadastralRef(parcelle)}
+          {" · "}
+          {Math.round(parcelle.areaM2).toLocaleString("fr-FR")} m²
+        </p>
+      )}
+      <p className="text-[9px] leading-snug text-subtle">{CADASTRE_DISCLAIMER}</p>
     </div>
   );
 }

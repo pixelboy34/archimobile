@@ -185,6 +185,10 @@ export function assessFeasibility(
   if (height.note && !bullets.includes(height.note)) bullets.push(height.note);
   if (project.meta.plotM2 == null || project.meta.plotM2 < 1) {
     bullets.unshift("Parcelle non renseignée — CES/COS indicatifs indisponibles.");
+  } else if (project.meta.parcelle?.areaM2) {
+    bullets.unshift(
+      `Parcelle cadastre ${project.meta.parcelle.section} ${project.meta.parcelle.numero} · ${Math.round(project.meta.parcelle.areaM2).toLocaleString("fr-FR")} m² (IGN / data.gouv — indicatif).`,
+    );
   }
   if (cesCap <= 0 || cosCap <= 0) {
     bullets.push("Plafonds CES/COS absents — appliquer un preset ville (indicatif) ou saisie PLU.");

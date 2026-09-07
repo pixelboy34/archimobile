@@ -374,7 +374,8 @@ export function Viewport3D({
   const ambient = lighting.ambient;
   const lens = fov || (quality.mobile ? 58 : 48);
   const camFar = Math.max(180, horiz * 8, tall * 14);
-  const plotSide = Math.sqrt(Math.max(220, project.meta.plotM2 ?? span * span));
+  const plotArea = project.meta.parcelle?.areaM2 ?? project.meta.plotM2;
+  const plotSide = Math.sqrt(Math.max(220, plotArea ?? span * span));
   const site = Math.min(420, Math.max(quality.ground, plotSide * 2.4, span * 4.2, 80));
 
   return (
@@ -483,7 +484,7 @@ export function Viewport3D({
         labelStory={storyId ?? project.stories[0]?.id ?? null}
         showStructure={showStructure}
       />
-      <Ground size={site} shadows={shadows} plot={plotSide} cx={cx} cz={cz} />
+      <Ground size={site} shadows={shadows} plot={plotSide} cx={cx} cz={cz} parcelRing={project.meta.parcelle?.ring} />
       <NorthMark cx={cx} cz={cz} elev={elev} north={project.meta.north} span={span} />
       {showGrid && !walking && (
       <gridHelper

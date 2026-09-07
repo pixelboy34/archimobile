@@ -13,6 +13,9 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiCopilotRouteImport } from './routes/api/copilot'
 import { Route as ApiRtcRouteImport } from './routes/api/rtc'
 import { Route as StudioProjectIdRouteImport } from './routes/studio.$projectId'
+import { Route as ApiGeoParcelleRouteImport } from './routes/api/geo.parcelle'
+import { Route as ApiGeoParcelleAtRouteImport } from './routes/api/geo.parcelle-at'
+import { Route as ApiGeoSearchRouteImport } from './routes/api/geo.search'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -34,18 +37,39 @@ const StudioProjectIdRoute = StudioProjectIdRouteImport.update({
   path: '/studio/$projectId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiGeoParcelleRoute = ApiGeoParcelleRouteImport.update({
+  id: '/api/geo/parcelle',
+  path: '/api/geo/parcelle',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGeoParcelleAtRoute = ApiGeoParcelleAtRouteImport.update({
+  id: '/api/geo/parcelle-at',
+  path: '/api/geo/parcelle-at',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGeoSearchRoute = ApiGeoSearchRouteImport.update({
+  id: '/api/geo/search',
+  path: '/api/geo/search',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/copilot': typeof ApiCopilotRoute
   '/api/rtc': typeof ApiRtcRoute
   '/studio/$projectId': typeof StudioProjectIdRoute
+  '/api/geo/parcelle': typeof ApiGeoParcelleRoute
+  '/api/geo/parcelle-at': typeof ApiGeoParcelleAtRoute
+  '/api/geo/search': typeof ApiGeoSearchRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/copilot': typeof ApiCopilotRoute
   '/api/rtc': typeof ApiRtcRoute
   '/studio/$projectId': typeof StudioProjectIdRoute
+  '/api/geo/parcelle': typeof ApiGeoParcelleRoute
+  '/api/geo/parcelle-at': typeof ApiGeoParcelleAtRoute
+  '/api/geo/search': typeof ApiGeoSearchRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -53,13 +77,38 @@ export interface FileRoutesById {
   '/api/copilot': typeof ApiCopilotRoute
   '/api/rtc': typeof ApiRtcRoute
   '/studio/$projectId': typeof StudioProjectIdRoute
+  '/api/geo/parcelle': typeof ApiGeoParcelleRoute
+  '/api/geo/parcelle-at': typeof ApiGeoParcelleAtRoute
+  '/api/geo/search': typeof ApiGeoSearchRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/copilot' | '/api/rtc' | '/studio/$projectId'
+  fullPaths:
+    | '/'
+    | '/api/copilot'
+    | '/api/rtc'
+    | '/studio/$projectId'
+    | '/api/geo/parcelle'
+    | '/api/geo/parcelle-at'
+    | '/api/geo/search'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/copilot' | '/api/rtc' | '/studio/$projectId'
-  id: '__root__' | '/' | '/api/copilot' | '/api/rtc' | '/studio/$projectId'
+  to:
+    | '/'
+    | '/api/copilot'
+    | '/api/rtc'
+    | '/studio/$projectId'
+    | '/api/geo/parcelle'
+    | '/api/geo/parcelle-at'
+    | '/api/geo/search'
+  id:
+    | '__root__'
+    | '/'
+    | '/api/copilot'
+    | '/api/rtc'
+    | '/studio/$projectId'
+    | '/api/geo/parcelle'
+    | '/api/geo/parcelle-at'
+    | '/api/geo/search'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -67,6 +116,9 @@ export interface RootRouteChildren {
   ApiCopilotRoute: typeof ApiCopilotRoute
   ApiRtcRoute: typeof ApiRtcRoute
   StudioProjectIdRoute: typeof StudioProjectIdRoute
+  ApiGeoParcelleRoute: typeof ApiGeoParcelleRoute
+  ApiGeoParcelleAtRoute: typeof ApiGeoParcelleAtRoute
+  ApiGeoSearchRoute: typeof ApiGeoSearchRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -99,6 +151,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StudioProjectIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/geo/parcelle': {
+      id: '/api/geo/parcelle'
+      path: '/api/geo/parcelle'
+      fullPath: '/api/geo/parcelle'
+      preLoaderRoute: typeof ApiGeoParcelleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/geo/parcelle-at': {
+      id: '/api/geo/parcelle-at'
+      path: '/api/geo/parcelle-at'
+      fullPath: '/api/geo/parcelle-at'
+      preLoaderRoute: typeof ApiGeoParcelleAtRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/geo/search': {
+      id: '/api/geo/search'
+      path: '/api/geo/search'
+      fullPath: '/api/geo/search'
+      preLoaderRoute: typeof ApiGeoSearchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -107,6 +180,9 @@ const rootRouteChildren: RootRouteChildren = {
   ApiCopilotRoute: ApiCopilotRoute,
   ApiRtcRoute: ApiRtcRoute,
   StudioProjectIdRoute: StudioProjectIdRoute,
+  ApiGeoParcelleRoute: ApiGeoParcelleRoute,
+  ApiGeoParcelleAtRoute: ApiGeoParcelleAtRoute,
+  ApiGeoSearchRoute: ApiGeoSearchRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

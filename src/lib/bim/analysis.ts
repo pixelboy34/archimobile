@@ -50,7 +50,7 @@ export function analyzeProject(project: Project): ProjectAnalysis {
     .filter((r) => r.storyId === groundId && !OUTDOOR.includes(r.function))
     .reduce((s, r) => s + polygonArea(r.polygon), 0);
   const floorArea = netArea;
-  const plot = Math.max(0, project.meta.plotM2 ?? 0);
+  const plot = Math.max(0, project.meta.parcelle?.areaM2 ?? project.meta.plotM2 ?? 0);
   const cesActual = plot > 1 ? footprint / plot : 0;
   const cosActual = plot > 1 ? floorArea / plot : 0;
 

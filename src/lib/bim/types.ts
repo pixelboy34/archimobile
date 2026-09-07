@@ -339,6 +339,8 @@ export interface ProjectMeta {
   year?: number;
   seismic?: SeismicZone;
   wind?: WindRegion;
+  /** Cadastre IGN réel (indicatif) */
+  parcelle?: import("@/lib/geo/types").ProjectParcelleMeta;
 }
 
 export interface Revision {

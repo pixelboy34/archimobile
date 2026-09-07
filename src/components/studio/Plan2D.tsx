@@ -223,6 +223,24 @@ export function Plan2D({
         }
       }
 
+      const parcelRing = proj.meta.parcelle?.ring;
+      if (parcelRing && parcelRing.length >= 3) {
+        ctx.beginPath();
+        parcelRing.forEach((pt, i) => {
+          const s = toS({ x: pt[0], y: pt[1] });
+          if (i === 0) ctx.moveTo(s.x, s.y);
+          else ctx.lineTo(s.x, s.y);
+        });
+        ctx.closePath();
+        ctx.setLineDash([7, 5]);
+        ctx.strokeStyle = "rgba(110, 208, 195, 0.72)";
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = "rgba(110, 208, 195, 0.04)";
+        ctx.fill();
+      }
+
       const rooms = proj.rooms.filter((r) => r.storyId === sid);
       for (const r of rooms) {
         if (r.polygon.length < 3) continue;

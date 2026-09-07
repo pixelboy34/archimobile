@@ -1,5 +1,6 @@
 import { analyzeProject } from "./analysis";
 import { assessFeasibility, VERDICT_LABELS } from "./feasibility";
+import { CADASTRE_DISCLAIMER, formatCadastralRef } from "@/lib/geo/cadastre";
 import {
   aboveGroundHeight,
   buildCoupeSvg,
@@ -205,9 +206,10 @@ export function buildDossierHtml(project: Project): DossierResult {
     <p class="brand">FORMA · Dossier architectural</p>
     <h1 style="margin-top:18px">${esc(project.name)}</h1>
     <p class="meta" style="margin-top:8px;font-size:12pt">
-      ${esc(project.meta.location || "Lieu non renseigné")}
+      ${esc(project.meta.parcelle?.address || project.meta.location || "Lieu non renseigné")}
       · ${esc(project.meta.client || "Maître d'ouvrage non renseigné")}
     </p>
+    ${project.meta.parcelle ? `<p class="meta" style="margin-top:4px">Site · ${esc(formatCadastralRef(project.meta.parcelle))} · ${Math.round(project.meta.parcelle.areaM2).toLocaleString("fr-FR")} m²<br/><span style="opacity:0.75;font-size:9pt">${esc(CADASTRE_DISCLAIMER)}</span></p>` : ""}
     <p class="meta">${esc(typologyLabel(project.meta.typology))} · ${esc(dateFr())}</p>
     <p class="meta" style="margin-top:10px">
       Faisabilité · <strong class="${verdictClass}">${esc(verdictLabel)}</strong>

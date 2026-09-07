@@ -1251,12 +1251,15 @@ export function Ground({
   plot,
   cx = 0,
   cz = 0,
+  parcelRing,
 }: {
   size: number;
   shadows: boolean;
   plot?: number;
   cx?: number;
   cz?: number;
+  /** Local XY meters (plan X/Y → world X/Z) */
+  parcelRing?: [number, number][];
 }) {
   const grass = useMemo(
     () => createStyledMaterial(resolveMaterial("vegetation"), false, 192),
@@ -1274,6 +1277,40 @@ export function Ground({
     [grass, earth],
   );
   const parcel = Math.max(18, plot ?? size * 0.45);
+  const parcelOutline = useMemo(() => {
+    if (!parcelRing || parcelRing.length < 3) return null;
+    const arr = new Float32Array((parcelRing.length + 1) * 3);
+    for (let i = 0; i < parcelRing.length; i++) {
+      const [x, y] = parcelRing[i]!;
+      arr[i * 3] = x;
+      arr[i * 3 + 1] = 0.06;
+      arr[i * 3 + 2] = -y;
+    }
+    const [x0, y0] = parcelRing[0]!;
+    const last = parcelRing.length * 3;
+    arr[last] = x0;
+    arr[last + 1] = 0.06;
+    arr[last + 2] = -y0;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(arr, 3));
+    const mat = new THREE.LineBasicMaterial({
+      color: "#6ed0c3",
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+    });
+    const line = new THREE.Line(geo, mat);
+    line.raycast = () => undefined;
+    return line;
+  }, [parcelRing]);
+  useEffect(
+    () => () => {
+      if (!parcelOutline) return;
+      parcelOutline.geometry.dispose();
+      (parcelOutline.material as THREE.Material).dispose();
+    },
+    [parcelOutline],
+  );
   return (
     <group position={[cx, 0, cz]}>
       <mesh
@@ -1307,6 +1344,7 @@ export function Ground({
           <meshStandardMaterial color="#6e7a76" roughness={0.88} metalness={0.02} />
         </mesh>
       ))}
+      {parcelOutline && <primitive object={parcelOutline} />}
     </group>
   );
 }
