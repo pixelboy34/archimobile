@@ -257,6 +257,28 @@ export function addGableRoof(project: Project, storyId: string, polygon: Vec2[],
   return next;
 }
 
+
+export function addMultiRoof(
+  project: Project,
+  storyId: string,
+  polygon: Vec2[],
+  pitches: number[] = [28, 32],
+): Project {
+  const next = cloneProject(project);
+  next.roofs.push({
+    id: uid("rf"),
+    storyId,
+    polygon,
+    kind: "multi",
+    pitch: pitches[0] ?? 28,
+    pitches,
+    overhang: 0.4,
+    thickness: 0.18,
+    materialId: "terracotta",
+  });
+  return next;
+}
+
 export function addFlatRoof(project: Project, storyId: string, polygon: Vec2[]): Project {
   const next = cloneProject(project);
   next.roofs.push({

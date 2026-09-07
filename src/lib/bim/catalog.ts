@@ -228,13 +228,14 @@ export const SLAB_PRESETS: { id: string; label: string; thickness: number; insul
   { id: "found", label: "Dalle 25", thickness: 0.25, insulationMm: 100, liveLoad: 150 },
 ];
 
-export const ROOF_PRESETS: { id: string; label: string; kind: "flat" | "gable" | "shed" | "hip"; pitch: number; overhang: number }[] = [
+export const ROOF_PRESETS: { id: string; label: string; kind: "flat" | "gable" | "shed" | "hip" | "multi"; pitch: number; overhang: number; pitches?: number[] }[] = [
   { id: "flat", label: "Terrasse 2%", kind: "flat", pitch: 2, overhang: 0.15 },
   { id: "zinc", label: "Zinc 5%", kind: "flat", pitch: 5, overhang: 0.2 },
   { id: "gable", label: "Deux pentes 30°", kind: "gable", pitch: 30, overhang: 0.45 },
   { id: "tuile", label: "Tuile 40°", kind: "gable", pitch: 40, overhang: 0.5 },
   { id: "shed", label: "Une pente 15°", kind: "shed", pitch: 15, overhang: 0.3 },
   { id: "hip", label: "Croupe 35°", kind: "hip", pitch: 35, overhang: 0.5 },
+  { id: "multi", label: "Multi-pentes", kind: "multi", pitch: 28, overhang: 0.4, pitches: [28, 32] },
 ];
 
 export const STAIR_PRESETS: { id: string; label: string; width: number; steps: number }[] = [

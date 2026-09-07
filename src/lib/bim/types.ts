@@ -175,7 +175,7 @@ export type WallRole = "exterior" | "interior" | "party";
 export type OpeningVariant = "single" | "double" | "sliding" | "fixed" | "casement" | "french";
 export type Glazing = "single" | "double" | "triple";
 export type Swing = "left" | "right";
-export type RoofKind = "flat" | "gable" | "shed" | "hip";
+export type RoofKind = "flat" | "gable" | "shed" | "hip" | "multi";
 export type ColumnShape = "rect" | "round";
 export type StairKind = "straight" | "spiral";
 export type Typology = "house" | "villa" | "collective" | "office" | "atelier";
@@ -260,7 +260,10 @@ export interface Roof {
   storyId: string;
   polygon: Vec2[];
   kind: RoofKind;
+  /** Primary pitch (degrees). For multi, first strip / default. */
   pitch: number;
+  /** Extra pitches for compound/multi roofs (strip gables). */
+  pitches?: number[];
   overhang: number;
   thickness: number;
   materialId: MaterialId;

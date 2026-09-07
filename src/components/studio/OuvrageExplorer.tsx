@@ -138,7 +138,7 @@ export function OuvrageExplorer() {
     if (family === "roofs") {
       return project.roofs.filter((r) => on(r.storyId)).map((r) => ({
         id: r.id,
-        title: r.kind === "flat" ? "Toit-terrasse" : r.kind === "hip" ? "Croupe" : r.kind === "shed" ? "Une pente" : "Deux pentes",
+        title: r.kind === "flat" ? "Toit-terrasse" : r.kind === "hip" ? "Croupe" : r.kind === "shed" ? "Une pente" : r.kind === "multi" ? "Multi-pentes" : "Deux pentes",
         meta: [`${r.pitch}°`, `débord ${r.overhang.toFixed(2)} m`, MATERIAL_LABELS[r.materialId]].join(" · "),
       }));
     }

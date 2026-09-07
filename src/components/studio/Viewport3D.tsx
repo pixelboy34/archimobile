@@ -9,7 +9,7 @@ import { WalkController } from "./WalkController";
 import { PhysicsRig } from "./PhysicsRig";
 import { PLAYER_HALF, PLAYER_RADIUS } from "@/lib/physics/rapier-world";
 import { dist, findWallAt, projectBounds, polygonArea, polygonCentroid, wallAngle } from "@/lib/bim/geometry";
-import { detectQuality, tallBoost, type RenderQuality } from "@/lib/render/quality";
+import { detectQuality, storyDistance, tallBoost, type RenderQuality } from "@/lib/render/quality";
 import {
   interiorOn,
   skyColor,
@@ -117,16 +117,20 @@ function InteriorLights({
   gain,
   cap,
   preferStoryId,
+  radius = 99,
 }: {
   project: Project;
   gain: number;
   cap: number;
   preferStoryId?: string | null;
+  /** Max story-index distance from preferStoryId (0 = active only). */
+  radius?: number;
 }) {
   const lights = useMemo(() => {
     if (cap <= 0) return [];
     const rooms = project.rooms
       .filter((r) => !OUTDOOR.has(r.function) && r.polygon.length >= 3)
+      .filter((r) => storyDistance(project.stories, r.storyId, preferStoryId) <= radius)
       .map((r) => ({
         id: r.id,
         storyId: r.storyId,
@@ -143,7 +147,7 @@ function InteriorLights({
       })
       .slice(0, cap);
     return rooms;
-  }, [project, cap, preferStoryId]);
+  }, [project, cap, preferStoryId, radius]);
   return (
     <>
       {lights.map((l) => (
@@ -460,6 +464,7 @@ export function Viewport3D({
           gain={lighting.interiorGain}
           cap={quality.interiorLights}
           preferStoryId={storyId ?? project.stories[0]?.id ?? null}
+          radius={quality.interiorLightRadius ?? 99}
         />
       )}
       <mesh position={sun} raycast={noopRaycast}>

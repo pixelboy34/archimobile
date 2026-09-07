@@ -1,5 +1,6 @@
 import { polygonArea, wallLength, wallMid } from "../bim/geometry";
 import type { Project, Vec2 } from "../bim/types";
+import { faceBaseZ, faceFootprint, pointInPolygon, roofFaces } from "./roof-planes";
 
 /** Minimal IFC2X3 CoordinationView subset — walls, slabs (polygon), roofs, stairs, spaces, openings, columns, stories. */
 export function exportIfc(project: Project): string {
@@ -129,20 +130,47 @@ export function exportIfc(project: Project): string {
   }
 
   for (const r of project.roofs) {
-    if (r.polygon.length < 3) continue;
+    if (r.polygon.length < 3 && r.kind !== "multi") continue;
     const story = project.stories.find((s) => s.id === r.storyId);
     const z0 = (story?.elevation ?? 0) + (story?.height ?? 2.8);
-    const pitchRise =
-      r.kind === "flat" ? r.thickness : Math.max(r.thickness, Math.tan((r.pitch * Math.PI) / 180) * 1.2);
-    const solid = extrudedPolygon(push, bodyCtx, r.polygon, pitchRise);
-    const origin = push(`IFCCARTESIANPOINT((0.,0.,${num(z0)}))`);
-    const axis = push(`IFCAXIS2PLACEMENT3D(${origin},$,$)`);
-    const place = push(`IFCLOCALPLACEMENT(${worldPlacement},${axis})`);
-    // Prefer IFCROOF; also emit PredefinedType via property-less name for CoordinationView.
-    const roof = push(
-      `IFCROOF('${guid(r.id)}',${owner},'Roof',$,$,${place},${solid},$,.${r.kind === "flat" ? "FLAT_ROOF" : "GABLE_ROOF"}.)`,
-    );
-    addToStorey(r.storyId, roof);
+    const faces = roofFaces(r, z0);
+    // One IFCROOF product per pitch plane — true polygon footprint (not bbox-only).
+    for (const f of faces) {
+      const footprint = faceFootprint(f);
+      if (footprint.length < 3) continue;
+      const thick =
+        r.kind === "flat"
+          ? r.thickness
+          : Math.max(r.thickness, r.thickness / Math.max(0.35, Math.cos((f.pitch * Math.PI) / 180)));
+      const solid = extrudedPolygon(push, bodyCtx, footprint, thick);
+      const base = faceBaseZ(f) - thick * 0.15;
+      const origin = push(`IFCCARTESIANPOINT((0.,0.,${num(Math.max(z0, base))}))`);
+      const axis = push(`IFCAXIS2PLACEMENT3D(${origin},$,$)`);
+      const place = push(`IFCLOCALPLACEMENT(${worldPlacement},${axis})`);
+      const roof = push(
+        `IFCROOF('${guid(f.id)}',${owner},'Roof ${esc(r.kind)}',$,$,${place},${solid},$,.${f.ifcType}.)`,
+      );
+      addToStorey(r.storyId, roof);
+
+      // Skylight / roof openings: furniture kind skylight inside this face footprint.
+      for (const furn of project.furniture) {
+        if (furn.storyId !== r.storyId) continue;
+        if (furn.kind !== "skylight") continue;
+        if (!pointInPolygon(furn.position, footprint)) continue;
+        const ow = Math.max(0.4, furn.w);
+        const od = Math.max(0.4, furn.d);
+        const oSolid = extrudedBox(push, bodyCtx, ow, od, thick + 0.05);
+        const oOrigin = push(
+          `IFCCARTESIANPOINT((${num(furn.position.x)},${num(furn.position.y)},${num(Math.max(z0, base))}))`,
+        );
+        const oAxis = push(`IFCAXIS2PLACEMENT3D(${oOrigin},$,$)`);
+        const oPlace = push(`IFCLOCALPLACEMENT(${worldPlacement},${oAxis})`);
+        const opening = push(
+          `IFCOPENINGELEMENT('${guid(furn.id + "-roof-open")}',${owner},'skylight',$,$,${oPlace},${oSolid},$)`,
+        );
+        push(`IFCRELVOIDSELEMENT('${guid()}',${owner},$,$,${roof},${opening})`);
+      }
+    }
   }
 
   for (const c of project.columns) {

@@ -1,5 +1,6 @@
 import { wallMid } from "../bim/geometry";
 import type { Project, Vec2 } from "../bim/types";
+import { roofFaces } from "./roof-planes";
 
 function ent(type: string, pairs: [number, string | number][]): string {
   const lines = ["0", type];
@@ -16,10 +17,6 @@ function sanitizeLayer(name: string): string {
     .replace(/[^A-Za-z0-9_-]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .slice(0, 48) || "ETAGE";
-}
-
-function storyName(project: Project, storyId: string): string {
-  return project.stories.find((s) => s.id === storyId)?.name ?? storyId;
 }
 
 function elevOf(project: Project, storyId: string): number {
@@ -54,17 +51,62 @@ function lwpoly(layer: string, pts: Vec2[], z: number, closed = true): string {
   return ent("LWPOLYLINE", pairs);
 }
 
+/** Elevated LWPOLYLINE with per-vertex Z (group 30) for pitched roof outlines. */
+function lwpoly3d(
+  layer: string,
+  pts: { x: number; y: number; z: number }[],
+  closed = true,
+): string {
+  const pairs: [number, string | number][] = [
+    [8, layer],
+    [90, pts.length],
+    [70, closed ? 1 : 0],
+  ];
+  for (const pt of pts) {
+    pairs.push([10, pt.x], [20, pt.y], [30, pt.z]);
+  }
+  return ent("LWPOLYLINE", pairs);
+}
+
+/** 3DFACE from 3–4 corners (repeats last if triangle). */
+function face3d(
+  layer: string,
+  c: { x: number; y: number; z: number }[],
+): string {
+  const a = c[0]!;
+  const b = c[1]!;
+  const d = c[2]!;
+  const e = c[3] ?? c[2]!;
+  return ent("3DFACE", [
+    [8, layer],
+    [10, a.x],
+    [20, a.y],
+    [30, a.z],
+    [11, b.x],
+    [21, b.y],
+    [31, b.z],
+    [12, d.x],
+    [22, d.y],
+    [32, d.z],
+    [13, e.x],
+    [23, e.y],
+    [33, e.z],
+  ]);
+}
+
 /**
  * DXF export — TABLES/LAYER + per-story Z (group 30/31).
- * Default is 3D-aware elevation; layer names are AutoCAD-friendly.
+ * Roofs: A-ROOF-{story} layers, 3DFACE pitch planes + elevated polylines.
  */
 export function exportDxf(project: Project, opts?: { plan?: boolean }): string {
   const plan = Boolean(opts?.plan);
   const zOf = (storyId: string) => (plan ? 0 : elevOf(project, storyId));
 
   const wallLayers = new Map<string, string>();
+  const roofLayers = new Map<string, string>();
   for (const st of project.stories) {
     wallLayers.set(st.id, `A-WALL-${sanitizeLayer(st.name)}`);
+    roofLayers.set(st.id, `A-ROOF-${sanitizeLayer(st.name)}`);
   }
 
   const layers = new Set<string>([
@@ -76,6 +118,7 @@ export function exportDxf(project: Project, opts?: { plan?: boolean }): string {
     "A-DIMS",
     "A-SLAB",
     ...wallLayers.values(),
+    ...roofLayers.values(),
   ]);
 
   const ents: string[] = [];
@@ -112,7 +155,6 @@ export function exportDxf(project: Project, opts?: { plan?: boolean }): string {
     const depth = Math.max(0.08, w.thickness / 2 + 0.04);
     const mx = w.a.x + dx * o.t;
     const my = w.a.y + dy * o.t;
-    // Short rectangle (or crossing lines) at opening on wall.
     const corners: Vec2[] = [
       { x: mx - ux * half - nx * depth, y: my - uy * half - ny * depth },
       { x: mx + ux * half - nx * depth, y: my + uy * half - ny * depth },
@@ -146,10 +188,24 @@ export function exportDxf(project: Project, opts?: { plan?: boolean }): string {
   }
 
   for (const r of project.roofs) {
-    if (r.polygon.length < 2) continue;
     const story = project.stories.find((st) => st.id === r.storyId);
-    const z = plan ? 0 : (story?.elevation ?? 0) + (story?.height ?? 2.8);
-    ents.push(lwpoly("A-ROOF", r.polygon, z, true));
+    const layer = roofLayers.get(r.storyId) ?? "A-ROOF";
+    const zBase = plan ? 0 : (story?.elevation ?? 0) + (story?.height ?? 2.8);
+    if (plan) {
+      if (r.polygon.length >= 2) ents.push(lwpoly(layer, r.polygon, 0, true));
+      continue;
+    }
+    const faces = roofFaces(r, zBase);
+    for (const f of faces) {
+      if (f.corners.length < 3) continue;
+      // Pitch plane as 3DFACE + elevated outline polyline
+      ents.push(face3d(layer, f.corners));
+      ents.push(lwpoly3d(layer, f.corners, true));
+    }
+    // Also keep overall footprint on A-ROOF for plan readers
+    if (r.polygon.length >= 2) {
+      ents.push(lwpoly("A-ROOF", r.polygon, zBase, true));
+    }
   }
 
   for (const f of project.furniture) {
@@ -191,7 +247,11 @@ export function exportDxf(project: Project, opts?: { plan?: boolean }): string {
   };
   let i = 0;
   for (const name of layers) {
-    const color = colors[name] ?? 7 + (i % 5);
+    const color = name.startsWith("A-ROOF-")
+      ? 1
+      : name.startsWith("A-WALL-")
+        ? 7
+        : (colors[name] ?? 7 + (i % 5));
     layerTable.push(layerDef(name, color));
     i++;
   }

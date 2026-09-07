@@ -16,6 +16,17 @@ export type RenderQuality = {
   simpleProps: boolean;
   /** Full-detail story radius when not isolating (1 mobile, 2 desktop). */
   storyWindow: number;
+  /**
+   * Stories beyond storyWindow rendered as "shell" before massing.
+   * Default 2; tightened for R+24 / R+40.
+   */
+  shellBand: number;
+  /** Only spawn interior lights within this story-index distance of active (0 = active only). */
+  interiorLightRadius: number;
+  /** Share one cheap material for shell-LOD walls (tall towers). */
+  mergeFarWalls: boolean;
+  /** InstancedMesh for repeating rect columns on shell floors. */
+  instanceFarColumns: boolean;
 };
 
 export function detectQuality(): RenderQuality {
@@ -37,6 +48,10 @@ export function detectQuality(): RenderQuality {
       interiorLights: 12,
       simpleProps: false,
       storyWindow: 2,
+      shellBand: 2,
+      interiorLightRadius: 99,
+      mergeFarWalls: false,
+      instanceFarColumns: false,
     };
   }
   const coarse = window.matchMedia("(pointer: coarse)").matches;
@@ -69,14 +84,26 @@ export function detectQuality(): RenderQuality {
     interiorLights: weak ? 4 : mobile ? 8 : 12,
     simpleProps: false,
     storyWindow: mobile ? 1 : 2,
+    shellBand: 2,
+    interiorLightRadius: 99,
+    mergeFarWalls: false,
+    instanceFarColumns: false,
   };
 }
 
 /**
  * Tall-building profile — only scales down for high story counts.
- * Normal villas (few stories) keep full PBR / shadows / props.
+ * Normal villas (<8 stories) keep full PBR / shadows / props.
  * Does not force lighting.shadows off (user override stays); far-floor
  * meshes simply stop casting when BuildingScene windows them.
+ *
+ * Thresholds (isolateStory always restores full detail on the active floor):
+ *   <8   — no change (villa / small collective)
+ *   ≥8   — simpleProps, fewer lights, shadowMap≤1024, storyWindow≤mobile1/desktop2
+ *   ≥16  — storyWindow=1, lights≤2/4, shadowMap≤512, interiorLightRadius=0
+ *   ≥24  — tighter window (mobile 0), shellBand=1, mergeFarWalls, instanceFarColumns
+ *   ≥40  — storyWindow=0 (active only full), shellBand=0 (else massing), labels off,
+ *          interiorLights≤1, shadowMap≤256 mobile — R+40 phone stays interactive
  */
 export function tallBoost(base: RenderQuality, storyCount: number): RenderQuality {
   if (storyCount < 8) return base;
@@ -85,11 +112,34 @@ export function tallBoost(base: RenderQuality, storyCount: number): RenderQualit
   q.simpleProps = true;
   q.shadowMap = Math.min(q.shadowMap, 1024);
   q.storyWindow = Math.min(q.storyWindow, base.mobile ? 1 : 2);
+  q.interiorLightRadius = 1;
   if (storyCount >= 16) {
     q.interiorLights = Math.min(q.interiorLights, base.mobile ? 2 : 4);
     q.shadowMap = Math.min(q.shadowMap, 512);
     // Prefer fewer casters over killing global shadows (user can still enable).
     q.storyWindow = 1;
+    q.interiorLightRadius = 0;
+  }
+  if (storyCount >= 24) {
+    q.storyWindow = base.mobile ? 0 : 1;
+    q.shellBand = 1;
+    q.interiorLights = Math.min(q.interiorLights, base.mobile ? 1 : 2);
+    q.interiorLightRadius = 0;
+    q.mergeFarWalls = true;
+    q.instanceFarColumns = true;
+    if (base.mobile) q.labels = false;
+  }
+  if (storyCount >= 40) {
+    // R+40 phone: active story full detail only; everything else massing (shellBand 0).
+    q.storyWindow = 0;
+    q.shellBand = 0;
+    q.interiorLights = Math.min(q.interiorLights, 1);
+    q.interiorLightRadius = 0;
+    q.mergeFarWalls = true;
+    q.instanceFarColumns = true;
+    q.labels = false;
+    q.shadowMap = Math.min(q.shadowMap, base.mobile ? 256 : 512);
+    q.simpleProps = true;
   }
   return q;
 }

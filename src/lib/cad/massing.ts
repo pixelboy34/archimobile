@@ -2,6 +2,7 @@ import {
   addFlatRoof,
   addFurnitureAt,
   addGableRoof,
+  addMultiRoof,
   addOpeningOnWall,
   addRectRooms,
   addStair,
@@ -309,6 +310,7 @@ function addRoofFor(
   pitch: number,
 ): Project {
   if (kind === "gable") return addGableRoof(p, storyId, poly, pitch);
+  if (kind === "multi") return addMultiRoof(p, storyId, poly, [pitch, pitch + 4]);
   if (kind === "shed" || kind === "hip") {
     const next = cloneProject(p);
     next.roofs.push({

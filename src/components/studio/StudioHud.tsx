@@ -63,8 +63,8 @@ export function StudioHud() {
                 ? "Accroche façade — tapez pour poser"
                 : sel
                   ? sel.line
-                  : project.stories.length >= 8 && !isolateStory
-                    ? "Isoler l’étage pour plus de détail"
+                  : project.stories.length >= 16 && !isolateStory
+                    ? "Tour haute — Isoler l’étage pour le détail (R+16+)"
                     : null;
 
   return (

@@ -128,6 +128,7 @@ function WallGroup({
   structureMode,
   structMat,
   ghostMat,
+  overrideMat,
 }: {
   wall: Wall;
   openings: Opening[];
@@ -141,6 +142,8 @@ function WallGroup({
   structureMode?: boolean;
   structMat: THREE.Material;
   ghostMat: THREE.Material;
+  /** Shared shell material when mergeFarWalls (tall towers). */
+  overrideMat?: THREE.Material | null;
 }) {
   const segs = wallSolidSegments(wall, openings);
   const angle = wallAngle(wall);
@@ -151,7 +154,9 @@ function WallGroup({
       ? bearing
         ? structMat
         : ghostMat
-      : pickMat(mats, wall.materialId);
+      : overrideMat
+        ? overrideMat
+        : pickMat(mats, wall.materialId);
   const base = wall.baseOffset ?? 0;
   const n = wallNormalOffset(wall);
   const unitN = { x: Math.sin(angle), y: -Math.cos(angle) };
@@ -527,6 +532,43 @@ function GableRoofMesh({
     );
   }
 
+  if (roof.kind === "multi") {
+    const pitches = roof.pitches && roof.pitches.length >= 2 ? roof.pitches : [roof.pitch, roof.pitch];
+    const n = Math.max(2, pitches.length);
+    const strips = [];
+    for (let i = 0; i < n; i++) {
+      const pDeg = pitches[i] ?? roof.pitch;
+      const pRad = (pDeg * Math.PI) / 180;
+      const stripSpan = (alongX ? d : w) / n;
+      const localHalf = stripSpan / 2;
+      const localRise = Math.tan(pRad) * localHalf;
+      const localHyp = Math.hypot(localHalf, localRise);
+      const localPitch = Math.atan2(localRise, localHalf);
+      const offset = (i + 0.5) * stripSpan - (alongX ? d : w) / 2;
+      strips.push(
+        <group key={`m${i}`} position={alongX ? [0, 0, offset] : [offset, 0, 0]}>
+          <mesh
+            geometry={box}
+            material={material}
+            position={alongX ? [0, localRise / 2, -localHalf / 2] : [-localHalf / 2, localRise / 2, 0]}
+            rotation={alongX ? [localPitch, 0, 0] : [0, 0, -localPitch]}
+            scale={alongX ? [len, roof.thickness, localHyp] : [localHyp, roof.thickness, len]}
+            {...shadow}
+          />
+          <mesh
+            geometry={box}
+            material={material}
+            position={alongX ? [0, localRise / 2, localHalf / 2] : [localHalf / 2, localRise / 2, 0]}
+            rotation={alongX ? [-localPitch, 0, 0] : [0, 0, localPitch]}
+            scale={alongX ? [len, roof.thickness, localHyp] : [localHyp, roof.thickness, len]}
+            {...shadow}
+          />
+        </group>,
+      );
+    }
+    return <group position={[cx, elev, cz]}>{strips}</group>;
+  }
+
   return (
     <group position={[cx, elev, cz]}>
       <mesh
@@ -861,6 +903,75 @@ function StairMesh({
   );
 }
 
+function ShellColumnInstances({
+  project,
+  keep,
+  lodOf,
+  cut,
+  phase,
+  box,
+  material,
+  enabled,
+}: {
+  project: Project;
+  keep: (sid: string) => boolean;
+  lodOf: (sid: string) => "full" | "shell" | "massing";
+  cut: number;
+  phase: number;
+  box: THREE.BoxGeometry;
+  material: THREE.Material;
+  enabled: boolean;
+}) {
+  const ref = useRef<THREE.InstancedMesh>(null);
+  const cols = useMemo(() => {
+    if (!enabled || !visibleAt(phase, 2)) return [] as { x: number; y: number; z: number; w: number; h: number; d: number; rot: number }[];
+    const out: { x: number; y: number; z: number; w: number; h: number; d: number; rot: number }[] = [];
+    for (const c of project.columns) {
+      if (!keep(c.storyId)) continue;
+      if (lodOf(c.storyId) !== "shell") continue;
+      if (c.shape === "round") continue;
+      const elev = storyElev(project, c.storyId);
+      if (elev > cut) continue;
+      out.push({
+        x: c.position.x,
+        y: elev + c.height / 2,
+        z: c.position.y,
+        w: c.width,
+        h: c.height,
+        d: c.depth,
+        rot: c.rotation ?? 0,
+      });
+    }
+    return out;
+  }, [project, keep, lodOf, cut, phase, enabled]);
+  useLayoutEffect(() => {
+    const inst = ref.current;
+    if (!inst) return;
+    for (let i = 0; i < cols.length; i++) {
+      const c = cols[i]!;
+      dummy.position.set(c.x, c.y, c.z);
+      dummy.rotation.set(0, -c.rot, 0);
+      dummy.scale.set(c.w, c.h, c.d);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    }
+    inst.count = cols.length;
+    inst.instanceMatrix.needsUpdate = true;
+    if (cols.length) inst.computeBoundingSphere();
+  }, [cols]);
+  if (!enabled || cols.length === 0) return null;
+  return (
+    <instancedMesh
+      ref={ref}
+      args={[box, material, Math.max(1, cols.length)]}
+      castShadow={false}
+      receiveShadow={false}
+      raycast={skipRaycast}
+      frustumCulled
+    />
+  );
+}
+
 export function BuildingScene({
   project,
   selectedIds,
@@ -919,17 +1030,27 @@ export function BuildingScene({
       }),
     [],
   );
+  const shellWallMat = useMemo(
+    () =>
+      new THREE.MeshLambertMaterial({
+        color: "#7a8884",
+        flatShading: true,
+      }),
+    [],
+  );
   useEffect(() => () => {
     structMat.dispose();
     ghostMat.dispose();
     massingMat.dispose();
-  }, [structMat, ghostMat, massingMat]);
+    shellWallMat.dispose();
+  }, [structMat, ghostMat, massingMat, shellWallMat]);
   const maxH = Math.max(...project.stories.map((s) => s.elevation + s.height), 3);
   const cut = showClip ? clipY * maxH : 999;
   const shadows = quality.shadows;
   const isolate = Boolean(storyFilter);
   const activeId = storyFilter ?? labelStory ?? project.stories[0]?.id ?? null;
   const windowR = quality.storyWindow ?? (quality.mobile ? 1 : 2);
+  const shellBand = quality.shellBand ?? 2;
   const windowing = !isolate && project.stories.length >= 6;
 
   const storyLod = useMemo(() => {
@@ -945,11 +1066,11 @@ export function BuildingScene({
       }
       const d = storyDistance(project.stories, st.id, activeId);
       if (d <= windowR) map.set(st.id, "full");
-      else if (d <= windowR + 2) map.set(st.id, "shell");
+      else if (shellBand > 0 && d <= windowR + shellBand) map.set(st.id, "shell");
       else map.set(st.id, "massing");
     }
     return map;
-  }, [project.stories, isolate, storyFilter, windowing, activeId, windowR]);
+  }, [project.stories, isolate, storyFilter, windowing, activeId, windowR, shellBand]);
 
   const keep = (sid: string) => !storyFilter || sid === storyFilter;
   const lodOf = (sid: string) => storyLod.get(sid) ?? "full";
@@ -1042,6 +1163,7 @@ export function BuildingScene({
         if (elev > cut) return null;
         const wall = elev + w.height > cut ? { ...w, height: Math.max(0.1, cut - elev) } : w;
         const showOpenings = lod === "full" && visibleAt(phase, 6);
+        const mergeShell = quality.mergeFarWalls && lod === "shell";
         return (
           <WallGroup
             key={w.id}
@@ -1057,13 +1179,26 @@ export function BuildingScene({
             structureMode={showStructure}
             structMat={structMat}
             ghostMat={ghostMat}
+            overrideMat={mergeShell ? shellWallMat : null}
           />
         );
       })}
+      <ShellColumnInstances
+        project={project}
+        keep={keep}
+        lodOf={lodOf}
+        cut={cut}
+        phase={phase}
+        box={box}
+        material={shellWallMat}
+        enabled={Boolean(quality.instanceFarColumns)}
+      />
       {project.columns.map((c) => {
         if (!keep(c.storyId) || !visibleAt(phase, 2)) return null;
         const lod = lodOf(c.storyId);
         if (lod === "massing") return null;
+        // Shell rect columns drawn via InstancedMesh when enabled
+        if (quality.instanceFarColumns && lod === "shell" && c.shape !== "round") return null;
         const elev = storyElev(project, c.storyId);
         if (elev > cut) return null;
         const mat = selected.has(c.id)
@@ -1176,11 +1311,13 @@ export function BuildingScene({
         const b = boundsOf(r.polygon);
         const elev = storyElev(project, r.storyId);
         if (elev > cut) return null;
+        const labelDist = quality.interiorLightRadius ?? 99;
         const showLabels =
           quality.labels &&
           lod === "full" &&
           (!labelStory || r.storyId === labelStory) &&
-          (!windowing || storyDistance(project.stories, r.storyId, activeId) <= 1);
+          (!windowing ||
+            storyDistance(project.stories, r.storyId, activeId) <= Math.min(1, labelDist));
         return (
           <group key={r.id}>
             {lod === "full" && r.floorFinish && r.function !== "terrace" && r.function !== "patio" && (

@@ -42,7 +42,7 @@ export function computeQuantities(project: Project): BillOfQuantities {
     slabM3 += a * s.thickness;
   }
   let roofM2 = 0;
-  for (const r of project.roofs) roofM2 += polygonArea(r.polygon) * (r.kind === "gable" ? 1.18 : 1);
+  for (const r of project.roofs) roofM2 += polygonArea(r.polygon) * (r.kind === "gable" || r.kind === "multi" || r.kind === "hip" ? 1.18 : r.kind === "shed" ? 1.08 : 1);
   let glassM2 = 0;
   let doors = 0;
   for (const o of project.openings) {
