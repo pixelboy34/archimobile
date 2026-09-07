@@ -17,7 +17,7 @@ export function PwaStatusChip({ className = "" }: { className?: string }) {
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/10 px-2.5 py-1 text-[10px] font-medium tracking-wide text-accent ${className}`}
+      className={`inline-flex min-h-9 items-center gap-1.5 rounded-full border border-accent/30 bg-accent/10 px-2.5 py-1.5 text-[10px] font-medium tracking-wide text-accent ${className}`}
     >
       <Icon className="size-3" />
       {label}

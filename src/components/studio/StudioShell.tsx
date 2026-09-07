@@ -405,7 +405,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
                   key={w.id}
                   type="button"
                   onClick={() => setWorkspace(w.id)}
-                  className={`h-8 shrink-0 rounded-full px-2.5 text-[11px] font-medium tracking-wide ${
+                  className={`h-11 min-h-11 shrink-0 rounded-full px-2.5 text-[11px] font-medium tracking-wide ${
                     workspace === w.id ? "bg-accent/15 text-accent ring-1 ring-accent/40" : "text-muted"
                   }`}
                 >
@@ -418,7 +418,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
               type="button"
               aria-label="Studio"
               onClick={() => setPanel("studio")}
-              className="flex h-9 shrink-0 items-center gap-1 rounded-full border border-accent/40 bg-accent/15 px-2.5 text-[11px] font-medium tracking-wide text-accent uppercase"
+              className="flex h-11 min-h-11 shrink-0 items-center gap-1 rounded-full border border-accent/40 bg-accent/15 px-3 text-[11px] font-medium tracking-wide text-accent uppercase"
             >
               <LayoutGrid className="size-3.5" />
               Studio
@@ -428,7 +428,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
 
         {!inspector && (
         <div className="pointer-events-none absolute right-0 bottom-0 left-0 z-20">
-          <div className="pointer-events-auto flex flex-col items-center bg-gradient-to-t from-bg/85 via-bg/30 to-transparent px-3 pt-8 pb-[max(0.45rem,env(safe-area-inset-bottom))]">
+          <div className="pointer-events-auto flex flex-col items-center bg-gradient-to-t from-bg/85 via-bg/30 to-transparent px-3 pt-5 pb-[max(0.45rem,env(safe-area-inset-bottom))]">
             <ReleveBar />
             <CommandOrb
               onParams={() => setInspector(selectedIds.length ? "ouvrage" : "niveaux")}
@@ -637,7 +637,7 @@ function HeaderSkillToggle() {
       <button
         type="button"
         onClick={() => setSkill("simple")}
-        className={`h-8 px-2 text-[10px] font-medium tracking-wide ${
+        className={`h-11 min-h-11 px-2.5 text-[10px] font-medium tracking-wide ${
           skill === "simple" ? "rounded-full bg-accent/15 text-accent ring-1 ring-accent/40" : "text-muted"
         }`}
       >
@@ -646,7 +646,7 @@ function HeaderSkillToggle() {
       <button
         type="button"
         onClick={() => setSkill("pro")}
-        className={`h-8 px-2 text-[10px] font-medium tracking-wide ${
+        className={`h-11 min-h-11 px-2.5 text-[10px] font-medium tracking-wide ${
           skill === "pro" ? "rounded-full bg-accent/15 text-accent ring-1 ring-accent/40" : "text-muted"
         }`}
       >

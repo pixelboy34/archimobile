@@ -9,6 +9,17 @@ import { useStudio } from "@/lib/store/project-store";
 
 const ACCENT = "#6ed0c3";
 
+function gizmoTouchSize(): number {
+  if (typeof window === "undefined") return 1.2;
+  try {
+    if (window.matchMedia("(pointer: coarse)").matches) return 1.9;
+    if (window.matchMedia("(max-width: 480px)").matches) return 1.65;
+  } catch {
+    /* ignore */
+  }
+  return 1.2;
+}
+
 type MovableKind = "furniture" | "column" | "stair" | "wall";
 
 interface Target {
@@ -107,11 +118,18 @@ export function SelectionGizmo() {
   }, [target, invalidate]);
 
   useEffect(() => {
+    const release = () => {
+      if (!dragging.current) return;
+      dragging.current = false;
+      unlockOrbit();
+    };
+    // Fallback if TransformControls skips mouseup (touch cancel / tab blur)
+    window.addEventListener("pointercancel", release);
+    window.addEventListener("blur", release);
     return () => {
-      if (dragging.current) {
-        dragging.current = false;
-        unlockOrbit();
-      }
+      window.removeEventListener("pointercancel", release);
+      window.removeEventListener("blur", release);
+      release();
     };
   }, []);
 
@@ -147,7 +165,7 @@ export function SelectionGizmo() {
       ref={controlsRef}
       key={`${target.id}-${mode}`}
       mode={mode}
-      size={1.2}
+      size={gizmoTouchSize()}
       space="world"
       translationSnap={translationSnap}
       rotationSnap={rotationSnap}

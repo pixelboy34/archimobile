@@ -179,6 +179,7 @@ export function OrbitRig({
     };
 
     const down = (e: PointerEvent) => {
+      if (isOrbitLocked()) return;
       el.setPointerCapture(e.pointerId);
       st.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       st.moved = 0;

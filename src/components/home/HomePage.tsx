@@ -16,6 +16,7 @@ import { emptyProject } from "@/lib/bim/builder";
 import { downloadText, exportBimJson, parseImportedProject } from "@/lib/bim/quantities";
 import { formatArea } from "@/lib/utils";
 import type { Project } from "@/lib/bim/types";
+import { normalizeRoomCode } from "@/lib/multiplayer/collab";
 import { useStudio } from "@/lib/store/project-store";
 
 export function HomePage() {
@@ -38,6 +39,28 @@ export function HomePage() {
     useStudio.getState().setHydrated(true);
     if (shouldOnboard()) setOnboard(true);
   }, []);
+
+  // Deep link: /?collab=CODE → open a project studio so StudioShell can join
+  useEffect(() => {
+    if (!hydrated) return;
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get("collab");
+    if (!raw) return;
+    const code = normalizeRoomCode(raw);
+    if (code.length < 4) return;
+    const state = useStudio.getState();
+    let projectId = state.currentId ?? state.projects[0]?.id ?? null;
+    if (!projectId) {
+      const p = emptyProject("Collab");
+      state.addProject(p);
+      projectId = p.id;
+    }
+    // Full assign keeps ?collab= for StudioShell deep-link join + panel open
+    window.location.assign(
+      `/studio/${encodeURIComponent(projectId)}?collab=${encodeURIComponent(code)}`,
+    );
+  }, [hydrated, navigate]);
 
   const filtered = projects.filter((p) => {
     const hay = `${p.name} ${p.meta.location} ${p.meta.brief}`.toLowerCase();

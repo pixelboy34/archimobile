@@ -13,10 +13,12 @@ import { useStudio } from "@/lib/store/project-store";
 /**
  * Compact bar above CommandOrb in workspace Relevé (or survey/pen tools).
  * Import plan → underlay + extract traits → Fermer/Traits → murs.
+ * Underlay adjusters collapse by default on narrow screens to keep the plan visible.
  */
 export function ReleveBar() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const [adjustOpen, setAdjustOpen] = useState(false);
   const workspace = useStudio((s) => s.workspace);
   const tool = useStudio((s) => s.tool);
   const project = useStudio((s) => s.projects.find((p) => p.id === s.currentId) ?? null);
@@ -77,6 +79,7 @@ export function ReleveBar() {
     try {
       const { src, naturalWidth, naturalHeight, ephemeral } = await fileToUnderlaySrc(file);
       setSurveyUnderlay(defaultUnderlay(storyId, src, naturalWidth, naturalHeight, ephemeral));
+      setAdjustOpen(false);
       toast.success(
         ephemeral
           ? "Plan importé (blob) — compresser/réimporter pour persister"
@@ -111,9 +114,12 @@ export function ReleveBar() {
     }
   };
 
+  const btn =
+    "min-h-11 rounded-xl px-3 text-[11px] font-medium tracking-wide uppercase disabled:opacity-40";
+
   return (
     <div className="pointer-events-auto mb-2 w-full max-w-md px-1">
-      <div className="hud-panel flex flex-col gap-2 px-3 py-2.5">
+      <div className="hud-panel flex max-h-[42dvh] flex-col gap-2 overflow-y-auto px-3 py-2.5">
         <div className="flex items-center justify-between gap-2">
           <p className="font-mono text-[10px] tracking-wide text-accent uppercase">
             Relevé · {survey.length} pts · {formatMeters(peri)}
@@ -135,7 +141,7 @@ export function ReleveBar() {
             type="button"
             disabled={busy}
             onClick={() => fileRef.current?.click()}
-            className="h-9 rounded-xl border border-accent/40 bg-accent/10 px-2.5 text-[11px] font-medium tracking-wide text-accent uppercase hover:bg-accent/20 disabled:opacity-50"
+            className={`${btn} border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20`}
           >
             Importer un plan
           </button>
@@ -143,26 +149,38 @@ export function ReleveBar() {
             type="button"
             disabled={busy || !underlay}
             onClick={() => void onExtract()}
-            className="h-9 rounded-xl border border-border/60 bg-elevated/50 px-2.5 text-[11px] font-medium tracking-wide text-fg uppercase disabled:opacity-40"
+            className={`${btn} border border-border/60 bg-elevated/50 text-fg`}
           >
             Extraire les traits
           </button>
           {underlay && (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => {
-                clearSurveyUnderlay(storyId);
-                toast.message("Plan retiré");
-              }}
-              className="h-9 rounded-xl px-2.5 text-[11px] text-muted hover:bg-elevated"
-            >
-              Effacer plan
-            </button>
+            <>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setAdjustOpen((v) => !v)}
+                className={`${btn} border border-border/50 bg-elevated/40 text-muted`}
+                aria-expanded={adjustOpen}
+              >
+                {adjustOpen ? "Masquer réglages" : "Ajuster le plan"}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  clearSurveyUnderlay(storyId);
+                  setAdjustOpen(false);
+                  toast.message("Plan retiré");
+                }}
+                className={`${btn} text-muted hover:bg-elevated`}
+              >
+                Effacer plan
+              </button>
+            </>
           )}
         </div>
 
-        {underlay && (
+        {underlay && adjustOpen && (
           <div className="flex flex-col gap-1.5 border-t border-border/40 pt-2">
             <label className="flex flex-col gap-0.5">
               <span className="flex justify-between text-[10px] tracking-wide text-muted uppercase">
@@ -176,7 +194,7 @@ export function ReleveBar() {
                 step={0.05}
                 value={underlay.opacity}
                 onChange={(e) => patchSurveyUnderlay({ opacity: Number(e.target.value) })}
-                className="h-8 w-full accent-accent [touch-action:none]"
+                className="h-11 w-full accent-accent [touch-action:none]"
                 onPointerDown={(e) => e.stopPropagation()}
               />
             </label>
@@ -192,7 +210,7 @@ export function ReleveBar() {
                 step={0.5}
                 value={underlay.scale}
                 onChange={(e) => patchSurveyUnderlay({ scale: Number(e.target.value) })}
-                className="h-8 w-full accent-accent [touch-action:none]"
+                className="h-11 w-full accent-accent [touch-action:none]"
                 onPointerDown={(e) => e.stopPropagation()}
               />
             </label>
@@ -212,7 +230,7 @@ export function ReleveBar() {
                 onChange={(e) =>
                   patchSurveyUnderlay({ rotation: (Number(e.target.value) * Math.PI) / 180 })
                 }
-                className="h-8 w-full accent-accent [touch-action:none]"
+                className="h-11 w-full accent-accent [touch-action:none]"
                 onPointerDown={(e) => e.stopPropagation()}
               />
             </label>
@@ -228,7 +246,7 @@ export function ReleveBar() {
                 <button
                   key={label}
                   type="button"
-                  className="h-8 min-w-8 rounded-lg bg-elevated px-2 text-xs text-fg hover:bg-elevated/80"
+                  className="min-h-11 min-w-11 rounded-lg bg-elevated px-3 text-sm text-fg hover:bg-elevated/80"
                   onClick={() =>
                     patchSurveyUnderlay({
                       offset: {
@@ -251,7 +269,7 @@ export function ReleveBar() {
             type="button"
             disabled={!canClose}
             onClick={onClose}
-            className={`h-9 flex-1 rounded-xl px-2.5 text-[11px] font-semibold tracking-wide uppercase ${
+            className={`${btn} flex-1 ${
               canClose
                 ? "bg-accent text-accent-fg"
                 : "cursor-not-allowed bg-elevated text-muted/50"
@@ -263,7 +281,7 @@ export function ReleveBar() {
             type="button"
             disabled={!canStrokes}
             onClick={onStrokes}
-            className={`h-9 flex-1 rounded-xl px-2.5 text-[11px] font-medium tracking-wide uppercase ${
+            className={`${btn} flex-1 ${
               canStrokes
                 ? "border border-accent/40 bg-accent/10 text-accent"
                 : "cursor-not-allowed border border-border/50 bg-elevated/40 text-muted/50"
@@ -278,7 +296,7 @@ export function ReleveBar() {
               clearSurvey();
               toast.message("Relevé effacé");
             }}
-            className="h-9 rounded-xl px-2.5 text-[11px] text-muted hover:bg-elevated disabled:opacity-40"
+            className={`${btn} text-muted hover:bg-elevated`}
           >
             Effacer relevé
           </button>

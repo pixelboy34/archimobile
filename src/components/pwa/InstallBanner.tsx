@@ -70,7 +70,7 @@ export function InstallBanner({
       <button
         type="button"
         onClick={() => void install()}
-        className="pointer-events-auto inline-flex h-9 items-center gap-1.5 rounded-full border border-accent/35 bg-surface/90 px-3 text-[11px] font-medium text-accent shadow-border backdrop-blur-md"
+        className="pointer-events-auto inline-flex h-11 min-h-11 items-center gap-1.5 rounded-full border border-accent/35 bg-surface/90 px-3.5 text-[11px] font-medium text-accent shadow-border backdrop-blur-md"
       >
         <Download className="size-3.5" />
         Installer
@@ -86,7 +86,7 @@ export function InstallBanner({
         <div
           className={`pointer-events-auto z-30 flex items-center gap-3 border border-border bg-surface/95 px-3 py-2.5 shadow-border backdrop-blur-md ${
             compact
-              ? "absolute right-3 bottom-[5.5rem] left-3 rounded-xl"
+              ? "absolute right-3 bottom-[max(6.75rem,env(safe-area-inset-bottom)+5.5rem)] left-3 rounded-xl"
               : "fixed right-4 bottom-[max(1.25rem,env(safe-area-inset-bottom))] left-4 rounded-2xl"
           }`}
         >
@@ -106,7 +106,7 @@ export function InstallBanner({
           <button
             type="button"
             onClick={() => void install()}
-            className="h-10 shrink-0 rounded-full bg-primary px-3 text-xs font-medium text-primary-fg"
+            className="h-11 min-h-11 shrink-0 rounded-full bg-primary px-4 text-xs font-medium text-primary-fg"
           >
             Installer
           </button>

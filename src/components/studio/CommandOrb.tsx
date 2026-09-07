@@ -301,7 +301,7 @@ function ModeBtn({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "relative flex h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-full px-2 text-[10px] font-semibold tracking-wide uppercase transition-[transform,background-color,color] duration-200",
+        "relative flex h-11 min-h-11 min-w-0 flex-1 items-center justify-center gap-1 rounded-full px-2 text-[10px] font-semibold tracking-wide uppercase transition-[transform,background-color,color] duration-200",
         active ? "bg-accent/18 text-accent" : "text-muted/80 hover:text-fg",
         disabled && "opacity-40",
       )}

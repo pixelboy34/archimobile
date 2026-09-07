@@ -58,6 +58,7 @@ import { useStudio } from "@/lib/store/project-store";
 import { isLiveTypical, typicalGroupSize } from "@/lib/cad/typical";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { frenchGeoError } from "@/lib/geo/api-helpers";
 import { geoSearchAddress, geoParcelleAt } from "@/lib/geo/client";
 import {
   CADASTRE_DISCLAIMER,
@@ -946,6 +947,7 @@ function ParcelAddressSearch({
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<BanHit[]>([]);
   const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<"idle" | "search" | "parcel">("idle");
   const parcelle = project.meta.parcelle;
 
   async function runSearch() {
@@ -955,21 +957,23 @@ function ParcelAddressSearch({
       return;
     }
     setBusy(true);
+    setPhase("search");
     try {
       const results = await geoSearchAddress(query);
       setHits(results);
       if (results.length === 0) toast.message("Aucune adresse trouvée");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Cadastre indisponible hors ligne";
-      toast.error(msg.includes("hors ligne") || msg.includes("indisponible") ? "Cadastre indisponible hors ligne" : msg);
+      toast.error(frenchGeoError(err));
       setHits([]);
     } finally {
       setBusy(false);
+      setPhase("idle");
     }
   }
 
   async function pick(hit: BanHit) {
     setBusy(true);
+    setPhase("parcel");
     try {
       const parcelle = await geoParcelleAt(hit.lon, hit.lat, hit.label);
       const patch = parcelleToMetaPatch(parcelle);
@@ -977,15 +981,18 @@ function ParcelAddressSearch({
       setHits([]);
       setQ(hit.label);
       toast.success(
-        `Parcelle ${formatCadastralRef(parcelle)} · ${Math.round(parcelle.areaM2).toLocaleString("fr-FR")} m²`,
+        `Parcelle ${formatCadastralRef(parcelle)} · ${Math.round(parcelle.areaM2).toLocaleString("fr-FR")} m² · contour affiché`,
       );
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Cadastre indisponible hors ligne";
-      toast.error(msg.includes("hors ligne") || /fetch|network|503/i.test(msg) ? "Cadastre indisponible hors ligne" : msg);
+      toast.error(frenchGeoError(err));
     } finally {
       setBusy(false);
+      setPhase("idle");
     }
   }
+
+  const busyLabel =
+    phase === "parcel" ? "Parcelle…" : phase === "search" ? "Recherche…" : "…";
 
   return (
     <div className="flex flex-col gap-1.5 rounded-lg border border-border/60 bg-elevated/30 p-2.5">
@@ -1001,19 +1008,25 @@ function ParcelAddressSearch({
               void runSearch();
             }
           }}
-          className="h-9 flex-1 text-xs"
+          className="h-11 flex-1 text-xs"
+          aria-busy={busy}
         />
-        <Button type="button" variant="outline" className="h-9 shrink-0 px-3 text-xs" disabled={busy} onClick={() => void runSearch()}>
-          {busy ? "…" : "Chercher"}
+        <Button type="button" variant="outline" className="h-11 min-h-11 shrink-0 px-3 text-xs" disabled={busy} onClick={() => void runSearch()}>
+          {busy ? busyLabel : "Chercher"}
         </Button>
       </div>
+      {busy && (
+        <p className="text-[11px] text-muted">
+          {phase === "parcel" ? "Récupération du contour cadastral…" : "Recherche d’adresse (BAN)…"}
+        </p>
+      )}
       {hits.length > 0 && (
-        <ul className="max-h-36 overflow-y-auto rounded-md border border-border/50 bg-panel">
+        <ul className="max-h-44 overflow-y-auto rounded-md border border-border/50 bg-panel">
           {hits.map((h) => (
             <li key={`${h.label}-${h.lon}-${h.lat}`}>
               <button
                 type="button"
-                className="w-full px-2.5 py-2 text-left text-[11px] text-fg hover:bg-accent/10"
+                className="flex min-h-11 w-full items-center px-3 py-2.5 text-left text-[12px] text-fg hover:bg-accent/10 disabled:opacity-50"
                 onClick={() => void pick(h)}
                 disabled={busy}
               >
@@ -1028,6 +1041,7 @@ function ParcelAddressSearch({
           {formatCadastralRef(parcelle)}
           {" · "}
           {Math.round(parcelle.areaM2).toLocaleString("fr-FR")} m²
+          {parcelle.ring && parcelle.ring.length >= 3 ? " · contour OK" : ""}
         </p>
       )}
       <p className="text-[9px] leading-snug text-subtle">{CADASTRE_DISCLAIMER}</p>
