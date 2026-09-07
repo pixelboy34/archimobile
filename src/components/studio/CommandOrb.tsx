@@ -76,6 +76,9 @@ export function CommandOrb({
   const gizmoMode = useStudio((s) => s.gizmoMode);
   const setGizmoMode = useStudio((s) => s.setGizmoMode);
   const propagateTypical = useStudio((s) => s.propagateTypical);
+  const copyToNextStory = useStudio((s) => s.copyToNextStory);
+  const cycleStory = useStudio((s) => s.cycleStory);
+  const storyId = useStudio((s) => s.storyId);
   const project = useStudio((s) => s.projects.find((p) => p.id === s.currentId) ?? null);
 
   const hasSel = selectedIds.length > 0;
@@ -165,9 +168,18 @@ export function CommandOrb({
           <Plus className="size-4" />
         </OrbBtn>
       </div>
-      <p className="rail-whisper truncate">
-        {TOOL_LABELS[tool]}
-        {hasSel ? " · sélection" : ""}
+      <p className="rail-whisper flex min-w-0 items-center gap-2">
+        <span className="truncate">{TOOL_LABELS[tool]}{hasSel ? " · sélection" : ""}</span>
+        {project && project.stories.length > 0 && (
+          <button
+            type="button"
+            className="ml-auto shrink-0 text-[11px] font-semibold tracking-wide text-accent"
+            onClick={() => cycleStory(1)}
+            title="Changer d’étage"
+          >
+            {project.stories.find((st) => st.id === storyId)?.name ?? "Niveau"}
+          </button>
+        )}
       </p>
 
       {mode === "modifier" ? (
@@ -278,6 +290,14 @@ export function CommandOrb({
                 <CopyPlus className="size-4" />
               </OrbBtn>
             )}
+            <OrbBtn
+              label="Copier étage"
+              onClick={() => {
+                copyToNextStory();
+              }}
+            >
+              <Copy className="size-4" />
+            </OrbBtn>
           </div>
           <ToolDock tool={tool} onTool={setTool} />
         </div>

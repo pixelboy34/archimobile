@@ -40,6 +40,8 @@ export function BuildingAssistant({
       groundHeight: groundH,
       windowSpacing: winSpacing,
       roofKind,
+      columns: floors >= 4,
+      balconyDepth: floors >= 4 ? 1.4 : 0,
     });
     toast.success(`${rLabel} généré · ${tall.toFixed(1)} m`);
     onDone?.();
@@ -57,6 +59,32 @@ export function BuildingAssistant({
             Volume A→Z — façades, poteaux, toiture. Jusqu’à R+80.
           </p>
         </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-1">
+        {(
+          [
+            { id: "maison", label: "Maison", w: 12, d: 9, f: 1, roof: "gable" as const, col: false, bal: 0 },
+            { id: "villa", label: "Villa", w: 16, d: 12, f: 2, roof: "gable" as const, col: false, bal: 0 },
+            { id: "immeuble", label: "Immeuble", w: 18, d: 16, f: 8, roof: "flat" as const, col: true, bal: 1.4 },
+          ] as const
+        ).map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            onClick={() => {
+              setSpanW(c.w);
+              setSpanD(c.d);
+              setFloors(c.f);
+              setRoofKind(c.roof);
+            }}
+            className={`h-11 rounded-lg text-[12px] font-medium ${
+              spanW === c.w && floors === c.f ? "bg-accent/15 text-accent ring-1 ring-accent/40" : "bg-elevated text-fg/80"
+            }`}
+          >
+            {c.label}
+          </button>
+        ))}
       </div>
 
       <Field label="Étages" value={floors} unit="" digits={0} min={1} max={80} step={1} onBegin={beginEdit} onChange={setFloors} />

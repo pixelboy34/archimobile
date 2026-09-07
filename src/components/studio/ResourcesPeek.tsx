@@ -21,6 +21,7 @@ export function ResourcesPeek({
 }) {
   const kind = useStudio((s) => s.furnitureKind);
   const setKind = useStudio((s) => s.setFurnitureKind);
+  const recents = useStudio((s) => s.recentKinds);
   const setTool = useStudio((s) => s.setTool);
   const selectedIds = useStudio((s) => s.selectedIds);
   const activeMat = useStudio((s) => s.activeMaterialId);
@@ -43,11 +44,15 @@ export function ResourcesPeek({
   const objects = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return OBJECT_CATALOG.filter((o) => {
+      if (group === "recent") return recents.includes(o.kind);
       if (group !== "all" && o.group !== group) return false;
       if (!needle) return true;
       return o.label.toLowerCase().includes(needle) || o.kind.includes(needle) || o.group.includes(needle);
+    }).sort((a, b) => {
+      if (group !== "recent") return 0;
+      return recents.indexOf(a.kind) - recents.indexOf(b.kind);
     });
-  }, [q, group]);
+  }, [q, group, recents]);
 
   if (!open) return null;
 
@@ -104,6 +109,9 @@ export function ResourcesPeek({
       {tab === "objs" && (
         <div className="flex shrink-0 gap-1 overflow-x-auto px-2 py-1.5">
           <GroupChip label="Tous" on={group === "all"} count={OBJECT_CATALOG.length} onClick={() => setGroup("all")} />
+          {recents.length > 0 && (
+            <GroupChip label="Récents" on={group === "recent"} count={recents.length} onClick={() => setGroup("recent")} />
+          )}
           {OBJECT_GROUPS.map((g) => (
             <GroupChip
               key={g.id}

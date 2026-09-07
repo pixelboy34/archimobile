@@ -157,6 +157,34 @@ export function PropertiesPanel({
               <Param label="Épaisseur" value={wall.thickness} min={0.06} max={0.8} step={0.01} onBegin={beginEdit} onChange={(v) => patchSelected({ thickness: v })} />
               <Param label="Hauteur" value={wall.height} min={1} max={12} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ height: v })} />
               </ParamGrid>
+              <div className="flex flex-wrap gap-1">
+                {WALL_PRESETS.slice(0, 6).map((pr) => (
+                  <button
+                    key={pr.id}
+                    type="button"
+                    onClick={() =>
+                      commitSelected({
+                        thickness: pr.thickness,
+                        partition: pr.partition,
+                        loadBearing: pr.loadBearing,
+                        insulationMm: pr.insulationMm,
+                        uValue: pr.uValue,
+                        fireRating: pr.fireRating,
+                        alignment: pr.alignment,
+                        role: pr.role,
+                        acousticRw: pr.acousticRw,
+                      })
+                    }
+                    className={`h-8 rounded-md px-2 text-[11px] font-medium ${
+                      Math.abs(wall.thickness - pr.thickness) < 0.011 && wall.role === pr.role
+                        ? "bg-accent/15 text-accent ring-1 ring-accent/40"
+                        : "bg-elevated text-fg/80"
+                    }`}
+                  >
+                    {pr.label}
+                  </button>
+                ))}
+              </div>
               <More label="Typologie">
                 <div className="flex flex-wrap gap-1.5">
                   {WALL_PRESETS.map((pr) => (
@@ -200,6 +228,20 @@ export function PropertiesPanel({
               {opening.kind === "window" && (
                 <Param label="Allège" value={opening.sill} min={0} max={2.4} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ sill: v })} />
               )}
+              <div className="flex flex-wrap gap-1">
+                {(opening.kind === "door" ? DOOR_PRESETS : WINDOW_PRESETS).slice(0, 4).map((pr) => (
+                  <button
+                    key={pr.id}
+                    type="button"
+                    onClick={() => commitSelected({ width: pr.width, height: pr.height, sill: pr.sill, variant: pr.variant })}
+                    className={`h-8 rounded-md px-2 text-[11px] font-medium ${
+                      Math.abs(opening.width - pr.width) < 0.06 ? "bg-accent/15 text-accent ring-1 ring-accent/40" : "bg-elevated text-fg/80"
+                    }`}
+                  >
+                    {pr.label}
+                  </button>
+                ))}
+              </div>
               <More label="Type">
                 <div className="flex flex-wrap gap-1.5">
                   {(opening.kind === "door" ? DOOR_PRESETS : WINDOW_PRESETS).map((pr) => (

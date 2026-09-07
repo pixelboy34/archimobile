@@ -29,6 +29,7 @@ export function HomePage() {
   const resetExamples = useStudio((s) => s.resetExamples);
   const skill = useStudio((s) => s.skill);
   const setSkill = useStudio((s) => s.setSkill);
+  const currentId = useStudio((s) => s.currentId);
   const [q, setQ] = useState("");
   const [aiOpen, setAiOpen] = useState(false);
   const [offlineOpen, setOfflineOpen] = useState(false);
@@ -66,6 +67,7 @@ export function HomePage() {
     const hay = `${p.name} ${p.meta.location} ${p.meta.brief}`.toLowerCase();
     return hay.includes(q.toLowerCase());
   });
+  const last = projects.find((p) => p.id === currentId) ?? projects[0];
 
   const create = () => {
     const p = emptyProject("Esquisse");
@@ -140,7 +142,15 @@ export function HomePage() {
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2 px-5">
-        <Button className="flex-1" onClick={create}>
+        {last && (
+          <Button
+            className="w-full"
+            onClick={() => navigate({ to: "/studio/$projectId", params: { projectId: last.id } })}
+          >
+            Continuer · {last.name}
+          </Button>
+        )}
+        <Button className="flex-1" variant={last ? "outline" : "default"} onClick={create}>
           <Plus className="ico-live size-4" />
           Nouveau
         </Button>

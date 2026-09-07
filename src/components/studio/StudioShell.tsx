@@ -3,7 +3,7 @@ import {
   ChevronLeft,
   Building2,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast, Toaster } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -90,6 +90,32 @@ export function StudioShell({ projectId }: { projectId: string }) {
   const [inspector, setInspector] = useState<ParamsTab | null>(null);
   const [radial, setRadial] = useState(false);
   const [resources, setResources] = useState<null | "materials" | "objects" | "both">(null);
+  const shiftRef = useRef(false);
+
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === "Shift") shiftRef.current = true;
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.key === "Shift") shiftRef.current = false;
+    };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+    };
+  }, []);
+
+  const pick = (ids: string[]) => {
+    if (shiftRef.current && ids[0]) {
+      const cur = useStudio.getState().selectedIds;
+      const id = ids[0]!;
+      select(cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]);
+      return;
+    }
+    select(ids);
+  };
 
   useEffect(() => {
     useStudio.getState().setHydrated(true);
@@ -222,25 +248,42 @@ export function StudioShell({ projectId }: { projectId: string }) {
       } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "d") {
         e.preventDefault();
         duplicateSelected();
-      } else if (e.key === "r" || e.key === "R") {
+      } else if (e.key === "Tab") {
         e.preventDefault();
-        rotateSelected(Math.PI / 2);
-      } else if (e.key === "o" || e.key === "O") {
-        const s = useStudio.getState();
-        s.setOrtho(!s.ortho);
-      } else if (
-        e.key === "ArrowLeft" ||
-        e.key === "ArrowRight" ||
-        e.key === "ArrowUp" ||
-        e.key === "ArrowDown"
-      ) {
-        const s = useStudio.getState();
-        if (!s.selectedIds.length) return;
-        const step = e.shiftKey ? 0.5 : 0.1;
+        useStudio.getState().cycleStory(e.shiftKey ? -1 : 1);
+      } else if (e.code === "Space") {
         e.preventDefault();
-        const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
-        const dy = e.key === "ArrowUp" ? step : e.key === "ArrowDown" ? -step : 0;
-        moveSelected(dx, dy);
+        const st = useStudio.getState();
+        if (st.tool === "select") st.setTool(st.lastDrawTool || "wall");
+        else st.setTool("select");
+      } else if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+        const k = e.key.toLowerCase();
+        if (k === "w") setTool("wall");
+        else if (k === "d") setTool("door");
+        else if (k === "e") setTool("window");
+        else if (k === "t") {
+          setTool("furniture");
+        } else if (k === "m") setTool("measure");
+        else if (k === "r") {
+          e.preventDefault();
+          rotateSelected(Math.PI / 2);
+        } else if (k === "o") {
+          const s = useStudio.getState();
+          s.setOrtho(!s.ortho);
+        } else if (
+          e.key === "ArrowLeft" ||
+          e.key === "ArrowRight" ||
+          e.key === "ArrowUp" ||
+          e.key === "ArrowDown"
+        ) {
+          const s = useStudio.getState();
+          if (!s.selectedIds.length) return;
+          const step = e.shiftKey ? 0.5 : 0.1;
+          e.preventDefault();
+          const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+          const dy = e.key === "ArrowUp" ? step : e.key === "ArrowDown" ? -step : 0;
+          moveSelected(dx, dy);
+        }
       }
     };
     window.addEventListener("keydown", onKey);
@@ -293,7 +336,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
             snap={snap}
             grid={grid}
             selectedIds={selectedIds}
-            onSelect={select}
+            onSelect={pick}
             onWall={addWall}
             onOpening={addOpeningAt}
             onFurniture={addFurniture}
@@ -313,7 +356,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
           <ViewportGate
             project={current}
             selectedIds={selectedIds}
-            onSelect={(id) => select(id ? [id] : [])}
+            onSelect={(id) => pick(id ? [id] : [])}
             view={view}
             sunHour={sunHour}
             clipY={clipY}

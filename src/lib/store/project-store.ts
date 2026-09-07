@@ -16,6 +16,7 @@ import { seedProjects } from "@/lib/bim/seed";
 import { activeLayerId, ensureSketch, resampleStroke } from "@/lib/bim/sketch";
 import { strokesToWalls, surveyPolygonToWalls } from "@/lib/bim/survey-to-walls";
 import type {
+  FireRating,
   FurnitureKind,
   MaterialId,
   MaterialStyle,
@@ -25,6 +26,8 @@ import type {
   Tool,
   Vec2,
   ViewMode,
+  WallAlign,
+  WallRole,
   WorkspaceMode,
 } from "@/lib/bim/types";
 import { uid } from "@/lib/utils";
@@ -57,6 +60,20 @@ import {
 
 const HISTORY_LIMIT = 40;
 
+const DRAW_MEMORY: Tool[] = ["wall", "rect", "door", "window", "room", "column", "stair", "slab", "roof", "furniture", "pen", "survey"];
+
+const DEFAULT_WALL_DRAFT = {
+  thickness: 0.2,
+  height: 2.8,
+  materialId: "plaster" as MaterialId,
+  loadBearing: true,
+  partition: false,
+  insulationMm: 80,
+  role: "exterior" as WallRole,
+  alignment: "center" as WallAlign,
+  fireRating: "EI60" as FireRating,
+};
+
 interface StudioState {
   projects: Project[];
   currentId: string | null;
@@ -72,6 +89,19 @@ interface StudioState {
   ortho: boolean;
   clipY: number;
   furnitureKind: FurnitureKind;
+  recentKinds: FurnitureKind[];
+  lastDrawTool: Tool;
+  wallDraft: {
+    thickness: number;
+    height: number;
+    materialId: MaterialId;
+    loadBearing: boolean;
+    partition: boolean;
+    insulationMm: number;
+    role: WallRole;
+    alignment: WallAlign;
+    fireRating: FireRating;
+  };
   activeMaterialId: MaterialId;
   draft: Vec2 | null;
   measure: { a: Vec2; b: Vec2 } | null;
@@ -97,6 +127,9 @@ interface StudioState {
   setSnap: (v: boolean) => void;
   setOrtho: (v: boolean) => void;
   setFurnitureKind: (k: FurnitureKind) => void;
+  setWallDraft: (patch: Partial<StudioState["wallDraft"]>) => void;
+  copyToNextStory: () => void;
+  cycleStory: (dir?: 1 | -1) => void;
   setActiveMaterial: (id: MaterialId) => void;
   patchMaterial: (id: MaterialId, patch: Partial<MaterialStyle>) => void;
   applyMaterial: (id: MaterialId, scope: "selected" | "walls" | "all") => void;
@@ -288,6 +321,9 @@ export const useStudio = create<StudioState>()(
       ortho: true,
       clipY: 1,
       furnitureKind: "sofa",
+      recentKinds: ["sofa", "table", "bed", "kitchen", "chair", "plant"],
+      lastDrawTool: "wall",
+      wallDraft: { ...DEFAULT_WALL_DRAFT },
       activeMaterialId: "plaster",
       draft: null,
       measure: null,
@@ -310,7 +346,13 @@ export const useStudio = create<StudioState>()(
       gizmoMode: "translate",
       setGizmoMode: (gizmoMode) => set({ gizmoMode }),
       setHydrated: (v) => set({ hydrated: v }),
-      setTool: (tool) => set({ tool, draft: null, measure: tool === "measure" ? get().measure : null }),
+      setTool: (tool) =>
+        set({
+          tool,
+          draft: null,
+          measure: tool === "measure" ? get().measure : null,
+          lastDrawTool: DRAW_MEMORY.includes(tool) ? tool : get().lastDrawTool,
+        }),
       setView: (view) => set({ view }),
       setWorkspace: (workspace) =>
         set((s) => {
@@ -330,7 +372,12 @@ export const useStudio = create<StudioState>()(
       setGrid: (grid) => set({ grid }),
       setSnap: (snap) => set({ snap }),
       setOrtho: (ortho) => set({ ortho }),
-      setFurnitureKind: (furnitureKind) => set({ furnitureKind }),
+      setFurnitureKind: (furnitureKind) =>
+        set((s) => ({
+          furnitureKind,
+          recentKinds: [furnitureKind, ...s.recentKinds.filter((k) => k !== furnitureKind)].slice(0, 8),
+        })),
+      setWallDraft: (patch) => set((s) => ({ wallDraft: { ...s.wallDraft, ...patch } })),
       setActiveMaterial: (activeMaterialId) => set({ activeMaterialId }),
       select: (selectedIds) => set({ selectedIds }),
       current: () => {
@@ -500,16 +547,19 @@ export const useStudio = create<StudioState>()(
             storyId,
             a: pa,
             b: pb,
-            thickness: 0.22,
-            height: story?.height ?? 2.8,
-            materialId: s.activeMaterialId === "water" || s.activeMaterialId === "vegetation" ? "plaster" : s.activeMaterialId,
-            loadBearing: true,
-            partition: false,
-            insulationMm: 80,
+            thickness: s.wallDraft.thickness,
+            height: s.wallDraft.height || (story?.height ?? 2.8),
+            materialId:
+              s.wallDraft.materialId === "water" || s.wallDraft.materialId === "vegetation"
+                ? "plaster"
+                : s.wallDraft.materialId,
+            loadBearing: s.wallDraft.loadBearing,
+            partition: s.wallDraft.partition,
+            insulationMm: s.wallDraft.insulationMm,
             uValue: 0.36,
-            fireRating: "EI60",
-            alignment: "center",
-            role: "exterior",
+            fireRating: s.wallDraft.fireRating,
+            alignment: s.wallDraft.alignment,
+            role: s.wallDraft.role,
             acousticRw: 50,
           });
           p.rooms = mergeDetectedRooms(p, storyId);
@@ -682,7 +732,22 @@ export const useStudio = create<StudioState>()(
       },
       commitSelected: (patch) => {
         const ids = get().selectedIds;
+        const cur = get().current();
+        const isWall = cur?.walls.some((w) => ids.includes(w.id));
         get().commit((p) => patchEntities(p, ids, patch));
+        if (isWall) {
+          const d: Partial<StudioState["wallDraft"]> = {};
+          if (typeof patch.thickness === "number") d.thickness = patch.thickness;
+          if (typeof patch.height === "number") d.height = patch.height;
+          if (typeof patch.materialId === "string") d.materialId = patch.materialId as MaterialId;
+          if (typeof patch.loadBearing === "boolean") d.loadBearing = patch.loadBearing;
+          if (typeof patch.partition === "boolean") d.partition = patch.partition;
+          if (typeof patch.insulationMm === "number") d.insulationMm = patch.insulationMm;
+          if (typeof patch.role === "string") d.role = patch.role as WallRole;
+          if (typeof patch.alignment === "string") d.alignment = patch.alignment as WallAlign;
+          if (typeof patch.fireRating === "string") d.fireRating = patch.fireRating as FireRating;
+          if (Object.keys(d).length) get().setWallDraft(d);
+        }
       },
       updateStory: (id, patch) => {
         get().commit((p) => applyStoryPatch(p, id, patch));
@@ -712,6 +777,55 @@ export const useStudio = create<StudioState>()(
         const cur = get().current();
         const last = cur?.stories[cur.stories.length - 1];
         if (last) set({ storyId: last.id, isolateStory: (cur?.stories.length ?? 0) > 3 });
+      },
+      copyToNextStory: () => {
+        const s = get();
+        const cur = s.current();
+        const sid = s.storyId;
+        if (!cur || !sid) return;
+        if (!s.selectedIds.length) {
+          get().copyStory();
+          toast.success("Étage dupliqué");
+          return;
+        }
+        const idx = cur.stories.findIndex((st) => st.id === sid);
+        if (idx < 0) return;
+        if (idx >= cur.stories.length - 1) get().addStory();
+        const nextSid = get().current()?.stories[idx + 1]?.id;
+        if (!nextSid) return;
+        const ids = new Set(s.selectedIds);
+        get().commit((p) => {
+          const wallMap = new Map<string, string>();
+          for (const w of [...p.walls]) {
+            if (!ids.has(w.id) || w.storyId !== sid) continue;
+            const nid = uid("w");
+            wallMap.set(w.id, nid);
+            p.walls.push({ ...w, id: nid, storyId: nextSid });
+          }
+          for (const o of [...p.openings]) {
+            const mapped = wallMap.get(o.wallId);
+            if (!mapped) continue;
+            p.openings.push({ ...o, id: uid("op"), wallId: mapped });
+          }
+          for (const f of [...p.furniture]) {
+            if (!ids.has(f.id) || f.storyId !== sid) continue;
+            p.furniture.push({ ...f, id: uid("fur"), storyId: nextSid });
+          }
+          for (const c of [...p.columns]) {
+            if (!ids.has(c.id) || c.storyId !== sid) continue;
+            p.columns.push({ ...c, id: uid("col"), storyId: nextSid });
+          }
+          return p;
+        });
+        set({ storyId: nextSid, isolateStory: true });
+        toast.success("Copié à l’étage suivant");
+      },
+      cycleStory: (dir = 1) => {
+        const cur = get().current();
+        if (!cur || cur.stories.length < 2) return;
+        const idx = Math.max(0, cur.stories.findIndex((st) => st.id === get().storyId));
+        const next = cur.stories[(idx + dir + cur.stories.length) % cur.stories.length];
+        if (next) set({ storyId: next.id, isolateStory: cur.stories.length > 2 });
       },
       copyStory: () => {
         const sid = get().storyId;
@@ -1375,11 +1489,16 @@ export const useStudio = create<StudioState>()(
       name: "forma-studio-v9",
       partialize: (s) => ({
         projects: s.projects,
+        currentId: s.currentId,
         lighting: s.lighting,
         sunHour: s.sunHour,
         skill: s.skill,
         ortho: s.ortho,
         nav: s.nav,
+        recentKinds: s.recentKinds,
+        lastDrawTool: s.lastDrawTool,
+        wallDraft: s.wallDraft,
+        furnitureKind: s.furnitureKind,
       }),
       merge: (persisted, current) => {
         const p = persisted as Partial<StudioState> | undefined;
@@ -1394,6 +1513,11 @@ export const useStudio = create<StudioState>()(
           projects,
           lighting: { ...DEFAULT_LIGHTING, ...(p?.lighting ?? {}) },
           ortho: p?.ortho ?? current.ortho,
+          recentKinds: p?.recentKinds?.length ? p.recentKinds : current.recentKinds,
+          lastDrawTool: p?.lastDrawTool ?? current.lastDrawTool,
+          wallDraft: { ...DEFAULT_WALL_DRAFT, ...(p?.wallDraft ?? {}) },
+          furnitureKind: p?.furnitureKind ?? current.furnitureKind,
+          currentId: p?.currentId ?? current.currentId,
           nav: {
             ...DEFAULT_NAV,
             ...(p?.nav ?? {}),

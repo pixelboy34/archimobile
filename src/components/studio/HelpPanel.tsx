@@ -13,8 +13,8 @@ export function HelpPanel() {
           comme une caméra.
         </li>
         <li>
-          <span className="text-fg">Bibliothèque.</span> Objets ouvre 55 ressources : salon, nuit,
-          cuisine, eau, bureau, technique, extérieur. Tapez pour poser.
+          <span className="text-fg">Bibliothèque.</span> 110 objets : salon, nuit,
+          cuisine, eau, bureau, technique, extérieur. Récents en tête. Tapez pour poser.
         </li>
         <li>
           <span className="text-fg">Paramètres.</span> L’essentiel d’abord (géométrie). Avancé
@@ -31,8 +31,9 @@ export function HelpPanel() {
           <span className="text-fg">IA.</span> Décrivez un programme : FORMA génère un massing habitable.
         </li>
       </ol>
-      <p className="text-xs text-subtle">
-        Raccourcis : Échap termine le trait, Suppr efface, Ctrl+Z annule, Ctrl+D duplique.
+      <p className="text-xs text-muted">
+        Raccourcis : Espace dernier outil · W mur · D porte · E fenêtre · T objet · M cote · Tab étage ·
+        Maj+clic multi-sélection · Échap · Suppr · Ctrl+Z · Ctrl+D.
       </p>
     </div>
   );
