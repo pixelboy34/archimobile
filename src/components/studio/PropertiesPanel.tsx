@@ -123,7 +123,7 @@ export function PropertiesPanel({
   }, [hasEl, tabProp]);
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2">
       {!compact && !tabProp && (
         <div className="flex gap-1 overflow-x-auto">
           {(
@@ -336,13 +336,14 @@ export function PropertiesPanel({
             </More>
           )}
           {!id && !compact && (
-            <p className="text-sm text-muted">Touchez un mur, une pièce ou un objet — ou passez à Étages pour un immeuble.</p>
+            <p className="text-[11px] text-muted">Touchez un ouvrage — ou Étages.</p>
           )}
         </>
       )}
 
       {!compact && tab === "projet" && (
         <>
+          <More label="Faisabilité">
           <FeasibilityCard
             project={project}
             lighting={lighting}
@@ -353,6 +354,7 @@ export function PropertiesPanel({
               toast.success(`Preset ${preset.label} · indicatif`);
             }}
           />
+          </More>
           <Section title="Projet">
             <Field label="Nom">
               <Input value={project.name} onChange={(e) => renameCurrent(e.target.value)} />
@@ -409,7 +411,7 @@ export function PropertiesPanel({
                   key={p.id}
                   type="button"
                   onClick={() => setLighting(p.patch)}
-                  className={`h-11 shrink-0 px-3.5 text-xs font-medium ring-1 transition-colors ${
+                  className={`h-8 shrink-0 px-3 text-[11px] font-medium ring-1 transition-colors ${
                     Math.abs(lighting.sunHour - (p.patch.sunHour ?? lighting.sunHour)) < 0.01 &&
                     Math.abs(lighting.sunIntensity - (p.patch.sunIntensity ?? lighting.sunIntensity)) < 0.01
                       ? "bg-accent/15 text-accent ring-accent/40"
@@ -420,8 +422,8 @@ export function PropertiesPanel({
                 </button>
               ))}
             </div>
-            <Param label="Heure solaire" value={lighting.sunHour} min={5} max={22} step={0.25} unit="h" digits={1} onBegin={beginEdit} onChange={(v) => setLighting({ sunHour: v })} />
             <More label="Réglages">
+            <Param label="Heure solaire" value={lighting.sunHour} min={5} max={22} step={0.25} unit="h" digits={1} onBegin={beginEdit} onChange={(v) => setLighting({ sunHour: v })} />
             <ToggleRow label="Physique (visite)" on={physics} onChange={setPhysics} />
             <Param label="Coupe (clip Y)" value={clipY} min={0.15} max={1} step={0.02} unit="" digits={2} onBegin={beginEdit} onChange={setClipY} />
             <Param
@@ -517,16 +519,16 @@ export function StoriesPanel() {
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between">
-        <p className="text-sm">
+        <p className="text-xs">
           <span className="font-display font-semibold">{project.stories.length}</span>
-          <span className="text-muted"> niveaux</span>
+          <span className="text-muted"> niv.</span>
           {typicalGroupSize(project, active) > 1 && isLiveTypical(project.stories.find((s) => s.id === active)) && (
             <span className="ml-2 text-[11px] font-medium text-accent">{typicalGroupSize(project, active)} types liés</span>
           )}
         </p>
-        <p className="font-mono text-xs text-muted tabular">{tall.toFixed(1)} m hors sol</p>
+        <p className="font-mono text-[11px] text-muted tabular">{tall.toFixed(1)} m</p>
       </div>
       <More label="Massing">
       <Section title="Nouvel immeuble">
@@ -614,19 +616,19 @@ export function StoriesPanel() {
           </button>
         ))}
       </div>
+      <More label="Actions">
       {project.stories.filter((st) => st.id === active).map((st) => {
         const i = project.stories.findIndex((s) => s.id === st.id);
         return (
-        <div key={st.id}>
-          <Param label="Hauteur sous plafond" value={st.height} min={2.2} max={12} step={0.05} onBegin={beginEdit} onChange={(v) => patchStory(st.id, { height: v })} />
+        <div key={`hsp-${st.id}`}>
+          <Param label="HSP" value={st.height} min={2.2} max={12} step={0.05} onBegin={beginEdit} onChange={(v) => patchStory(st.id, { height: v })} />
           {i === 0 && (
             <Param label="Niveau 0" value={st.elevation} min={-12} max={40} step={0.05} onBegin={beginEdit} onChange={(v) => patchStory(st.id, { elevation: v })} />
           )}
         </div>
         );
       })}
-      <ToggleRow label="Isoler le niveau actif" on={isolateStory} onChange={setIsolateStory} />
-      <More label="Actions">
+      <ToggleRow label="Isoler" on={isolateStory} onChange={setIsolateStory} />
       <div className="grid grid-cols-4 gap-1.5">
         <Button variant="outline" onClick={() => addStory()}>+ Étage</Button>
         <Button variant="outline" onClick={() => copyStory()}>Dupliquer tout</Button>
@@ -1159,7 +1161,7 @@ function Param({
     onChange(Math.min(max, Math.max(min, Number(raw.toFixed(4)))));
   };
   return (
-    <label className="flex flex-col gap-1.5" onPointerDown={(e) => e.stopPropagation()}>
+    <label className="flex flex-col gap-0.5" onPointerDown={(e) => e.stopPropagation()}>
       <span className="flex items-baseline justify-between gap-3">
         <span className="text-[11px] font-medium tracking-wide text-muted uppercase">{label}</span>
         <span className="flex items-center gap-1">
@@ -1214,7 +1216,7 @@ function Param({
             onTouchStart={(e) => e.stopPropagation()}
             onTouchMove={(e) => e.stopPropagation()}
             onChange={(e) => apply(Number(e.target.value))}
-            className="relative h-11 w-full cursor-pointer appearance-none bg-transparent accent-accent [touch-action:none]"
+            className="relative h-6 w-full cursor-pointer appearance-none bg-transparent accent-accent [touch-action:none]"
           />
         </div>
         <button

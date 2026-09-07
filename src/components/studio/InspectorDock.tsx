@@ -64,9 +64,9 @@ export function InspectorDock({
   return (
     <div
       className={cn(
-        "inspector-dock pointer-events-auto absolute z-30 flex flex-col bg-surface/98 shadow-border",
+        "inspector-dock pointer-events-auto absolute z-30 flex flex-col bg-surface/92 shadow-border",
         "inset-x-0 bottom-0 border-t border-border",
-        expanded ? "max-h-[min(48dvh,26rem)]" : "max-h-[min(32dvh,18.5rem)]",
+        expanded ? "max-h-[min(40dvh,22rem)]" : "max-h-[min(22dvh,11.5rem)]",
         "lg:inset-x-auto lg:top-[calc(env(safe-area-inset-top)+3.15rem)] lg:right-0 lg:bottom-0 lg:w-[22rem] lg:max-h-none lg:border-t-0 lg:border-l",
       )}
     >
@@ -102,8 +102,8 @@ export function InspectorDock({
         </button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2.5 pt-1.5 pb-[max(0.6rem,env(safe-area-inset-bottom))]">
-        <p className="mb-1.5 flex items-baseline gap-2 px-0.5">
-          <span className="text-[11px] font-medium tracking-tight text-fg">{chip.type}</span>
+        <p className="mb-1 flex items-baseline gap-2 px-0.5">
+          <span className="text-[10px] font-medium tracking-tight text-fg">{chip.type}</span>
           <span className="min-w-0 truncate font-mono text-[10px] text-muted tabular">{chip.dims}</span>
         </p>
         <PropertiesPanel tab={tab} onTab={onTab} />

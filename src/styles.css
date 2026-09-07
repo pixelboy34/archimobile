@@ -384,13 +384,14 @@
 .param-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.35rem 0.6rem;
+  gap: 0.25rem 0.5rem;
 }
-.param-grid .param-step {
+.inspector-dock .param-step {
   display: none;
 }
 .inspector-dock input[type="range"] {
-  min-height: 32px;
+  min-height: 22px;
+  height: 22px;
 }
 
 .seg {
