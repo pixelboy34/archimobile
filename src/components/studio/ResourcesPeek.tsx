@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
-import { OBJECT_CATALOG, OBJECT_GROUPS, objectDef } from "@/lib/bim/catalog";
+import { OBJECT_CATALOG, OBJECT_GROUPS, OBJECT_SIZES, objectDef } from "@/lib/bim/catalog";
 import { MATERIAL_CATALOG, MATERIAL_COLORS, resolveMaterial } from "@/lib/bim/materials";
 import { MATERIAL_LABELS, type FurnitureKind, type MaterialId, type TextureKind } from "@/lib/bim/types";
 import { paintSwatch } from "@/lib/render/procedural-textures";
@@ -162,8 +162,16 @@ export function ResourcesPeek({
                   kind={o.kind}
                   active={kind === o.kind}
                   onClick={() => {
+                    const st = useStudio.getState();
+                    const cur = st.current();
+                    const furn = cur?.furniture.find((f) => st.selectedIds.includes(f.id));
                     setKind(o.kind);
-                    setTool("furniture");
+                    if (furn) {
+                      const sz = OBJECT_SIZES[o.kind];
+                      st.commitSelected({ kind: o.kind, ...(sz ?? {}) });
+                    } else {
+                      setTool("furniture");
+                    }
                   }}
                 />
               ))}

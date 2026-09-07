@@ -30,7 +30,8 @@ export function StudioHud() {
   const isolateStory = useStudio((s) => s.isolateStory);
   if (!project) return null;
   const typicalHint = linkedTypicalHint(project, storyId);
-  if (view === "ar" || view === "3d") return null;
+  if (view === "ar") return null;
+  if (view === "3d" && tool === "select") return null;
   if (!showHud) return null;
   const sel = selectedIds[0] ? selectionHud(project, selectedIds[0]) : null;
 

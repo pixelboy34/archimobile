@@ -21,7 +21,7 @@ export function HelpPanel() {
           ouvre thermique, feu, urbanisme. Dupliquez un niveau pour les grands projets.
         </li>
         <li>
-          <span className="text-fg">Matières.</span> Studio → Matériaux. Enduit, brique, zinc, marbre,
+          <span className="text-fg">Matières.</span> Plus → Matières. Enduit, brique, zinc, marbre,
           parquet — textures monde, peintes en direct.
         </li>
         <li>

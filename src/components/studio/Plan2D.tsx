@@ -127,8 +127,9 @@ export function Plan2D({
   const ink = useRef<Vec2[]>([]);
   const moveDrag = useRef<{ last: Vec2 } | null>(null);
   const lastTap = useRef(0);
-  const model = useRef({ project, storyId, tool, snap, grid, selectedIds, draft, measure, ortho });
-  model.current = { project, storyId, tool, snap, grid, selectedIds, draft, measure, ortho };
+  const snapStep = useStudio((s) => s.snapStep);
+  const model = useRef({ project, storyId, tool, snap, grid, selectedIds, draft, measure, ortho, snapStep });
+  model.current = { project, storyId, tool, snap, grid, selectedIds, draft, measure, ortho, snapStep };
 
   useEffect(() => {
     const b = projectBounds(project, storyId);
@@ -178,7 +179,7 @@ export function Plan2D({
       });
 
       if (showGrid) {
-        const step = cam.current.scale >= 36 ? 1 : 5;
+        const step = cam.current.scale >= 48 ? Math.max(0.25, model.current.snapStep) : cam.current.scale >= 28 ? 1 : 5;
         ctx.beginPath();
         const left = cam.current.x - w / 2 / cam.current.scale;
         const right = cam.current.x + w / 2 / cam.current.scale;
@@ -435,7 +436,7 @@ export function Plan2D({
         ctx.fillText(`${w.toFixed(2)} × ${d.toFixed(2)} m`, (a.x + b.x) / 2, (a.y + b.y) / 2);
       }
       if (hover.current && (model.current.tool === "wall" || model.current.tool === "rect" || model.current.tool === "measure")) {
-        const snap = snapDetail(hover.current, proj, sid, model.current.snap);
+        const snap = snapDetail(hover.current, proj, sid, model.current.snap, 0.35, model.current.snapStep);
         const spt = toS(snap.point);
         ctx.beginPath();
         if (snap.kind === "end") {
@@ -670,7 +671,7 @@ export function Plan2D({
           return;
         }
         const p = worldFromEvent(e, canvas, cam.current);
-        const wp = model.current.snap ? snapVec(p) : p;
+        const wp = model.current.snap ? snapVec(p, model.current.snapStep) : p;
         const currentTool = model.current.tool;
         if (currentTool === "pen") {
           ink.current = [wp];
@@ -680,8 +681,9 @@ export function Plan2D({
           const id = hit(p);
           const now = performance.now();
           if (id && currentTool === "select" && now - lastTap.current < 320) {
-            splitWall(p);
-            rotateSelected(Math.PI / 2);
+            const isWall = model.current.project.walls.some((w) => w.id === id);
+            if (isWall) splitWall(p);
+            else rotateSelected(Math.PI / 2);
             lastTap.current = 0;
             return;
           }

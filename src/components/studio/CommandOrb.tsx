@@ -79,6 +79,7 @@ export function CommandOrb({
   const propagateTypical = useStudio((s) => s.propagateTypical);
   const copyToNextStory = useStudio((s) => s.copyToNextStory);
   const arraySelected = useStudio((s) => s.arraySelected);
+  const applyDraftToSelection = useStudio((s) => s.applyDraftToSelection);
   const cycleStory = useStudio((s) => s.cycleStory);
   const wallDraft = useStudio((s) => s.wallDraft);
   const setWallDraft = useStudio((s) => s.setWallDraft);
@@ -194,16 +195,16 @@ export function CommandOrb({
         <div className="flex flex-col gap-1">
           {movable && pas && (
             <div className="flex gap-0.5 overflow-x-auto">
-              <OrbBtn label="−X" onClick={() => nudge(-0.1, 0)}>
+              <OrbBtn label="−X" onClick={() => nudge(-snapStep, 0)}>
                 <span className="font-mono text-[11px]">−X</span>
               </OrbBtn>
-              <OrbBtn label="+X" onClick={() => nudge(0.1, 0)}>
+              <OrbBtn label="+X" onClick={() => nudge(snapStep, 0)}>
                 <span className="font-mono text-[11px]">+X</span>
               </OrbBtn>
-              <OrbBtn label="−Y" onClick={() => nudge(0, -0.1)}>
+              <OrbBtn label="−Y" onClick={() => nudge(0, -snapStep)}>
                 <span className="font-mono text-[11px]">−Y</span>
               </OrbBtn>
-              <OrbBtn label="+Y" onClick={() => nudge(0, 0.1)}>
+              <OrbBtn label="+Y" onClick={() => nudge(0, snapStep)}>
                 <span className="font-mono text-[11px]">+Y</span>
               </OrbBtn>
               <OrbBtn label="−0,5" onClick={() => nudge(-0.5, 0)}>
@@ -243,6 +244,9 @@ export function CommandOrb({
               onClick={() => arraySelected(3)}
             >
               <CopyPlus className="size-4" />
+            </OrbBtn>
+            <OrbBtn label="Appliquer type" onClick={applyDraftToSelection}>
+              <Wrench className="size-4" />
             </OrbBtn>
             <OrbBtn label="Pivoter" onClick={() => rotateSelected(Math.PI / 2)}>
               <RotateCw className="size-4" />

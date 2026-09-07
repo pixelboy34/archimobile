@@ -289,7 +289,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
         ) {
           const s = useStudio.getState();
           if (!s.selectedIds.length) return;
-          const step = e.shiftKey ? 0.5 : 0.1;
+          const step = e.shiftKey ? 0.5 : s.snapStep || 0.1;
           e.preventDefault();
           const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
           const dy = e.key === "ArrowUp" ? step : e.key === "ArrowDown" ? -step : 0;
@@ -417,7 +417,11 @@ export function StudioShell({ projectId }: { projectId: string }) {
               </button>
               <button
                 type="button"
-                onClick={() => setTool("wall")}
+                onClick={() => {
+                  setWorkspace("esquisse");
+                  setView("plan");
+                  setTool("wall");
+                }}
                 className="mt-1.5 h-10 w-full rounded-xl text-sm text-muted hover:bg-elevated"
               >
                 Tracer un mur

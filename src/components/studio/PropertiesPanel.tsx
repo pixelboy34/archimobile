@@ -262,6 +262,9 @@ export function PropertiesPanel({
                   <Chips label="Sens" value={opening.swing ?? "left"} options={Object.keys(SWING_LABELS)} labels={SWING_LABELS} onChange={(m) => commitSelected({ swing: m })} />
                 )}
                 <ToggleRow label="Volet" on={Boolean(opening.shutter)} onChange={(v) => commitSelected({ shutter: v })} />
+                <Param label="Position" value={opening.t} min={0.05} max={0.95} step={0.01} unit="" digits={2} onBegin={beginEdit} onChange={(v) => patchSelected({ t: v })} />
+                <Param label="Dormant" value={opening.frame ?? 0.06} min={0.03} max={0.16} step={0.005} onBegin={beginEdit} onChange={(v) => patchSelected({ frame: v })} />
+                <Param label="Tableau" value={opening.reveal ?? 0} min={0} max={0.4} step={0.01} onBegin={beginEdit} onChange={(v) => patchSelected({ reveal: v })} />
               </More>
             </Section>
           )}

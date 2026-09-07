@@ -9,7 +9,7 @@ import {
   emptyProject,
   touch,
 } from "@/lib/bim/builder";
-import { dist, findWallAt, snapVec } from "@/lib/bim/geometry";
+import { dist, findWallAt, snapVec, wallAngle, wallLength } from "@/lib/bim/geometry";
 import { snapToSketch } from "@/lib/bim/snap";
 import { mergeDetectedRooms } from "@/lib/bim/rooms";
 import { seedProjects } from "@/lib/bim/seed";
@@ -161,6 +161,7 @@ interface StudioState {
   duplicateProjectById: (id: string) => string | null;
   duplicateSelected: () => void;
   arraySelected: (count?: number) => void;
+  applyDraftToSelection: () => void;
   commit: (mutator: (p: Project) => Project) => void;
   undo: () => void;
   redo: () => void;
@@ -484,15 +485,56 @@ export const useStudio = create<StudioState>()(
       },
       arraySelected: (count = 3) => {
         const ids = get().selectedIds;
-        if (!ids.length) return;
+        const cur = get().current();
+        if (!ids.length || !cur) return;
         const n = Math.max(1, Math.min(24, Math.round(count)));
+        let dx = 0.6;
+        let dy = 0;
+        const wall = cur.walls.find((w) => ids.includes(w.id));
+        if (wall) {
+          const ang = wallAngle(wall);
+          const span = Math.max(0.6, wallLength(wall) * 0.15);
+          dx = Math.cos(ang) * span;
+          dy = Math.sin(ang) * span;
+        }
         let last: string[] = [];
         get().commit((p) => {
-          for (let i = 1; i <= n; i++) last = cloneSelection(p, ids, 0.6 * i, 0);
+          for (let i = 1; i <= n; i++) last = cloneSelection(p, ids, dx * i, dy * i);
           return p;
         });
         if (last.length) set({ selectedIds: last });
         toast.success(`Réseau ×${n}`);
+      },
+      applyDraftToSelection: () => {
+        const ids = get().selectedIds;
+        const cur = get().current();
+        if (!cur || !ids.length) return;
+        const wallIds = cur.walls.filter((w) => ids.includes(w.id)).map((w) => w.id);
+        const openIds = cur.openings.filter((o) => ids.includes(o.id)).map((o) => o.id);
+        if (wallIds.length) {
+          const d = get().wallDraft;
+          get().commit((p) =>
+            patchEntities(p, wallIds, {
+              thickness: d.thickness,
+              height: d.height,
+              materialId: d.materialId,
+              loadBearing: d.loadBearing,
+              partition: d.partition,
+              insulationMm: d.insulationMm,
+              role: d.role,
+              alignment: d.alignment,
+              fireRating: d.fireRating,
+            }),
+          );
+          toast.success("Type mur appliqué");
+          return;
+        }
+        if (openIds.length) {
+          const o = cur.openings.find((x) => ids.includes(x.id))!;
+          const d = get().openingDraft[o.kind];
+          get().commit((p) => patchEntities(p, openIds, { ...d }));
+          toast.success("Type baie appliqué");
+        }
       },
       commit: (mutator) => {
         const cur = get().current();
@@ -1187,7 +1229,7 @@ export const useStudio = create<StudioState>()(
             s.activeMaterialId === "water" || s.activeMaterialId === "vegetation"
               ? "plaster"
               : s.activeMaterialId;
-          s.commit((proj) => addRectWalls(proj, storyId, s.draft!, wp, { materialId: mat }));
+          s.commit((proj) => addRectWalls(proj, storyId, s.draft!, wp, { ...s.wallDraft, materialId: mat }));
           set({ draft: null });
           return;
         }
