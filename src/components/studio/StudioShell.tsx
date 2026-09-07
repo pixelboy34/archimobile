@@ -29,6 +29,7 @@ import type { Project, ViewMode, WorkspaceMode } from "@/lib/bim/types";
 import { useStudio } from "@/lib/store/project-store";
 import { AnalysisPanel } from "./AnalysisPanel";
 import { CollabPanel } from "./CollabPanel";
+import { normalizeRoomCode } from "@/lib/multiplayer/collab";
 import { ConstructPanel } from "./ConstructPanel";
 import { CopilotPanel } from "./CopilotPanel";
 import { HelpPanel } from "./HelpPanel";
@@ -120,6 +121,26 @@ export function StudioShell({ projectId }: { projectId: string }) {
     if (!hydrated) return;
     openProject(projectId);
   }, [hydrated, projectId, openProject]);
+
+  // Deep link: /?collab=CODE → open Collab sheet + join once hydrated
+  useEffect(() => {
+    if (!hydrated) return;
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get("collab");
+    if (!raw) return;
+    const code = normalizeRoomCode(raw);
+    if (code.length < 4) return;
+    setPanel("collab");
+    const state = useStudio.getState();
+    if (state.collabRoom !== code) {
+      state.startCollab(code);
+    }
+    params.delete("collab");
+    const qs = params.toString();
+    const next = `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`;
+    window.history.replaceState({}, "", next);
+  }, [hydrated]);
 
   useEffect(() => {
     if (!hydrated || !current) return;

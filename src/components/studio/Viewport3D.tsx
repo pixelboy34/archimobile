@@ -4,6 +4,7 @@ import { OrthographicCamera } from "@react-three/drei";
 import * as THREE from "three";
 import { BuildingScene, Ground, sunPosition } from "./BuildingScene";
 import { OrbitRig } from "./OrbitRig";
+import { SelectionGizmo } from "./SelectionGizmo";
 import { WalkController } from "./WalkController";
 import { PhysicsRig } from "./PhysicsRig";
 import { PLAYER_HALF, PLAYER_RADIUS } from "@/lib/physics/rapier-world";
@@ -323,6 +324,7 @@ export function Viewport3D({
   const physicsOn = useStudio((s) => s.physics);
   const orthoCam = useStudio((s) => s.nav.orthoCam);
   const fov = useStudio((s) => s.nav.fov);
+  const gizmoMode = useStudio((s) => s.gizmoMode);
   const [baseQuality] = useState<RenderQuality>(() => detectQuality());
   const quality = useMemo(
     () => tallBoost(baseQuality, project.stories.length),
@@ -423,7 +425,7 @@ export function Viewport3D({
       )}
       <AdaptiveGpu mobile={quality.mobile} />
       <Invalidate
-        tick={`${project.updatedAt}|${selectedIds.join(",")}|${hour}|${clipY}|${view}|${lighting.month}|${lighting.sunIntensity}|${lighting.fill}|${lighting.ambient}|${lighting.hemi}|${lighting.exposure}|${shadows}|${lighting.shadowSoftness}|${lighting.interior}|${lighting.interiorGain}|${buildPhase}|${tool}|${draft ? "d" : ""}|${showGrid ? "g" : ""}|${isolateStory ? storyId : "all"}|${showStructure ? "st" : ""}|${orthoCam ? "o" : ""}|${fov}`}
+        tick={`${project.updatedAt}|${selectedIds.join(",")}|${hour}|${clipY}|${view}|${lighting.month}|${lighting.sunIntensity}|${lighting.fill}|${lighting.ambient}|${lighting.hemi}|${lighting.exposure}|${shadows}|${lighting.shadowSoftness}|${lighting.interior}|${lighting.interiorGain}|${buildPhase}|${tool}|${draft ? "d" : ""}|${showGrid ? "g" : ""}|${isolateStory ? storyId : "all"}|${showStructure ? "st" : ""}|${orthoCam ? "o" : ""}|${fov}|${gizmoMode}`}
       />
       <LightRig lighting={lighting} shadows={shadows} type={shadowType} mobile={quality.mobile} />
       <color attach="background" args={[sky]} />
@@ -508,6 +510,9 @@ export function Viewport3D({
           north={project.meta.north}
           span={span}
         />
+      )}
+      {!walking && tool === "select" && (view === "3d" || view === "coupe") && (
+        <SelectionGizmo />
       )}
       <DraftGhost elev={elev} height={storyH} project={project} storyId={story?.id ?? project.stories[0]!.id} />
     </Canvas>

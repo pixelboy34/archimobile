@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { downloadText, exportBimJson, shareProject } from "@/lib/bim/quantities";
 import { normalizeRoomCode } from "@/lib/multiplayer/collab";
+import { CollabQr } from "@/lib/qr/collab-qr";
 import { useStudio } from "@/lib/store/project-store";
+import { cn } from "@/lib/utils";
 
 function peerStatusLabel(state: string): string {
   if (state === "connected") return "connecté";
@@ -15,10 +17,27 @@ function peerStatusLabel(state: string): string {
   return state;
 }
 
+function peerStatusColor(state: string): string {
+  if (state === "connected") return "text-accent";
+  if (state === "connecting" || state === "new" || state === "checking") return "text-amber-400";
+  if (state === "failed" || state === "disconnected" || state === "closed") return "text-danger";
+  return "text-muted";
+}
+
+function peerDotColor(state: string): string {
+  if (state === "connected") return "bg-accent";
+  if (state === "connecting" || state === "new" || state === "checking") return "bg-amber-400 animate-pulse";
+  if (state === "failed" || state === "disconnected" || state === "closed") return "bg-danger";
+  return "bg-muted";
+}
+
 export function CollabPanel() {
   const project = useStudio((s) => s.projects.find((p) => p.id === s.currentId) ?? null);
   const collabRoom = useStudio((s) => s.collabRoom);
   const collabPeers = useStudio((s) => s.collabPeers);
+  const collabStatus = useStudio((s) => s.collabStatus);
+  const collabLocalEpoch = useStudio((s) => s.collabLocalEpoch);
+  const collabReceivedEpoch = useStudio((s) => s.collabReceivedEpoch);
   const startCollab = useStudio((s) => s.startCollab);
   const stopCollab = useStudio((s) => s.stopCollab);
   const pushCollabProject = useStudio((s) => s.pushCollabProject);
@@ -32,6 +51,19 @@ export function CollabPanel() {
     return `${protocol}//${host}${p}`;
   }, []);
 
+  const collabLink = useMemo(() => {
+    if (!collabRoom) return "";
+    if (typeof window === "undefined") return `http://192.168.x.x:8080/?collab=${collabRoom}`;
+    const { hostname, protocol, port } = window.location;
+    const p = port ? `:${port}` : "";
+    return `${protocol}//${hostname}${p}/?collab=${encodeURIComponent(collabRoom)}`;
+  }, [collabRoom]);
+
+  const lanLinkHint = useMemo(() => {
+    if (!collabRoom) return "";
+    return `${networkHint}/?collab=${collabRoom}`;
+  }, [collabRoom, networkHint]);
+
   const copyRoom = async () => {
     if (!collabRoom) return;
     try {
@@ -39,6 +71,17 @@ export function CollabPanel() {
       toast.success("Code copié");
     } catch {
       toast.message(collabRoom);
+    }
+  };
+
+  const copyLink = async () => {
+    const link = lanLinkHint || collabLink;
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success("Lien copié");
+    } catch {
+      toast.message(link);
     }
   };
 
@@ -107,19 +150,43 @@ export function CollabPanel() {
         </section>
       ) : (
         <section className="flex flex-col gap-3">
-          <p className="text-[10px] font-medium tracking-[0.18em] text-muted uppercase">
-            Salon actif
-          </p>
-          <div className="panel-card flex items-center justify-between gap-3 p-3.5">
-            <div>
-              <p className="font-mono text-2xl font-semibold tracking-[0.35em] text-fg">
-                {collabRoom}
-              </p>
-              <p className="mt-1 text-[11px] text-subtle">Partagez ce code à l’autre téléphone</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] font-medium tracking-[0.18em] text-muted uppercase">
+              Salon actif
+            </p>
+            {collabStatus === "reconnecting" && (
+              <span className="rounded-full bg-amber-400/15 px-2.5 py-0.5 text-[11px] font-medium text-amber-400">
+                Reconnexion…
+              </span>
+            )}
+            {collabStatus === "live" && (
+              <span className="rounded-full bg-accent/15 px-2.5 py-0.5 text-[11px] font-medium text-accent">
+                En ligne
+              </span>
+            )}
+          </div>
+
+          <div className="panel-card flex flex-col items-center gap-3 p-4">
+            <p className="font-mono text-2xl font-semibold tracking-[0.35em] text-fg">
+              {collabRoom}
+            </p>
+            <CollabQr value={lanLinkHint || collabLink} size={200} className="rounded-xl overflow-hidden ring-1 ring-accent/30 [&_svg]:h-full [&_svg]:w-full" />
+            <p className="text-center text-[11px] text-subtle">
+              Scannez avec l’autre téléphone · même Wi‑Fi
+            </p>
+            <p className="max-w-full truncate font-mono text-[10px] text-muted">
+              {lanLinkHint || collabLink}
+            </p>
+            <div className="flex w-full gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => void copyRoom()}>
+                <Copy className="size-4" />
+                Copier le code
+              </Button>
+              <Button variant="accent" className="flex-1" onClick={() => void copyLink()}>
+                <Link2 className="size-4" />
+                Copier le lien
+              </Button>
             </div>
-            <Button variant="outline" size="icon" onClick={() => void copyRoom()} aria-label="Copier">
-              <Copy className="size-4" />
-            </Button>
           </div>
 
           <div>
@@ -128,20 +195,27 @@ export function CollabPanel() {
               <p className="text-[10px] font-medium tracking-[0.18em] text-muted uppercase">
                 Pairs ({collabPeers.length})
               </p>
+              <span className="ml-auto font-mono text-[10px] text-subtle">
+                époch {collabLocalEpoch}/{collabReceivedEpoch}
+              </span>
             </div>
             {collabPeers.length === 0 ? (
               <p className="text-sm text-subtle">En attente d’un second appareil…</p>
             ) : (
               <ul className="divide-y divide-border rounded-xl border border-border/60 bg-elevated/60">
                 {collabPeers.map((p) => (
-                  <li key={p.id} className="flex items-center justify-between px-3 py-2.5 text-sm">
-                    <span className="truncate text-fg">{p.name || p.id}</span>
-                    <span
-                      className={`text-[11px] font-medium ${
-                        p.connectionState === "connected" ? "text-accent" : "text-muted"
-                      }`}
-                    >
-                      {peerStatusLabel(p.connectionState)}
+                  <li key={p.id} className="flex items-center justify-between gap-2 px-3 py-2.5 text-sm">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span
+                        className={cn("size-2 shrink-0 rounded-full", peerDotColor(p.connectionState))}
+                        aria-hidden
+                      />
+                      <span className="truncate text-fg">{p.name || p.id}</span>
+                    </span>
+                    <span className={cn("shrink-0 text-[11px] font-medium", peerStatusColor(p.connectionState))}>
+                      {collabStatus === "reconnecting" && p.connectionState !== "connected"
+                        ? "Reconnexion…"
+                        : peerStatusLabel(p.connectionState)}
                       {p.rttMs != null && p.connectionState === "connected"
                         ? ` · ${p.rttMs} ms`
                         : ""}

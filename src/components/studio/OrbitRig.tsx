@@ -2,6 +2,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { useStudio } from "@/lib/store/project-store";
+import { isOrbitLocked } from "@/lib/viewport/orbit-lock";
 
 export type CamCommand =
   | { kind: "iso" | "top" | "front" | "right" | "left" | "back" | "fit" | "north" | "yawL" | "yawR" }
@@ -197,6 +198,10 @@ export function OrbitRig({
       const dx = e.clientX - prev.x;
       const dy = e.clientY - prev.y;
       st.moved += Math.hypot(dx, dy);
+      if (isOrbitLocked()) {
+        invalidate();
+        return;
+      }
       const n = navRef.current;
       if (st.pointers.size >= 2) {
         const pts = [...st.pointers.values()];
@@ -243,6 +248,7 @@ export function OrbitRig({
     };
     const wheel = (e: WheelEvent) => {
       e.preventDefault();
+      if (isOrbitLocked()) return;
       const z = navRef.current.invertZoom ? -1 : 1;
       const factor = (e.deltaY > 0 ? 1.08 : 0.92) ** z;
       st.dRadius = Math.min(maxDistance, Math.max(minDistance, st.dRadius * factor));

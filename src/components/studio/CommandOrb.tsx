@@ -12,6 +12,7 @@ import {
   Plus,
   Redo2,
   RotateCw,
+  Move3d,
   SlidersHorizontal,
   Trash2,
   Undo2,
@@ -75,6 +76,8 @@ export function CommandOrb({
   const rotateSelected = useStudio((s) => s.rotateSelected);
   const deleteSelected = useStudio((s) => s.deleteSelected);
   const moveSelected = useStudio((s) => s.moveSelected);
+  const gizmoMode = useStudio((s) => s.gizmoMode);
+  const setGizmoMode = useStudio((s) => s.setGizmoMode);
   const propagateTypical = useStudio((s) => s.propagateTypical);
   const project = useStudio((s) => s.projects.find((p) => p.id === s.currentId) ?? null);
 
@@ -163,6 +166,26 @@ export function CommandOrb({
         <div className="flex flex-col gap-1">
           {movable && (
             <div className="flex gap-0.5 overflow-x-auto">
+              {(view === "3d" || view === "coupe") && (
+                <>
+                  <OrbBtn
+                    label="Déplacer"
+                    active={gizmoMode === "translate"}
+                    accent={gizmoMode === "translate"}
+                    onClick={() => setGizmoMode("translate")}
+                  >
+                    <Move3d className="size-4" />
+                  </OrbBtn>
+                  <OrbBtn
+                    label="Pivoter 3D"
+                    active={gizmoMode === "rotate"}
+                    accent={gizmoMode === "rotate"}
+                    onClick={() => setGizmoMode("rotate")}
+                  >
+                    <RotateCw className="size-4" />
+                  </OrbBtn>
+                </>
+              )}
               <OrbBtn label="−X" onClick={() => nudge(-0.1, 0)}>
                 <span className="font-mono text-[11px]">−X</span>
               </OrbBtn>

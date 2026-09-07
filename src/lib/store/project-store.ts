@@ -168,10 +168,19 @@ interface StudioState {
   collabRoom: string | null;
   collabPeers: PeerInfo[];
   collabSelfId: string | null;
+  /** Monotonic local edit epoch while collab is active. */
+  collabLocalEpoch: number;
+  /** Last epoch received from a peer. */
+  collabReceivedEpoch: number;
+  /** UI: Reconnexion… when peers are recovering. */
+  collabStatus: "idle" | "live" | "reconnecting";
+  gizmoMode: "translate" | "rotate";
+  setGizmoMode: (mode: "translate" | "rotate") => void;
   startCollab: (room?: string) => string;
   stopCollab: () => void;
   pushCollabProject: () => void;
-  applyRemoteProject: (project: Project) => void;
+  applyRemoteProject: (project: Project, epoch?: number) => void;
+  resolveCollabConflict: (choice: "keep" | "take") => void;
 }
 
 
@@ -209,6 +218,24 @@ function clearCollabTimers() {
 }
 
 let lastRemoteFingerprint = "";
+/** updatedAt of the last project we successfully pushed (or accepted). */
+let lastPushedUpdatedAt: string | null = null;
+/** Pending remote project awaiting user conflict choice. */
+let pendingRemote: { project: Project; epoch: number } | null = null;
+
+function deriveCollabStatus(peers: PeerInfo[]): "idle" | "live" | "reconnecting" {
+  if (peers.length === 0) return "idle";
+  const live = peers.some((p) => p.connectionState === "connected");
+  const recovering = peers.some((p) =>
+    p.connectionState === "connecting" ||
+    p.connectionState === "disconnected" ||
+    p.connectionState === "failed" ||
+    p.connectionState === "new",
+  );
+  if (live && !recovering) return "live";
+  if (recovering) return "reconnecting";
+  return live ? "live" : "idle";
+}
 
 
 function applyStoryPatch(
@@ -272,6 +299,11 @@ export const useStudio = create<StudioState>()(
       collabRoom: null,
       collabPeers: [],
       collabSelfId: null,
+      collabLocalEpoch: 0,
+      collabReceivedEpoch: 0,
+      collabStatus: "idle",
+      gizmoMode: "translate",
+      setGizmoMode: (gizmoMode) => set({ gizmoMode }),
       setHydrated: (v) => set({ hydrated: v }),
       setTool: (tool) => set({ tool, draft: null, measure: tool === "measure" ? get().measure : null }),
       setView: (view) => set({ view }),
@@ -418,7 +450,13 @@ export const useStudio = create<StudioState>()(
         const storyId = get().storyId;
         let next = mutator(cloneProject(cur));
         if (!silentTypicalSync) next = maybeSyncTypical(next, storyId);
-        set((s) => withHistory(s, next) as StudioState);
+        set((s) => {
+          const base = withHistory(s, next) as StudioState;
+          if (s.collabRoom) {
+            return { ...base, collabLocalEpoch: s.collabLocalEpoch + 1 };
+          }
+          return base;
+        });
       },
       undo: () => {
         const s = get();
@@ -620,6 +658,7 @@ export const useStudio = create<StudioState>()(
         set((s) => ({
           history: [...s.history, cloneProject(cur)].slice(-HISTORY_LIMIT),
           future: [],
+          ...(s.collabRoom ? { collabLocalEpoch: s.collabLocalEpoch + 1 } : {}),
         }));
       },
       patchNow: (mutator) => {
@@ -1012,7 +1051,7 @@ export const useStudio = create<StudioState>()(
         if (!storyId) return;
         get().commit((p) => splitWallOp(p, storyId, point));
       },
-      applyRemoteProject: (remote) => {
+      applyRemoteProject: (remote, epoch = 0) => {
         const incoming = ensureSketch(inferStoryRoles(cloneProject(remote)));
         const fingerprint = JSON.stringify({
           id: incoming.id,
@@ -1020,19 +1059,131 @@ export const useStudio = create<StudioState>()(
           walls: incoming.walls.length,
           stories: incoming.stories.length,
           furniture: incoming.furniture.length,
+          epoch,
         });
         if (fingerprint === lastRemoteFingerprint) return;
-        lastRemoteFingerprint = fingerprint;
+
         const cur = get().current();
-        if (cur && cur.id === incoming.id) {
+        const localNewer =
+          !!cur &&
+          !!lastPushedUpdatedAt &&
+          new Date(cur.updatedAt).getTime() > new Date(lastPushedUpdatedAt).getTime();
+        const epochConflict =
+          get().collabLocalEpoch > get().collabReceivedEpoch && localNewer;
+
+        if (epochConflict && cur) {
+          if (
+            pendingRemote &&
+            pendingRemote.project.updatedAt === incoming.updatedAt &&
+            pendingRemote.epoch === epoch
+          ) {
+            return;
+          }
+          pendingRemote = { project: incoming, epoch };
+          toast.message("Conflit d’édition", {
+            id: "collab-conflict",
+            description: "La maquette distante diverge de vos modifications locales.",
+            duration: 20_000,
+            action: {
+              label: "Prendre le distant",
+              onClick: () => get().resolveCollabConflict("take"),
+            },
+            cancel: {
+              label: "Garder le mien",
+              onClick: () => get().resolveCollabConflict("keep"),
+            },
+          });
+          return;
+        }
+
+        lastRemoteFingerprint = fingerprint;
+        pendingRemote = null;
+        const applyIncoming = (inc: Project, ep: number) => {
+          const applied = touch(inc);
+          lastRemoteFingerprint = JSON.stringify({
+            id: applied.id,
+            updatedAt: applied.updatedAt,
+            walls: applied.walls.length,
+            stories: applied.stories.length,
+            furniture: applied.furniture.length,
+            epoch: ep,
+          });
+          lastPushedUpdatedAt = applied.updatedAt;
+          const current = get().current();
+          if (current && current.id === applied.id) {
+            set((s) => {
+              const history = [...s.history, cloneProject(current)].slice(-HISTORY_LIMIT);
+              const projects = s.projects.map((p) =>
+                p.id === applied.id ? applied : p,
+              );
+              const storyStill =
+                applied.stories.find((st) => st.id === s.storyId)?.id ??
+                applied.stories[0]?.id ??
+                null;
+              return {
+                projects,
+                history,
+                future: [],
+                storyId: storyStill,
+                selectedIds: [],
+                collabReceivedEpoch: Math.max(s.collabReceivedEpoch, ep),
+              };
+            });
+          } else if (current) {
+            set((s) => {
+              const history = [...s.history, cloneProject(current)].slice(-HISTORY_LIMIT);
+              const rest = s.projects.filter((p) => p.id !== current.id && p.id !== applied.id);
+              return {
+                projects: [applied, ...rest],
+                currentId: applied.id,
+                history,
+                future: [],
+                storyId: applied.stories[0]?.id ?? null,
+                selectedIds: [],
+                collabReceivedEpoch: Math.max(s.collabReceivedEpoch, ep),
+              };
+            });
+          } else {
+            get().addProject(applied);
+            set((s) => ({
+              collabReceivedEpoch: Math.max(s.collabReceivedEpoch, ep),
+            }));
+          }
+          toast.success("Synchro reçue");
+        };
+        applyIncoming(incoming, epoch);
+      },
+      resolveCollabConflict: (choice) => {
+        const pending = pendingRemote;
+        pendingRemote = null;
+        if (choice === "keep" || !pending) {
+          if (pending) {
+            lastRemoteFingerprint = JSON.stringify({
+              id: pending.project.id,
+              updatedAt: pending.project.updatedAt,
+              walls: pending.project.walls.length,
+              stories: pending.project.stories.length,
+              furniture: pending.project.furniture.length,
+              epoch: pending.epoch,
+            });
+          }
+          toast.message("Version locale conservée");
+          return;
+        }
+        // Force-apply distant
+        const ep = pending.epoch;
+        const applied = touch(ensureSketch(inferStoryRoles(cloneProject(pending.project))));
+        lastPushedUpdatedAt = applied.updatedAt;
+        const current = get().current();
+        if (current && current.id === applied.id) {
           set((s) => {
-            const history = [...s.history, cloneProject(cur)].slice(-HISTORY_LIMIT);
+            const history = [...s.history, cloneProject(current)].slice(-HISTORY_LIMIT);
             const projects = s.projects.map((p) =>
-              p.id === incoming.id ? touch(incoming) : p,
+              p.id === applied.id ? applied : p,
             );
             const storyStill =
-              incoming.stories.find((st) => st.id === s.storyId)?.id ??
-              incoming.stories[0]?.id ??
+              applied.stories.find((st) => st.id === s.storyId)?.id ??
+              applied.stories[0]?.id ??
               null;
             return {
               projects,
@@ -1040,26 +1191,37 @@ export const useStudio = create<StudioState>()(
               future: [],
               storyId: storyStill,
               selectedIds: [],
+              collabReceivedEpoch: Math.max(s.collabReceivedEpoch, ep),
+              collabLocalEpoch: Math.max(s.collabLocalEpoch, ep),
             };
           });
-        } else if (cur) {
-          const replaced = touch(incoming);
+        } else if (current) {
           set((s) => {
-            const history = [...s.history, cloneProject(cur)].slice(-HISTORY_LIMIT);
-            const rest = s.projects.filter((p) => p.id !== cur.id && p.id !== replaced.id);
+            const history = [...s.history, cloneProject(current)].slice(-HISTORY_LIMIT);
+            const rest = s.projects.filter((p) => p.id !== current.id && p.id !== applied.id);
             return {
-              projects: [replaced, ...rest],
-              currentId: replaced.id,
+              projects: [applied, ...rest],
+              currentId: applied.id,
               history,
               future: [],
-              storyId: replaced.stories[0]?.id ?? null,
+              storyId: applied.stories[0]?.id ?? null,
               selectedIds: [],
+              collabReceivedEpoch: Math.max(s.collabReceivedEpoch, ep),
+              collabLocalEpoch: Math.max(s.collabLocalEpoch, ep),
             };
           });
         } else {
-          get().addProject(incoming);
+          get().addProject(applied);
         }
-        toast.success("Synchro reçue");
+        lastRemoteFingerprint = JSON.stringify({
+          id: applied.id,
+          updatedAt: applied.updatedAt,
+          walls: applied.walls.length,
+          stories: applied.stories.length,
+          furniture: applied.furniture.length,
+          epoch: ep,
+        });
+        toast.success("Version distante appliquée");
       },
       startCollab: (room) => {
         const code = normalizeRoomCode(room ?? makeRoomCode());
@@ -1070,23 +1232,41 @@ export const useStudio = create<StudioState>()(
         get().stopCollab();
         const selfId = `p${Math.random().toString(36).slice(2, 10)}`;
         const name = get().current()?.name?.slice(0, 40) || "FORMA";
+        lastPushedUpdatedAt = get().current()?.updatedAt ?? null;
+        pendingRemote = null;
+        lastRemoteFingerprint = "";
         collabSession = createCollabSession({
           room: code,
           selfId,
           name,
-          onPeers: (peers) => set({ collabPeers: peers }),
-          onProject: (project) => get().applyRemoteProject(project),
+          onPeers: (peers) =>
+            set({
+              collabPeers: peers,
+              collabStatus: deriveCollabStatus(peers),
+            }),
+          onProject: (project, _from, epoch) => get().applyRemoteProject(project, epoch),
         });
-        set({ collabRoom: code, collabPeers: [], collabSelfId: selfId });
+        set({
+          collabRoom: code,
+          collabPeers: [],
+          collabSelfId: selfId,
+          collabLocalEpoch: 0,
+          collabReceivedEpoch: 0,
+          collabStatus: "idle",
+        });
         void collabSession.start().catch(() => {
           toast.error("Signalisation indisponible — vérifiez le Network URL");
+          set({ collabStatus: "reconnecting" });
         });
         clearCollabTimers();
         collabAutoPush = setInterval(() => {
           const sess = collabSession;
           if (!sess || sess.connectedPeerCount() === 0) return;
           const curProj = get().current();
-          if (curProj) sess.pushProject(cloneProject(curProj));
+          if (!curProj) return;
+          const ep = get().collabLocalEpoch;
+          sess.pushProject(cloneProject(curProj), ep);
+          lastPushedUpdatedAt = curProj.updatedAt;
         }, COLLAB_AUTO_PUSH_MS);
         toast.success(room ? `Salon ${code}` : `Salon créé · ${code}`);
         return code;
@@ -1097,7 +1277,16 @@ export const useStudio = create<StudioState>()(
           collabSession.stop();
           collabSession = null;
         }
-        set({ collabRoom: null, collabPeers: [], collabSelfId: null });
+        pendingRemote = null;
+        lastPushedUpdatedAt = null;
+        set({
+          collabRoom: null,
+          collabPeers: [],
+          collabSelfId: null,
+          collabLocalEpoch: 0,
+          collabReceivedEpoch: 0,
+          collabStatus: "idle",
+        });
       },
       pushCollabProject: () => {
         const sess = collabSession;
@@ -1110,7 +1299,9 @@ export const useStudio = create<StudioState>()(
           toast.message("En attente d’un pair connecté");
           return;
         }
-        sess.pushProject(cloneProject(cur));
+        const ep = get().collabLocalEpoch;
+        sess.pushProject(cloneProject(cur), ep);
+        lastPushedUpdatedAt = cur.updatedAt;
         toast.success("Maquette envoyée");
       },
       analysis: () => {
