@@ -10,16 +10,24 @@ Date : 2026-09-07
    - Lancer :  npm run dev
    - Ouvrir l’URL indiquée (souvent http://localhost:8080)
 
-2) Sauvegarde GitHub (miroir + auto)
-   https://github.com/pixelboy34/archimobile
-   Une sauvegarde part toute seule chaque heure vers ce dépôt.
+2) Sauvegarde GitHub
+   Dépôt : https://github.com/pixelboy34/archimobile
+   Copie auto du studio vers GitHub (horaire + 15 min).
    Script : python3 scripts/backup-github.py
 
-3) Données projets
+3) GitHub Actions
+   À chaque push sur main :
+   - Vérifie le TypeScript
+   - Publie un zip source
+   Actions : https://github.com/pixelboy34/archimobile/actions
+   Zip toujours à jour : https://github.com/pixelboy34/archimobile/releases/tag/snapshot
+   Lancer à la main : Actions → FORMA → Run workflow
+
+4) Données projets
    Les maquettes sont dans le navigateur (localStorage, clé forma-studio-v9).
    Exportez IFC / DXF / JSON depuis Studio pour un fichier réel.
 
-4) Contenu
+5) Contenu
    src/           application (3D, BIM, PWA)
    public/        icônes PWA
    package.json   dépendances (Three.js, React, etc.)

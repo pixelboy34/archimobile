@@ -1,0 +1,74 @@
+name: FORMA
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: forma-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  verifier:
+    name: Vérifier
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Installer
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+
+  archive:
+    name: Archive source
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Zip source
+        run: |
+          zip -r forma-studio.zip . \
+            -x ".git/*" \
+            -x "node_modules/*" \
+            -x "artifacts/*" \
+            -x "screenshots/*" \
+            -x "attachments/*" \
+            -x ".grok/*" \
+            -x "*.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: forma-studio
+          path: forma-studio.zip
+          if-no-files-found: error
+          retention-days: 90
+      - name: Mettre à jour la release snapshot
+        if: github.ref == 'refs/heads/main'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NOTES="Dernière copie source FORMA (sans node_modules).
+          Dézipper, puis : npm install && npm run dev
+          Commit : ${GITHUB_SHA}"
+          if gh release view snapshot >/dev/null 2>&1; then
+            gh release upload snapshot forma-studio.zip --clobber
+            gh release edit snapshot --notes "$NOTES"
+          else
+            gh release create snapshot forma-studio.zip \
+              --prerelease \
+              --title "FORMA — archive source" \
+              --notes "$NOTES"
+          fi
