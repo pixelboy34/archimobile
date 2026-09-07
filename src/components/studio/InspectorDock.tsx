@@ -66,7 +66,7 @@ export function InspectorDock({
       className={cn(
         "inspector-dock pointer-events-auto absolute z-30 flex flex-col bg-surface/92 shadow-border",
         "inset-x-0 bottom-0 border-t border-border",
-        expanded ? "max-h-[min(40dvh,22rem)]" : "max-h-[min(22dvh,11.5rem)]",
+        expanded ? "max-h-[min(36dvh,20rem)]" : "max-h-[min(20dvh,10.5rem)]",
         "lg:inset-x-auto lg:top-[calc(env(safe-area-inset-top)+3.15rem)] lg:right-0 lg:bottom-0 lg:w-[22rem] lg:max-h-none lg:border-t-0 lg:border-l",
       )}
     >

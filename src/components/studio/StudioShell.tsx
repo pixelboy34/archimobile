@@ -257,7 +257,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
   return (
     <div className="relative h-dvh overflow-hidden bg-bg text-fg">
       <Toaster theme="dark" position="top-center" />
-      <div className={`absolute inset-0 studio-canvas bg-elevated ${inspector ? "has-inspector" : ""}`}>
+      <div className={`absolute inset-0 studio-canvas bg-elevated ${inspector || radial || resources ? "has-inspector" : ""}`}>
         {view === "ar" ? (
           <ArGate project={current} />
         ) : view === "plan" || workspace === "esquisse" || workspace === "releve" ? (

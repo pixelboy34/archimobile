@@ -105,14 +105,14 @@ export function RadialMenu({
       <button
         type="button"
         aria-label="Fermer"
-        className="pointer-events-auto absolute inset-0 bg-bg/35"
+        className="pointer-events-auto absolute inset-0"
         onClick={onClose}
       />
       <div
-        className="pointer-events-auto absolute right-3 left-3 z-[31] flex flex-col overflow-hidden rounded-xl border border-border bg-surface/98 shadow-border"
-        style={{ bottom: "calc(env(safe-area-inset-bottom) + 11.75rem)" }}
+        className="pointer-events-auto absolute z-[31] flex flex-col overflow-hidden rounded-xl border border-border bg-surface/94 shadow-border"
+        style={{ left: 8, right: 8, bottom: 136 }}
       >
-        <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-1.5">
+        <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border px-1.5">
           {folder !== "root" ? (
             <button
               type="button"

@@ -53,11 +53,8 @@ export function ResourcesPeek({
 
   return (
     <div
-      className={cn(
-        "resources-peek pointer-events-auto absolute right-3 left-3 z-[25] flex flex-col",
-        "bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] lg:bottom-[calc(env(safe-area-inset-bottom)+6.5rem)]",
-        "max-h-[min(42dvh,22rem)] overflow-hidden rounded-xl border border-border bg-surface/96 shadow-border",
-      )}
+      className="resources-peek pointer-events-auto absolute z-[25] flex flex-col overflow-hidden rounded-xl border border-border bg-surface/94 shadow-border"
+      style={{ left: 8, right: 8, bottom: 136, maxHeight: "min(28dvh, 15.5rem)" }}
       role="dialog"
       aria-label="Bibliothèque"
     >

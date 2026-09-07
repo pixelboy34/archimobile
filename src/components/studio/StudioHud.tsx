@@ -69,11 +69,8 @@ export function StudioHud() {
 
   return (
     <div
-      className={`pointer-events-none absolute left-3 z-10 flex max-w-[70%] items-center gap-2 ${
-        view === "coupe" || view === "3d" || view === "visite"
-          ? "bottom-[calc(env(safe-area-inset-bottom)+7.6rem)]"
-          : "bottom-[calc(env(safe-area-inset-bottom)+7.6rem)]"
-      }`}
+      className="pointer-events-none absolute left-3 z-10 flex max-w-[70%] items-center gap-2"
+      style={{ bottom: 176 }}
     >
       <div className="hud-panel flex min-w-0 max-w-full items-center gap-2 px-3 py-1.5 text-xs text-muted">
         <p className="truncate font-mono text-[10px] tracking-wide text-accent uppercase">
