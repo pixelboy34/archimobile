@@ -93,6 +93,13 @@ export function duplicateProject(p: Project): Project {
     storyId: sid(s.storyId),
   }));
   q.survey = (q.survey ?? []).map((s) => ({ ...s, id: uid("sv"), storyId: sid(s.storyId) }));
+  if (q.surveyUnderlay) {
+    q.surveyUnderlay = {
+      ...q.surveyUnderlay,
+      storyId: sid(q.surveyUnderlay.storyId),
+      offset: { ...q.surveyUnderlay.offset },
+    };
+  }
   q.revisions = [{ id: uid("rev"), at: q.createdAt, note: "Copie" }];
   return touch(q);
 }

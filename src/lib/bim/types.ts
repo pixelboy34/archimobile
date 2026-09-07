@@ -371,6 +371,24 @@ export interface SurveyPoint {
   label?: string;
 }
 
+/** Photo / plan scanné sous le relevé (hors IFC/DXF). */
+export interface SurveyUnderlay {
+  storyId: string;
+  /** data: URL compressée (préférée) ou blob: (éphémère). */
+  src: string;
+  opacity: number;
+  /** Largeur monde (m) de l’image. */
+  scale: number;
+  /** Rotation radian (sens trigo, Y nord). */
+  rotation: number;
+  /** Centre image en coordonnées monde. */
+  offset: Vec2;
+  naturalWidth?: number;
+  naturalHeight?: number;
+  /** true si src est un blob: — ne survit pas au refresh. */
+  ephemeral?: boolean;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -390,6 +408,8 @@ export interface Project {
   layers?: SketchLayer[];
   strokes?: Stroke[];
   survey?: SurveyPoint[];
+  /** Calque image relevé (photo / plan) — non exporté IFC/DXF. */
+  surveyUnderlay?: SurveyUnderlay;
   revisions?: Revision[];
 }
 

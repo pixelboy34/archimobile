@@ -29,19 +29,32 @@ function extractJson(text: string): unknown {
   return JSON.parse(raw.slice(start, end + 1));
 }
 
+/** Lit XAI_API_KEY côté serveur uniquement — ne jamais exposer au client. */
+function readXaiKey(): string | undefined {
+  const key = process.env.XAI_API_KEY;
+  return key && key.trim() ? key.trim() : undefined;
+}
+
+export const copilotStatus = createServerFn({ method: "GET" }).handler(async () => {
+  return { available: Boolean(readXaiKey()), model: "grok-4.5" as const };
+});
+
 export const generateBuilding = createServerFn({ method: "POST" })
-  .validator((input: { prompt: string }) => input)
+  .validator((input: { prompt: string; summary?: string }) => input)
   .handler(async ({ data }) => {
-    const apiKey = process.env.XAI_API_KEY;
+    const apiKey = readXaiKey();
     if (!apiKey) {
       return {
         ok: true as const,
         source: "local" as const,
         draft: fallbackDraftFromPrompt(data.prompt),
-        note: "IA indisponible — massing local appliqué.",
+        note: "IA indisponible — massing local appliqué. Définir XAI_API_KEY.",
       };
     }
     try {
+      const contextBlock = data.summary
+        ? `\nContexte projet courant (indicatif) :\n${data.summary.slice(0, 1800)}\n`
+        : "";
       const res = await fetch("https://api.x.ai/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -57,7 +70,7 @@ export const generateBuilding = createServerFn({ method: "POST" })
             { role: "system", content: SYSTEM },
             {
               role: "user",
-              content: `Programme architectural à modéliser :\n${data.prompt}\n\nConstruis un bâtiment cohérent, 80–220 m², pièces fermées, ouvertures sur les murs existants.`,
+              content: `Programme architectural à modéliser :\n${data.prompt}${contextBlock}\nConstruis un bâtiment cohérent, 80–220 m², pièces fermées, ouvertures sur les murs existants.`,
             },
           ],
         }),
@@ -89,44 +102,97 @@ export const generateBuilding = createServerFn({ method: "POST" })
 export const askArchitect = createServerFn({ method: "POST" })
   .validator((input: { question: string; context: string }) => input)
   .handler(async ({ data }) => {
-    const apiKey = process.env.XAI_API_KEY;
+    const apiKey = readXaiKey();
     if (!apiKey) {
       return {
         ok: false as const,
-        error: "Les fonctions IA ne sont pas disponibles ici.",
+        error: "Les fonctions IA ne sont pas disponibles ici. Définir XAI_API_KEY.",
       };
     }
     try {
-    const res = await fetch("https://api.x.ai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "grok-4.5",
-        temperature: 0.5,
-        max_tokens: 700,
-        messages: [
-          {
-            role: "system",
-            content:
-              "Tu es FORMA, architecte associé. Réponses courtes, précises, en français. Surfaces, lumières, structure, usages. Pas de markdown décoratif.",
-          },
-          {
-            role: "user",
-            content: `Contexte BIM:\n${data.context.slice(0, 4000)}\n\nQuestion:\n${data.question}`,
-          },
-        ],
-      }),
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!res.ok) return { ok: false as const, error: `Erreur IA ${res.status}` };
-    const body = (await res.json()) as {
-      choices: { message: { content: string } }[];
-    };
-    return { ok: true as const, text: body.choices[0]?.message.content ?? "" };
+      const res = await fetch("https://api.x.ai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "grok-4.5",
+          temperature: 0.5,
+          max_tokens: 700,
+          messages: [
+            {
+              role: "system",
+              content:
+                "Tu es FORMA, architecte associé. Réponses courtes, précises, en français. Surfaces, lumières, structure, usages. Pas de markdown décoratif.",
+            },
+            {
+              role: "user",
+              content: `Contexte BIM:\n${data.context.slice(0, 4000)}\n\nQuestion:\n${data.question}`,
+            },
+          ],
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) return { ok: false as const, error: `Erreur IA ${res.status}` };
+      const body = (await res.json()) as {
+        choices: { message: { content: string } }[];
+      };
+      return { ok: true as const, text: body.choices[0]?.message.content ?? "" };
     } catch {
       return { ok: false as const, error: "L'architecte IA n'a pas répondu." };
+    }
+  });
+
+/** Chat copilote : conseil texte (live) ou indication de fallback local. */
+export const chatCopilot = createServerFn({ method: "POST" })
+  .validator((input: { prompt: string; summary: string }) => input)
+  .handler(async ({ data }) => {
+    const apiKey = readXaiKey();
+    if (!apiKey) {
+      return {
+        ok: false as const,
+        live: false as const,
+        error: "Définir XAI_API_KEY pour Grok live — agents locaux disponibles.",
+      };
+    }
+    try {
+      const res = await fetch("https://api.x.ai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "grok-4.5",
+          temperature: 0.45,
+          max_tokens: 900,
+          messages: [
+            {
+              role: "system",
+              content:
+                "Tu es le copilote FORMA (xAI Grok). Français, concis, actionnable. Si on te demande un bâtiment neuf, décris le programme ; la génération JSON passe par generateBuilding.",
+            },
+            {
+              role: "user",
+              content: `Résumé projet:\n${data.summary.slice(0, 2500)}\n\nDemande:\n${data.prompt}`,
+            },
+          ],
+        }),
+        signal: AbortSignal.timeout(12000),
+      });
+      if (!res.ok) {
+        return { ok: false as const, live: true as const, error: `Erreur IA ${res.status}` };
+      }
+      const body = (await res.json()) as {
+        choices: { message: { content: string } }[];
+      };
+      return {
+        ok: true as const,
+        live: true as const,
+        text: body.choices[0]?.message.content ?? "",
+      };
+    } catch {
+      return { ok: false as const, live: true as const, error: "Copilote Grok indisponible." };
     }
   });

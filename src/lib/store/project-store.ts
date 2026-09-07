@@ -21,6 +21,7 @@ import type {
   MaterialStyle,
   Project,
   SketchLayer,
+  SurveyUnderlay,
   Tool,
   Vec2,
   ViewMode,
@@ -157,6 +158,10 @@ interface StudioState {
   clearSurvey: () => void;
   buildWallsFromSurvey: () => { wallCount: number; perimeter: number } | null;
   buildWallsFromStrokes: () => { wallCount: number; perimeter: number } | null;
+  setSurveyUnderlay: (u: SurveyUnderlay | null) => void;
+  patchSurveyUnderlay: (patch: Partial<SurveyUnderlay>) => void;
+  clearSurveyUnderlay: (storyId?: string) => void;
+  addStrokesFromPolylines: (polylines: Vec2[][]) => number;
   toggleLayer: (id: string, patch: Partial<SketchLayer>) => void;
   addLayer: () => void;
   addRevision: (note?: string) => void;
@@ -925,6 +930,63 @@ export const useStudio = create<StudioState>()(
         if (preview.wallCount === 0) return { wallCount: 0, perimeter: 0 };
         s.commit(() => preview.project);
         return { wallCount: preview.wallCount, perimeter: preview.perimeter };
+      },
+      setSurveyUnderlay: (u) => {
+        get().commit((p) => {
+          const next = { ...p };
+          if (!u) {
+            delete next.surveyUnderlay;
+            return next;
+          }
+          next.surveyUnderlay = { ...u, offset: { ...u.offset } };
+          return next;
+        });
+      },
+      patchSurveyUnderlay: (patch) => {
+        get().commit((p) => {
+          if (!p.surveyUnderlay) return p;
+          const cur = p.surveyUnderlay;
+          return {
+            ...p,
+            surveyUnderlay: {
+              ...cur,
+              ...patch,
+              offset: patch.offset ? { ...patch.offset } : { ...cur.offset },
+            },
+          };
+        });
+      },
+      clearSurveyUnderlay: (storyId) => {
+        get().commit((p) => {
+          if (!p.surveyUnderlay) return p;
+          if (storyId && p.surveyUnderlay.storyId !== storyId) return p;
+          const next = { ...p };
+          delete next.surveyUnderlay;
+          return next;
+        });
+      },
+      addStrokesFromPolylines: (polylines) => {
+        const s = get();
+        const cur = s.current();
+        const storyId = s.storyId;
+        if (!cur || !storyId) return 0;
+        const usable = polylines.filter((pts) => pts.length >= 2);
+        if (!usable.length) return 0;
+        s.commit((p) => {
+          const n = ensureSketch(p);
+          const layerId = activeLayerId(n);
+          const added = usable.map((points) => ({
+            id: uid("sk"),
+            layerId,
+            storyId,
+            points: points.map((pt) => ({ ...pt })),
+            width: 0.05,
+            color: "#6ed0c3",
+          }));
+          n.strokes = [...(n.strokes ?? []), ...added];
+          return n;
+        });
+        return usable.length;
       },
       toggleLayer: (id, patch) => {
         get().commit((p) => {

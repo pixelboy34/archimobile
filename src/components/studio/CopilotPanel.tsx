@@ -1,7 +1,12 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Sparkles, Wand2 } from "lucide-react";
 import { toast } from "sonner";
-import { askArchitect, generateBuilding } from "@/lib/ai/copilot";
+import {
+  askArchitect,
+  chatCopilot,
+  copilotStatus,
+  generateBuilding,
+} from "@/lib/ai/copilot";
 import {
   AGENT_CHIPS,
   parseAgentIntent,
@@ -11,7 +16,9 @@ import {
 } from "@/lib/ai/agents";
 import { fallbackDraftFromPrompt, projectFromAiDraft } from "@/lib/bim/seed";
 import { analyzeProject } from "@/lib/bim/analysis";
+import type { Project } from "@/lib/bim/types";
 import { useStudio } from "@/lib/store/project-store";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -23,6 +30,26 @@ const PRESETS = [
   "Maison patio 140 m² de plain-pied, Aix-en-Provence.",
 ];
 
+function compactProjectSummary(project: Project | null): string {
+  if (!project) return "Aucun projet ouvert.";
+  const a = analyzeProject(project);
+  const cesCap = project.meta.ces ?? 0;
+  const cosCap = project.meta.cos ?? 0;
+  return [
+    `${project.name} — ${project.meta.location}`,
+    project.meta.brief?.slice(0, 160) ?? "",
+    `Étages ${project.stories.length} · murs ${project.walls.length} · pièces ${project.rooms.length}`,
+    `SDP ~${a.netArea.toFixed(0)} m² · emprise ~${a.footprint.toFixed(0)} m²`,
+    `CES ${(a.cesActual * 100).toFixed(0)} %${cesCap ? ` / ${(cesCap * 100).toFixed(0)} %` : ""} · COS ${a.cosActual.toFixed(2)}${cosCap ? ` / ${cosCap.toFixed(2)}` : ""}`,
+    `Pièces: ${a.rooms
+      .slice(0, 12)
+      .map((r) => `${r.name} ${r.area.toFixed(0)}m²`)
+      .join(", ")}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export function CopilotPanel({ onApplied }: { onApplied?: () => void }) {
   const addProject = useStudio((s) => s.addProject);
   const current = useStudio((s) => s.current());
@@ -31,6 +58,29 @@ export function CopilotPanel({ onApplied }: { onApplied?: () => void }) {
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
   const [answer, setAnswer] = useState<string | null>(null);
+  const [live, setLive] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const st = await copilotStatus();
+        if (!cancelled) setLive(Boolean(st.available));
+      } catch {
+        // fallback HTTP status probe
+        try {
+          const res = await fetch("/api/copilot");
+          const json = (await res.json()) as { available?: boolean };
+          if (!cancelled) setLive(Boolean(json.available));
+        } catch {
+          if (!cancelled) setLive(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const hasWalls = useMemo(
     () => projectHasWalls(current, storyId),
@@ -44,6 +94,8 @@ export function CopilotPanel({ onApplied }: { onApplied?: () => void }) {
     );
     return n >= 3 || strokes;
   }, [current, storyId]);
+
+  const summary = useMemo(() => compactProjectSummary(current), [current]);
 
   const executeAgent = (id: AgentId, opts?: AgentOpts) => {
     if (!current) {
@@ -84,7 +136,7 @@ export function CopilotPanel({ onApplied }: { onApplied?: () => void }) {
     setAnswer(null);
     try {
       const res = await Promise.race([
-        generateBuilding({ data: { prompt: text } }),
+        generateBuilding({ data: { prompt: text, summary } }),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error("timeout")), 16000),
         ),
@@ -93,13 +145,16 @@ export function CopilotPanel({ onApplied }: { onApplied?: () => void }) {
         toast.error("Génération impossible");
         return;
       }
+      if (res.source === "local") {
+        toast.message(res.note || "Massing local (sans XAI_API_KEY)");
+      }
       const project = projectFromAiDraft(res.draft);
       project.meta.brief = text;
       addProject(project);
       setAnswer(
         res.note
           ? `${res.note} Massing « ${project.name} » prêt.`
-          : `Modèle « ${project.name} » généré. Ouvrez le 3D pour l'inspecter.`,
+          : `Modèle « ${project.name} » généré (Grok live). Ouvrez le 3D pour l'inspecter.`,
       );
       toast.success(project.name);
       onApplied?.();
@@ -120,11 +175,31 @@ export function CopilotPanel({ onApplied }: { onApplied?: () => void }) {
     if (!text || !current || busy) return;
     setBusy(true);
     try {
-      const a = analyzeProject(current);
-      const ctx = `${current.name} — ${current.meta.location}\n${current.meta.brief}\nSurface ${a.netArea.toFixed(0)} m², ${current.stories.length} niveau(x), ${current.rooms.length} pièces.\nPièces: ${a.rooms.map((r) => `${r.name} ${r.area.toFixed(0)}m²`).join(", ")}`;
-      const res = await askArchitect({ data: { question: text, context: ctx } });
-      if (!res.ok) setAnswer(res.error);
-      else setAnswer(res.text);
+      const res = await askArchitect({ data: { question: text, context: summary } });
+      if (!res.ok) {
+        setAnswer(res.error);
+        toast.message(res.error);
+      } else setAnswer(res.text);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const chatLive = async () => {
+    const text = prompt.trim();
+    if (!text || busy) return;
+    setBusy(true);
+    setAnswer(null);
+    try {
+      const res = await chatCopilot({ data: { prompt: text, summary } });
+      if (!res.ok) {
+        setAnswer(res.error);
+        toast.message(res.error);
+        return;
+      }
+      setAnswer(res.text);
+    } catch {
+      toast.message("Copilote indisponible — agents locaux");
     } finally {
       setBusy(false);
     }
@@ -143,21 +218,35 @@ export function CopilotPanel({ onApplied }: { onApplied?: () => void }) {
       return;
     }
     if (intent.kind === "analyze") {
-      await ask();
+      if (live) await chatLive();
+      else await ask();
       return;
     }
-    // generate or unknown → massing if no project walls preference: prefer agent path already handled;
-    // Prefer editing current when agent matched (done). Else generate massing.
+    // generate or unknown
+    if (live && current && intent.kind !== "generate") {
+      await chatLive();
+      return;
+    }
     await generate();
   };
 
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <p className="font-display text-sm font-semibold text-fg">Agents</p>
+        <div className="flex items-center gap-2">
+          <p className="font-display text-sm font-semibold text-fg">Agents</p>
+          {live === true && <Badge variant="accent">Grok live</Badge>}
+          {live === false && <Badge variant="default">Hors ligne</Badge>}
+        </div>
         <p className="mt-0.5 text-xs text-muted">
           Un tap — mutation locale du projet ouvert (hors ligne). L’IA reste optionnelle.
         </p>
+        {live === false && (
+          <p className="mt-1 text-[11px] text-muted">
+            Définir <span className="font-mono text-fg">XAI_API_KEY</span> pour activer Grok
+            live.
+          </p>
+        )}
         <div className="mt-3 flex flex-wrap gap-2">
           {AGENT_CHIPS.map((chip) => {
             const disabled =
@@ -220,7 +309,11 @@ export function CopilotPanel({ onApplied }: { onApplied?: () => void }) {
           <Sparkles className="size-4" />
           Générer
         </Button>
-        <Button variant="outline" onClick={ask} disabled={busy || !current || !prompt.trim()}>
+        <Button
+          variant="outline"
+          onClick={() => (live ? void chatLive() : void ask())}
+          disabled={busy || !prompt.trim() || (!current && !live)}
+        >
           Analyser
         </Button>
       </div>

@@ -10,12 +10,18 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiCopilotRouteImport } from './routes/api/copilot'
 import { Route as ApiRtcRouteImport } from './routes/api/rtc'
 import { Route as StudioProjectIdRouteImport } from './routes/studio.$projectId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiCopilotRoute = ApiCopilotRouteImport.update({
+  id: '/api/copilot',
+  path: '/api/copilot',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiRtcRoute = ApiRtcRouteImport.update({
@@ -31,30 +37,34 @@ const StudioProjectIdRoute = StudioProjectIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/copilot': typeof ApiCopilotRoute
   '/api/rtc': typeof ApiRtcRoute
   '/studio/$projectId': typeof StudioProjectIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/copilot': typeof ApiCopilotRoute
   '/api/rtc': typeof ApiRtcRoute
   '/studio/$projectId': typeof StudioProjectIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/copilot': typeof ApiCopilotRoute
   '/api/rtc': typeof ApiRtcRoute
   '/studio/$projectId': typeof StudioProjectIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/rtc' | '/studio/$projectId'
+  fullPaths: '/' | '/api/copilot' | '/api/rtc' | '/studio/$projectId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/rtc' | '/studio/$projectId'
-  id: '__root__' | '/' | '/api/rtc' | '/studio/$projectId'
+  to: '/' | '/api/copilot' | '/api/rtc' | '/studio/$projectId'
+  id: '__root__' | '/' | '/api/copilot' | '/api/rtc' | '/studio/$projectId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiCopilotRoute: typeof ApiCopilotRoute
   ApiRtcRoute: typeof ApiRtcRoute
   StudioProjectIdRoute: typeof StudioProjectIdRoute
 }
@@ -66,6 +76,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/copilot': {
+      id: '/api/copilot'
+      path: '/api/copilot'
+      fullPath: '/api/copilot'
+      preLoaderRoute: typeof ApiCopilotRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/rtc': {
@@ -87,6 +104,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiCopilotRoute: ApiCopilotRoute,
   ApiRtcRoute: ApiRtcRoute,
   StudioProjectIdRoute: StudioProjectIdRoute,
 }

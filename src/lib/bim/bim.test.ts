@@ -372,3 +372,40 @@ describe("feasibility", () => {
     }
   });
 });
+
+describe("survey-underlay", () => {
+  it("maps pixels to world and extracts polylines from ImageData", async () => {
+    const {
+      underlayPixelToWorld,
+      defaultUnderlay,
+      extractStrokesFromImageData,
+    } = await import("./survey-underlay.ts");
+
+    const u = defaultUnderlay("st", "data:,", 100, 100);
+    u.offset = { x: 0, y: 0 };
+    u.scale = 10;
+    const mid = underlayPixelToWorld(u, 50, 50);
+    assert.ok(Math.abs(mid.x) < 0.05 && Math.abs(mid.y) < 0.05);
+
+    const W = 24;
+    const H = 24;
+    const px = new Uint8ClampedArray(W * H * 4);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const on = y === 10 && x >= 2 && x <= 20;
+        const v = on ? 255 : 10;
+        const i = (y * W + x) * 4;
+        px[i] = px[i + 1] = px[i + 2] = v;
+        px[i + 3] = 255;
+      }
+    }
+    const data = new ImageData(px, W, H);
+    const r = extractStrokesFromImageData(
+      data,
+      { ...u, naturalWidth: W, naturalHeight: H },
+      { maxDim: 24, minPixelLen: 4 },
+    );
+    assert.ok(r.edgeCount > 5, "edges");
+    assert.ok(r.polylines.length >= 1, "polylines");
+  });
+});

@@ -26,6 +26,20 @@ interface Cam {
   scale: number;
 }
 
+const underlayCache = new Map<string, HTMLImageElement | "loading" | "error">();
+
+function getUnderlayImage(src: string): HTMLImageElement | null {
+  const hit = underlayCache.get(src);
+  if (hit instanceof HTMLImageElement) return hit;
+  if (hit === "loading" || hit === "error") return null;
+  underlayCache.set(src, "loading");
+  const img = new Image();
+  img.onload = () => underlayCache.set(src, img);
+  img.onerror = () => underlayCache.set(src, "error");
+  img.src = src;
+  return null;
+}
+
 function worldFromEvent(
   e: { clientX: number; clientY: number },
   canvas: HTMLCanvasElement,
@@ -185,6 +199,28 @@ export function Plan2D({
         ctx.strokeStyle = "rgba(110, 208, 195, 0.08)";
         ctx.lineWidth = 1;
         ctx.stroke();
+      }
+
+      const underlay = proj.surveyUnderlay;
+      if (underlay && underlay.storyId === sid && underlay.src) {
+        const img = getUnderlayImage(underlay.src);
+        if (img && img.naturalWidth > 0) {
+          const nw = underlay.naturalWidth ?? img.naturalWidth;
+          const nh = underlay.naturalHeight ?? img.naturalHeight;
+          const aspect = nh / Math.max(1, nw);
+          const sc = cam.current.scale;
+          const c = toS(underlay.offset);
+          ctx.save();
+          ctx.translate(c.x, c.y);
+          ctx.rotate(-underlay.rotation);
+          ctx.scale(1, -1);
+          ctx.globalAlpha = Math.max(0.05, Math.min(1, underlay.opacity));
+          const wPx = underlay.scale * sc;
+          const hPx = underlay.scale * aspect * sc;
+          ctx.drawImage(img, -wPx / 2, -hPx / 2, wPx, hPx);
+          ctx.restore();
+          ctx.globalAlpha = 1;
+        }
       }
 
       const rooms = proj.rooms.filter((r) => r.storyId === sid);
