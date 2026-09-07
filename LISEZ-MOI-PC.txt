@@ -10,8 +10,10 @@ Date : 2026-09-07
    - Lancer :  npm run dev
    - Ouvrir l’URL indiquée (souvent http://localhost:8080)
 
-2) Sauvegarde GitHub (miroir)
+2) Sauvegarde GitHub (miroir + auto)
    https://github.com/pixelboy34/archimobile
+   Une sauvegarde part toute seule chaque heure vers ce dépôt.
+   Script : python3 scripts/backup-github.py
 
 3) Données projets
    Les maquettes sont dans le navigateur (localStorage, clé forma-studio-v9).
