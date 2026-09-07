@@ -3,11 +3,9 @@ import { useEffect, useState } from "react";
 import {
   Copy,
   CopyPlus,
-  Focus,
   Grid3x3,
   Magnet,
   MoveHorizontal,
-  PackageCheck,
   Palette,
   Plus,
   Redo2,
@@ -24,10 +22,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { deliverDossier } from "@/lib/bim/dossier";
 import type { Tool } from "@/lib/bim/types";
 import { useStudio } from "@/lib/store/project-store";
-import { dispatchCam } from "./OrbitRig";
 import { ToolDock } from "./ToolDock";
 
 const DRAW_TOOLS: Tool[] = [
@@ -219,9 +215,6 @@ export function CommandOrb({
             <OrbBtn label="Matériau" onClick={() => onResources("materials")}>
               <Palette className="size-4" />
             </OrbBtn>
-            <OrbBtn label="Params" accent onClick={onParams}>
-              <SlidersHorizontal className="size-4" />
-            </OrbBtn>
           </div>
         </div>
       ) : (
@@ -256,22 +249,6 @@ export function CommandOrb({
                 }}
               >
                 <CopyPlus className="size-4" />
-              </OrbBtn>
-            )}
-            <OrbBtn label="Cadrer" accent={!multiStory} onClick={() => dispatchCam({ kind: "fit" })}>
-              <Focus className="size-4" />
-            </OrbBtn>
-            {(project?.walls.length ?? 0) > 0 && (
-              <OrbBtn
-                label="Dossier"
-                accent
-                onClick={() => {
-                  if (!project) return;
-                  const r = deliverDossier(project);
-                  toast.success(`Dossier · ${r.planCount} plans · IFC+DXF+CSV`);
-                }}
-              >
-                <PackageCheck className="size-4" />
               </OrbBtn>
             )}
           </div>

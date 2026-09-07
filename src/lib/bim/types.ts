@@ -147,7 +147,42 @@ export type FurnitureKind =
   | "elevator"
   | "staircore"
   | "balcony"
-  | "curtain";
+  | "curtain"
+  | "cornersofa"
+  | "loveseat"
+  | "tvbench"
+  | "speaker"
+  | "artwork"
+  | "roundtable"
+  | "stool"
+  | "hightable"
+  | "bunk"
+  | "mirror"
+  | "pantry"
+  | "winefridge"
+  | "trashbin"
+  | "towelrail"
+  | "wcwall"
+  | "doublebasin"
+  | "meeting"
+  | "reception"
+  | "locker"
+  | "vmc"
+  | "panelboard"
+  | "boiler"
+  | "heatpump"
+  | "tank"
+  | "ramp"
+  | "railing"
+  | "canopy"
+  | "deck"
+  | "claustra"
+  | "compost"
+  | "dumpster"
+  | "truck"
+  | "child"
+  | "container"
+  | "bikeshade";
 
 export type Tool =
   | "select"
@@ -543,6 +578,41 @@ export const FURNITURE_LABELS: Record<FurnitureKind, string> = {
   staircore: "Cage d’escalier",
   balcony: "Balcon",
   curtain: "Mur rideau",
+  cornersofa: "Canapé angle",
+  loveseat: "Canapé 2 pl.",
+  tvbench: "Meuble TV",
+  speaker: "Enceinte",
+  artwork: "Tableau",
+  roundtable: "Table ronde",
+  stool: "Tabouret",
+  hightable: "Mange-debout",
+  bunk: "Lits superposés",
+  mirror: "Miroir",
+  pantry: "Cellier",
+  winefridge: "Cave à vin",
+  trashbin: "Poubelle tri",
+  towelrail: "Sèche-serviettes",
+  wcwall: "WC suspendu",
+  doublebasin: "Double vasque",
+  meeting: "Table réunion",
+  reception: "Accueil",
+  locker: "Casier",
+  vmc: "VMC",
+  panelboard: "TGBT",
+  boiler: "Chaudière",
+  heatpump: "PAC",
+  tank: "Ballon ECS",
+  ramp: "Rampe",
+  railing: "Garde-corps",
+  canopy: "Auvent",
+  deck: "Terrasse bois",
+  claustra: "Claustra",
+  compost: "Composteur",
+  dumpster: "Local poubelles",
+  truck: "Camion",
+  child: "Aire jeux",
+  container: "Conteneur",
+  bikeshade: "Abri vélos",
 };
 
 export const TOOL_LABELS: Record<Tool, string> = {

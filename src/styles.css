@@ -422,6 +422,12 @@
   animation: dock-up 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+.overflow-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
 @keyframes rail-morph {
   from {
     opacity: 0.75;

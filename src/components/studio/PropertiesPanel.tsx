@@ -33,7 +33,6 @@ import {
 } from "@/lib/bim/types";
 import {
   DOOR_PRESETS,
-  OBJECT_GROUPS,
   OBJECT_SIZES,
   ROOF_PRESETS,
   SLAB_PRESETS,
@@ -180,8 +179,10 @@ export function PropertiesPanel({
                   ))}
                 </div>
               </Group>
+              <ParamGrid>
               <Param label="Épaisseur" value={wall.thickness} min={0.06} max={0.8} step={0.01} onBegin={beginEdit} onChange={(v) => patchSelected({ thickness: v })} />
               <Param label="Hauteur" value={wall.height} min={1} max={12} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ height: v })} />
+              </ParamGrid>
               <Chips label="Matériau" value={wall.materialId} options={STRUCT_MATS} labels={MATERIAL_LABELS} onChange={(m) => commitSelected({ materialId: m })} />
               <Chips label="Rôle" value={wall.role ?? "interior"} options={Object.keys(ROLE_LABELS)} labels={ROLE_LABELS} onChange={(m) => commitSelected({ role: m })} />
               <ToggleRow label="Porteur" on={Boolean(wall.loadBearing)} onChange={(v) => commitSelected({ loadBearing: v, partition: !v })} />
@@ -206,8 +207,10 @@ export function PropertiesPanel({
                   </button>
                 ))}
               </div>
+              <ParamGrid>
               <Param label="Largeur" value={opening.width} min={0.4} max={6} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ width: v })} />
               <Param label="Hauteur" value={opening.height} min={0.4} max={4} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ height: v })} />
+              </ParamGrid>
               <Param label="Allège" value={opening.sill} min={0} max={2.4} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ sill: v })} />
               {opening.kind === "window" && (
                 <Chips label="Vitrage" value={opening.glazing ?? "double"} options={Object.keys(GLAZING_LABELS)} labels={GLAZING_LABELS} onChange={(m) => commitSelected({ glazing: m })} />
@@ -234,30 +237,27 @@ export function PropertiesPanel({
           )}
           {furn && (
             <Section title={FURNITURE_LABELS[furn.kind] ?? "Objet"}>
-              <div className="flex flex-wrap gap-1.5">
-                {OBJECT_GROUPS.flatMap((g) => g.kinds)
-                  .slice(0, 24)
-                  .map((k) => (
-                    <button
-                      key={k}
-                      type="button"
-                      onClick={() => commitSelected({ kind: k, ...OBJECT_SIZES[k] })}
-                      className={`h-9 px-2.5 text-xs ${furn.kind === k ? "bg-primary text-primary-fg" : "bg-elevated"}`}
-                    >
-                      {FURNITURE_LABELS[k as FurnitureKind]}
-                    </button>
-                  ))}
-              </div>
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent("forma-open-library"))}
+                className="flex h-9 w-full items-center justify-center rounded-md bg-elevated text-[11px] font-medium text-accent ring-1 ring-accent/30"
+              >
+                Bibliothèque
+              </button>
+              <ParamGrid>
               <Param label="Largeur" value={furn.w} min={0.1} max={12} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ w: v })} />
               <Param label="Profondeur" value={furn.d} min={0.1} max={12} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ d: v })} />
               <Param label="Hauteur" value={furn.h} min={0.02} max={8} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ h: v })} />
               <Param label="Rotation" value={(furn.rotation * 180) / Math.PI} min={0} max={360} step={5} unit="°" digits={0} onBegin={beginEdit} onChange={(v) => patchSelected({ rotation: (v * Math.PI) / 180 })} />
+              </ParamGrid>
             </Section>
           )}
           {column && (
             <Section title="Poteau">
+              <ParamGrid>
               <Param label="Section X" value={column.width} min={0.1} max={1.2} step={0.02} onBegin={beginEdit} onChange={(v) => patchSelected({ width: v })} />
               <Param label="Section Y" value={column.depth} min={0.1} max={1.2} step={0.02} onBegin={beginEdit} onChange={(v) => patchSelected({ depth: v })} />
+              </ParamGrid>
               <Param label="Hauteur" value={column.height} min={1} max={12} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ height: v })} />
               <Chips label="Matériau" value={column.materialId} options={STRUCT_MATS} labels={MATERIAL_LABELS} onChange={(m) => commitSelected({ materialId: m })} />
             </Section>
@@ -271,8 +271,10 @@ export function PropertiesPanel({
                   </button>
                 ))}
               </div>
+              <ParamGrid>
               <Param label="Largeur" value={stair.width} min={0.7} max={2.4} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ width: v })} />
               <Param label="Giron total" value={stair.run} min={1.5} max={12} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ run: v })} />
+              </ParamGrid>
               <Param label="Hauteur" value={stair.rise} min={2} max={6} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ rise: v })} />
             </Section>
           )}
@@ -515,6 +517,7 @@ export function StoriesPanel() {
         </p>
         <p className="font-mono text-xs text-muted tabular">{tall.toFixed(1)} m hors sol</p>
       </div>
+      <More>
       <Section title="Nouvel immeuble">
         <p className="text-xs text-muted">Volume A→Z — façades, poteaux, toiture, noyau. Jusqu’à R+80.</p>
         <Param label="Largeur" value={spanW} min={8} max={60} step={0.5} onBegin={beginEdit} onChange={setSpanW} />
@@ -585,7 +588,22 @@ export function StoriesPanel() {
           </Button>
         </div>
       </Section>
-      <div className="grid grid-cols-2 gap-2">
+      </More>
+      <div className="flex flex-wrap gap-1">
+        {project.stories.map((st, i) => (
+          <button
+            key={st.id}
+            type="button"
+            onClick={() => setStory(st.id)}
+            className={`h-7 rounded-full px-2.5 text-[10px] font-medium ${
+              st.id === active ? "bg-accent/15 text-accent ring-1 ring-accent/40" : "bg-elevated text-muted"
+            }`}
+          >
+            {st.name || (i === 0 ? "RDC" : `R+${i}`)}
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-4 gap-1.5">
         <Button variant="outline" onClick={() => addStory()}>+ Étage</Button>
         <Button variant="outline" onClick={() => copyStory()}>Dupliquer tout</Button>
         <Button variant="outline" onClick={() => addBasement()}>+ Sous-sol</Button>
@@ -634,7 +652,9 @@ export function StoriesPanel() {
         </div>
       </div>
       <ToggleRow label="Isoler le niveau actif" on={isolateStory} onChange={setIsolateStory} />
-      {project.stories.map((st, i) => (
+      {project.stories.filter((st) => st.id === active).map((st) => {
+        const i = project.stories.findIndex((s) => s.id === st.id);
+        return (
         <div key={st.id} className={`border px-3 py-3 ${st.id === active ? "border-accent/50 bg-elevated" : "border-border"}`}>
           <button type="button" onClick={() => setStory(st.id)} className="mb-3 flex w-full items-center justify-between text-left text-sm font-medium">
             <span>{st.name || (i === 0 ? "RDC" : `R+${i}`)}</span>
@@ -731,9 +751,14 @@ export function StoriesPanel() {
             </Button>
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
+}
+
+function ParamGrid({ children }: { children: ReactNode }) {
+  return <div className="param-grid">{children}</div>;
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -1130,11 +1155,11 @@ function Param({
             min={min}
             max={max}
             step={step}
-            value={Number(n.toFixed(digits))}
+            value={n.toFixed(digits)}
             aria-label={label}
             onFocus={onBegin}
             onChange={(e) => apply(Number(e.target.value))}
-            className="h-9 w-[4.75rem] rounded-md border border-border bg-elevated px-2 text-right font-mono text-sm tabular focus:border-accent/50 focus:outline-none"
+            className="h-7 w-[4.25rem] rounded-md border border-border bg-elevated px-1.5 text-right font-mono text-xs tabular focus:border-accent/50 focus:outline-none"
           />
           {unit ? (
             <span className="min-w-[1.6rem] rounded bg-accent/10 px-1.5 py-0.5 text-center text-[10px] font-semibold tracking-wide text-accent uppercase">
@@ -1147,7 +1172,7 @@ function Param({
         <button
           type="button"
           aria-label="Diminuer"
-          className="flex size-11 shrink-0 items-center justify-center rounded-md bg-elevated text-lg ring-1 ring-border/50 active:bg-accent/15"
+          className="param-step flex size-11 shrink-0 items-center justify-center rounded-md bg-elevated text-lg ring-1 ring-border/50 active:bg-accent/15"
           onPointerDown={onBegin}
           onClick={() => apply(n - step)}
         >
@@ -1181,7 +1206,7 @@ function Param({
         <button
           type="button"
           aria-label="Augmenter"
-          className="flex size-11 shrink-0 items-center justify-center rounded-md bg-elevated text-lg ring-1 ring-border/50 active:bg-accent/15"
+          className="param-step flex size-11 shrink-0 items-center justify-center rounded-md bg-elevated text-lg ring-1 ring-border/50 active:bg-accent/15"
           onPointerDown={onBegin}
           onClick={() => apply(n + step)}
         >

@@ -1,31 +1,14 @@
 import { Link } from "@tanstack/react-router";
 import {
-  Columns3,
-  BrickWall,
   ChevronLeft,
-  HelpCircle,
-  Layers,
-  LayoutGrid,
-  Palette,
-  Sparkles,
-  Hammer,
-  Sun,
-  Download,
   Building2,
-  PackageCheck,
-  MapPinned,
-  Users,
-  HardDrive,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast, Toaster } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { findWallAt } from "@/lib/bim/geometry";
-import { downloadText, exportBimJson, exportQuantitiesCsv } from "@/lib/bim/quantities";
 import { deliverDossier } from "@/lib/bim/dossier";
-import { exportDxf } from "@/lib/cad/dxf";
-import { exportIfc } from "@/lib/cad/ifc";
 import type { Project, ViewMode, WorkspaceMode } from "@/lib/bim/types";
 import { useStudio } from "@/lib/store/project-store";
 import { AnalysisPanel } from "./AnalysisPanel";
@@ -43,7 +26,7 @@ import { NavPad } from "./NavPad";
 import { InstallBanner } from "@/components/pwa/InstallBanner";
 import { OfflineMaquettesPanel } from "@/components/pwa/OfflineMaquettesPanel";
 import { PwaStatusChip } from "@/components/pwa/PwaStatusChip";
-import { RadialMenu } from "./RadialMenu";
+import { RadialMenu, type OverflowAction } from "./RadialMenu";
 import { dispatchCam } from "./OrbitRig";
 import { StructurePanel } from "./StructurePanel";
 import { Plan2D } from "./Plan2D";
@@ -59,7 +42,6 @@ import { BuildingAssistant } from "./BuildingAssistant";
 import {
   deferHelpForMassingCta,
   markHelpDismissed,
-  shouldAutoOpenHelp,
 } from "@/lib/nav/overlays";
 
 const WORKSPACES: { id: WorkspaceMode; label: string }[] = [
@@ -121,6 +103,25 @@ export function StudioShell({ projectId }: { projectId: string }) {
   }, []);
 
   useEffect(() => {
+    const onLib = () => {
+      setInspector(null);
+      setRadial(false);
+      setResources("objects");
+      setTool("furniture");
+    };
+    window.addEventListener("forma-open-library", onLib);
+    return () => window.removeEventListener("forma-open-library", onLib);
+  }, [setTool]);
+
+  useEffect(() => {
+    if (inspector) setResources(null);
+  }, [inspector]);
+
+  useEffect(() => {
+    if (radial) setResources(null);
+  }, [radial]);
+
+  useEffect(() => {
     if (!hydrated) return;
     openProject(projectId);
   }, [hydrated, projectId, openProject]);
@@ -152,7 +153,6 @@ export function StudioShell({ projectId }: { projectId: string }) {
       deferHelpForMassingCta();
       return;
     }
-    if (shouldAutoOpenHelp(current.walls.length)) setPanel("help");
   }, [hydrated, current]);
 
   useEffect(() => {
@@ -315,7 +315,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
         )}
         <StudioHud />
 
-        {current.walls.length === 0 && tool === "select" && panel === null && !inspector && !radial && (
+        {current.walls.length === 0 && tool === "select" && panel === null && !inspector && !radial && !resources && (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6 pb-36">
             <div className="pointer-events-auto panel-card max-w-xs px-4 py-4 text-center">
               <p className="font-display text-sm font-semibold">Esquisse vide</p>
@@ -381,10 +381,39 @@ export function StudioShell({ projectId }: { projectId: string }) {
         />
         <RadialMenu
           open={radial}
-          tool={tool}
-          onTool={setTool}
           onClose={() => setRadial(false)}
-          onStudio={() => setPanel("studio")}
+          onAction={(id: OverflowAction) => {
+            setRadial(false);
+            const hasSketch = (current.survey?.length ?? 0) > 0 || (current.strokes?.length ?? 0) > 0;
+            if (id === "dossier") {
+              if (current.walls.length === 0 && !hasSketch) return;
+              const r = deliverDossier(current);
+              toast.success(`Dossier · ${r.planCount} plans · IFC+DXF+CSV`);
+              return;
+            }
+            if (id === "faisabilite") {
+              setInspector("projet");
+              return;
+            }
+            if (id === "objects") {
+              setResources("objects");
+              setTool("furniture");
+              return;
+            }
+            if (id === "materials") {
+              setResources("materials");
+              return;
+            }
+            if (id === "building") setPanel("building");
+            else if (id === "struct") setPanel("struct");
+            else if (id === "analyse") setPanel("analyse");
+            else if (id === "ai") setPanel("ai");
+            else if (id === "chantier") setPanel("chantier");
+            else if (id === "collab") setPanel("collab");
+            else if (id === "offline") setPanel("offline");
+            else if (id === "layers") setPanel("layers");
+            else if (id === "help") setPanel("help");
+          }}
         />
 
         <header className="pointer-events-none absolute top-0 right-0 left-0 z-20">
@@ -414,15 +443,6 @@ export function StudioShell({ projectId }: { projectId: string }) {
               ))}
             </div>
             <HeaderSkillToggle />
-            <button
-              type="button"
-              aria-label="Studio"
-              onClick={() => setPanel("studio")}
-              className="flex h-11 min-h-11 shrink-0 items-center gap-1 rounded-full border border-accent/40 bg-accent/15 px-3 text-[11px] font-medium tracking-wide text-accent uppercase"
-            >
-              <LayoutGrid className="size-3.5" />
-              Studio
-            </button>
           </div>
         </header>
 
@@ -446,118 +466,6 @@ export function StudioShell({ projectId }: { projectId: string }) {
       </div>
       <InstallBanner compact blocked={panel === "help" || panel === "building" || (current.walls.length === 0 && tool === "select")} />
 
-      <Sheet open={panel === "studio"} onOpenChange={(o) => !o && setPanel(null)}>
-        <SheetContent title="Studio">
-          <div className="flex flex-col gap-5">
-            {[
-              {
-                title: "Concevoir",
-                items: [
-                  { id: "building" as const, label: "Bâtiment", desc: "Massing R+n, façades, noyau", icon: Building2 },
-                  { id: "mats" as const, label: "Matériaux", desc: "Finitions et PBR vivants", icon: Palette },
-                  { id: "ouvrages" as const, label: "Bibliothèque", desc: "Objets et ouvrages types", icon: BrickWall },
-                ],
-              },
-              {
-                title: "Analyser",
-                items: [
-                  {
-                    id: "faisabilite" as const,
-                    label: "Faisabilité",
-                    desc: "CES/COS, soleil, verdict site",
-                    icon: MapPinned,
-                    action: "faisabilite" as const,
-                  },
-                  { id: "struct" as const, label: "Structure", desc: "Porteurs et descentes", icon: Columns3 },
-                  { id: "analyse" as const, label: "Lumière & chiffres", desc: "Soleil, métrés, alertes", icon: Sun },
-                  { id: "ai" as const, label: "Copilote", desc: "Suggestions et massing IA", icon: Sparkles },
-                ],
-              },
-              {
-                title: "Livrer",
-                items: [
-                  { id: "chantier" as const, label: "Chantier 4D", desc: "Phasage de construction", icon: Hammer },
-                  { id: "collab" as const, label: "Collab", desc: "Deux téléphones, même maquette", icon: Users },
-                  {
-                    id: "offline" as const,
-                    label: "Maquettes hors ligne",
-                    desc: "Sauver / ouvrir sans réseau",
-                    icon: HardDrive,
-                  },
-                  {
-                    id: "dossier" as const,
-                    label: "Livrer le dossier",
-                    desc: "Plans SVG, coupe, IFC/DXF/CSV",
-                    icon: PackageCheck,
-                    action: "dossier" as const,
-                  },
-                  { id: "layers" as const, label: "Calques", desc: "Visibilité par discipline", icon: Layers },
-                  { id: "help" as const, label: "Guide", desc: "Raccourcis et parcours", icon: HelpCircle },
-                ],
-              },
-            ].map((section) => (
-              <div key={section.title}>
-                <p className="section-label">{section.title}</p>
-                <div className="flex flex-col gap-2">
-                  {section.items.map((item) => {
-                    const Icon = item.icon;
-                    const hasSketch = (current.survey?.length ?? 0) > 0 || (current.strokes?.length ?? 0) > 0;
-                    const disabled = "action" in item && item.action === "dossier" && current.walls.length === 0 && !hasSketch;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        disabled={disabled}
-                        onClick={() => {
-                          if ("action" in item && item.action === "dossier") {
-                            const r = deliverDossier(current);
-                            toast.success(`Dossier · ${r.planCount} plans · IFC+DXF+CSV`);
-                            setPanel(null);
-                            return;
-                          }
-                          if ("action" in item && item.action === "faisabilite") {
-                            setPanel(null);
-                            setInspector("projet");
-                            return;
-                          }
-                          if (item.id === "building") setPanel("building");
-                          else if (item.id === "mats") {
-                            setPanel(null);
-                            setResources("materials");
-                          } else if (item.id === "ouvrages") {
-                            setPanel(null);
-                            setResources("objects");
-                            setTool("furniture");
-                          }
-                          else if (item.id === "struct") setPanel("struct");
-                          else if (item.id === "analyse") setPanel("analyse");
-                          else if (item.id === "ai") setPanel("ai");
-                          else if (item.id === "chantier") setPanel("chantier");
-                          else if (item.id === "collab") setPanel("collab");
-                          else if (item.id === "offline") setPanel("offline");
-                          else if (item.id === "layers") setPanel("layers");
-                          else if (item.id === "help") setPanel("help");
-                        }}
-                        className="studio-tile disabled:opacity-40"
-                      >
-                        <span className="studio-tile-icon">
-                          <Icon className="size-4" />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-sm font-medium text-fg">{item.label}</span>
-                          <span className="block text-[11px] text-muted">{item.desc}</span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-            <StudioSkillToggle />
-            <QuickExportStrip project={current} />
-          </div>
-        </SheetContent>
-      </Sheet>
       <Sheet open={panel === "layers"} onOpenChange={(o) => !o && setPanel(null)}>
         <SheetContent title="Calques">
           <LayersPanel />
@@ -654,77 +562,6 @@ function HeaderSkillToggle() {
       >
         Expert
       </button>
-    </div>
-  );
-}
-
-function StudioSkillToggle() {
-  const skill = useStudio((s) => s.skill);
-  const setSkill = useStudio((s) => s.setSkill);
-  return (
-    <div>
-      <p className="section-label">Niveau</p>
-      <div className="flex rounded-xl border border-border/60 bg-elevated p-0.5">
-        <button
-          type="button"
-          onClick={() => setSkill("simple")}
-          className={`h-10 flex-1 rounded-lg text-xs font-medium ${skill === "simple" ? "bg-accent/15 text-accent ring-1 ring-accent/40" : "text-muted"}`}
-        >
-          Amateur
-        </button>
-        <button
-          type="button"
-          onClick={() => setSkill("pro")}
-          className={`h-10 flex-1 rounded-lg text-xs font-medium ${skill === "pro" ? "bg-accent/15 text-accent ring-1 ring-accent/40" : "text-muted"}`}
-        >
-          Expert
-        </button>
-      </div>
-      <p className="mt-2 text-[11px] text-subtle">
-        {skill === "simple"
-          ? "Outils essentiels + dalle / escalier / poteau. Coupe et AR masqués."
-          : "Tous les outils, coupe, AR, esquisse et ouvrage."}
-      </p>
-    </div>
-  );
-}
-
-function QuickExportStrip({ project }: { project: Project }) {
-  const base = project.name.replace(/\s+/g, "-").toLowerCase();
-  return (
-    <div>
-      <p className="section-label">Export rapide</p>
-      {project.walls.length > 0 && (
-        <button
-          type="button"
-          onClick={() => {
-            const r = deliverDossier(project);
-            toast.success(`Dossier · ${r.planCount} plans · IFC+DXF+CSV`);
-          }}
-          className="mb-2 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-accent text-sm font-semibold text-accent-fg"
-        >
-          <PackageCheck className="size-4" />
-          Livrer le dossier
-        </button>
-      )}
-      <div className="grid grid-cols-2 gap-2">
-        {[
-          { label: "JSON", run: () => downloadText(`${base}.forma.json`, exportBimJson(project)) },
-          { label: "DXF", run: () => downloadText(`${base}.dxf`, exportDxf(project), "application/dxf") },
-          { label: "CSV", run: () => downloadText(`${base}-metre.csv`, exportQuantitiesCsv(project), "text/csv") },
-          { label: "IFC", run: () => downloadText(`${base}.ifc`, exportIfc(project), "application/x-step") },
-        ].map((b) => (
-          <button
-            key={b.label}
-            type="button"
-            onClick={b.run}
-            className="flex h-11 items-center justify-center gap-1.5 bg-elevated text-xs font-medium"
-          >
-            <Download className="size-3.5 text-accent" />
-            {b.label}
-          </button>
-        ))}
-      </div>
     </div>
   );
 }
