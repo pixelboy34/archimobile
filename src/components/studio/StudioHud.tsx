@@ -30,7 +30,7 @@ export function StudioHud() {
   const isolateStory = useStudio((s) => s.isolateStory);
   if (!project) return null;
   const typicalHint = linkedTypicalHint(project, storyId);
-  if (view === "ar") return null;
+  if (view === "ar" || view === "3d") return null;
   if (!showHud) return null;
   const sel = selectedIds[0] ? selectionHud(project, selectedIds[0]) : null;
 
@@ -69,12 +69,10 @@ export function StudioHud() {
 
   return (
     <div
-      className={`pointer-events-none absolute left-3 right-3 z-10 flex items-center gap-2 ${
-        view === "coupe"
-          ? "top-[calc(env(safe-area-inset-top)+8.5rem)]"
-          : view === "3d" || view === "visite"
-            ? "top-[calc(env(safe-area-inset-top)+7.1rem)]"
-            : "top-[calc(env(safe-area-inset-top)+6.4rem)]"
+      className={`pointer-events-none absolute left-3 z-10 flex max-w-[70%] items-center gap-2 ${
+        view === "coupe" || view === "3d" || view === "visite"
+          ? "bottom-[calc(env(safe-area-inset-bottom)+7.6rem)]"
+          : "bottom-[calc(env(safe-area-inset-bottom)+7.6rem)]"
       }`}
     >
       <div className="hud-panel flex min-w-0 max-w-full items-center gap-2 px-3 py-1.5 text-xs text-muted">

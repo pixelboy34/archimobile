@@ -116,7 +116,7 @@ export function CommandOrb({
   return (
     <div
       className={cn(
-        "cmd-rail cmd-rail-live w-full max-w-lg",
+        "cmd-rail cmd-rail-live mx-auto w-full max-w-lg",
         mode === "modifier" && "cmd-rail-modify",
       )}
     >
@@ -301,7 +301,7 @@ function ModeBtn({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "relative flex h-11 min-h-11 min-w-0 flex-1 items-center justify-center gap-1 rounded-full px-2 text-[10px] font-semibold tracking-wide uppercase transition-[transform,background-color,color] duration-200",
+        "relative flex h-8 min-h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-full px-2 text-[10px] font-semibold tracking-wide uppercase transition-[transform,background-color,color] duration-200",
         active ? "bg-accent/18 text-accent" : "text-muted/80 hover:text-fg",
         disabled && "opacity-40",
       )}
@@ -339,7 +339,7 @@ function OrbBtn({
       onClick={onClick}
       onContextMenu={onContextMenu}
       className={cn(
-        "hud-chip-press flex h-11 min-w-11 flex-col items-center justify-center gap-0.5 rounded-xl px-2.5 text-[9px] font-medium tracking-[0.12em] uppercase",
+        "hud-chip-press flex size-9 shrink-0 items-center justify-center rounded-lg text-muted/80 hover:bg-elevated/80 hover:text-fg",
         danger && "text-danger hover:bg-danger/10",
         accent && !danger && "bg-accent/15 text-accent ring-1 ring-accent/45",
         active && !accent && !danger && "bg-accent/15 text-accent ring-1 ring-accent/50",
@@ -347,7 +347,6 @@ function OrbBtn({
       )}
     >
       {children}
-      <span className="max-w-[5.5rem] truncate leading-none">{label}</span>
     </button>
   );
 }

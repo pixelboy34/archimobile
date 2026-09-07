@@ -55,7 +55,7 @@ export function ResourcesPeek({
     <div
       className={cn(
         "resources-peek pointer-events-auto absolute right-3 left-3 z-[25] flex flex-col",
-        "bottom-[calc(env(safe-area-inset-bottom)+11.75rem)] lg:bottom-[calc(env(safe-area-inset-bottom)+11.75rem)]",
+        "bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] lg:bottom-[calc(env(safe-area-inset-bottom)+6.5rem)]",
         "max-h-[min(42dvh,22rem)] overflow-hidden rounded-xl border border-border bg-surface/96 shadow-border",
       )}
       role="dialog"

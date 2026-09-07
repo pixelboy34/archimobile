@@ -25,7 +25,6 @@ import { NavCoach } from "./NavCoach";
 import { NavPad } from "./NavPad";
 import { InstallBanner } from "@/components/pwa/InstallBanner";
 import { OfflineMaquettesPanel } from "@/components/pwa/OfflineMaquettesPanel";
-import { PwaStatusChip } from "@/components/pwa/PwaStatusChip";
 import { RadialMenu, type OverflowAction } from "./RadialMenu";
 import { dispatchCam } from "./OrbitRig";
 import { StructurePanel } from "./StructurePanel";
@@ -416,25 +415,25 @@ export function StudioShell({ projectId }: { projectId: string }) {
           }}
         />
 
-        <header className="pointer-events-none absolute top-0 right-0 left-0 z-20">
-          <div className="pointer-events-auto flex items-center gap-1 bg-gradient-to-b from-bg/95 via-bg/50 to-transparent pt-[max(0.3rem,env(safe-area-inset-top))] pr-2 pb-3 pl-1">
+        <header className="pointer-events-none absolute inset-x-0 top-0 z-20">
+          <div className="pointer-events-auto absolute top-[max(0.25rem,env(safe-area-inset-top))] left-1 flex max-w-[46%] items-center gap-0.5">
             <Button variant="ghost" size="icon" asChild>
               <Link to="/" aria-label="Projets">
                 <ChevronLeft className="size-5" />
               </Link>
             </Button>
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-display text-sm font-semibold leading-tight tracking-tight">{current.name}</p>
-            </div>
-            <PwaStatusChip />
-            <InstallBanner discreet />
-            <div className="flex shrink-0 rounded-full border border-accent/25 bg-elevated/90 p-0.5 shadow-[0_0_0_1px_rgba(126,208,195,0.08)]">
+            <p className="min-w-0 truncate font-display text-[12px] font-semibold tracking-tight drop-shadow-[0_1px_8px_rgba(11,13,16,0.85)]">
+              {current.name}
+            </p>
+          </div>
+          <div className="pointer-events-auto absolute top-[max(0.25rem,env(safe-area-inset-top))] right-1.5 flex items-center gap-1">
+            <div className="flex shrink-0 rounded-full border border-border/50 bg-surface/55 p-0.5 backdrop-blur-sm">
               {WORKSPACES.map((w) => (
                 <button
                   key={w.id}
                   type="button"
                   onClick={() => setWorkspace(w.id)}
-                  className={`h-11 min-h-11 shrink-0 rounded-full px-2.5 text-[11px] font-medium tracking-wide ${
+                  className={`h-8 min-h-8 shrink-0 rounded-full px-2 text-[10px] font-medium tracking-wide ${
                     workspace === w.id ? "bg-accent/15 text-accent ring-1 ring-accent/40" : "text-muted"
                   }`}
                 >
@@ -451,7 +450,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
             inspector ? "hidden lg:block lg:pr-[22.5rem]" : ""
           }`}
         >
-          <div className="pointer-events-auto flex flex-col items-center bg-gradient-to-t from-bg/85 via-bg/30 to-transparent px-3 pt-5 pb-[max(0.45rem,env(safe-area-inset-bottom))]">
+          <div className="pointer-events-auto flex w-full flex-col items-stretch bg-gradient-to-t from-bg/50 to-transparent px-2 pt-1.5 pb-[max(0.35rem,env(safe-area-inset-bottom))]">
             <ReleveBar />
             <CommandOrb
               onParams={() => setInspector(selectedIds.length ? "ouvrage" : "niveaux")}
@@ -543,11 +542,11 @@ function HeaderSkillToggle() {
   const skill = useStudio((s) => s.skill);
   const setSkill = useStudio((s) => s.setSkill);
   return (
-    <div className="flex shrink-0 rounded-full border border-border/60 bg-elevated/90 p-0.5">
+    <div className="flex shrink-0 rounded-full border border-border/50 bg-surface/55 p-0.5 backdrop-blur-sm">
       <button
         type="button"
         onClick={() => setSkill("simple")}
-        className={`h-11 min-h-11 px-2.5 text-[10px] font-medium tracking-wide ${
+        className={`h-8 min-h-8 px-2 text-[10px] font-medium tracking-wide ${
           skill === "simple" ? "rounded-full bg-accent/15 text-accent ring-1 ring-accent/40" : "text-muted"
         }`}
       >
@@ -556,7 +555,7 @@ function HeaderSkillToggle() {
       <button
         type="button"
         onClick={() => setSkill("pro")}
-        className={`h-11 min-h-11 px-2.5 text-[10px] font-medium tracking-wide ${
+        className={`h-8 min-h-8 px-2 text-[10px] font-medium tracking-wide ${
           skill === "pro" ? "rounded-full bg-accent/15 text-accent ring-1 ring-accent/40" : "text-muted"
         }`}
       >

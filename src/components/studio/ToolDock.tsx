@@ -75,7 +75,6 @@ export function ToolDock({
   onTool: (t: Tool) => void;
 }) {
   const skill = useStudio((s) => s.skill);
-  const expert = skill === "pro";
   const groups =
     skill === "simple"
       ? GROUPS.filter((g) => g.id === "edit" || g.id === "draw" || g.id === "struct" || g.id === "obj").map((g) =>
@@ -86,63 +85,50 @@ export function ToolDock({
   const sub = active.tools;
 
   return (
-    <div className="pointer-events-auto flex max-w-full flex-col items-stretch gap-1">
-      {sub.length > 1 && (
-        <div className="flex gap-0.5 overflow-x-auto">
-          {sub.map((id) => {
-            const Icon = ICONS[id] ?? MousePointer2;
-            const on = tool === id;
-            return (
-              <button
-                key={id}
-                type="button"
-                title={TOOL_LABELS[id]}
-                onClick={() => onTool(id)}
-                className={cn(
-                  "hud-chip-press flex min-w-11 items-center justify-center rounded-lg px-2 transition-colors duration-150",
-                  expert ? "h-11 flex-col gap-0.5 py-1" : "h-10",
-                  on
-                    ? "bg-accent/15 text-accent ring-1 ring-accent/45"
-                    : "text-muted/70 hover:bg-elevated/70 hover:text-fg",
-                )}
-              >
-                <Icon className="size-4" />
-                {expert ? (
-                  <span className="max-w-[3.2rem] truncate text-[9px] font-medium leading-none tracking-wide">
-                    {TOOL_SHORT[id]}
-                  </span>
-                ) : (
-                  <span className="sr-only">{TOOL_LABELS[id]}</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
-      <div className="flex gap-0.5 overflow-x-auto">
-        {groups.map((g) => {
-          const Icon = g.icon;
-          const on = g.id === active.id;
+    <div className="pointer-events-auto flex max-w-full gap-0.5 overflow-x-auto">
+      {groups.map((g) => {
+        const Icon = g.icon;
+        const on = g.id === active.id;
+        return (
+          <button
+            key={g.id}
+            type="button"
+            title={g.label}
+            onClick={() => {
+              if (!g.tools.includes(tool)) onTool(g.tools[0]!);
+            }}
+            className={cn(
+              "hud-chip-press relative flex h-8 shrink-0 items-center gap-1 rounded-lg px-1.5 text-[9px] tracking-wide uppercase",
+              on ? "text-accent" : "text-muted/65 hover:bg-elevated/60 hover:text-fg",
+            )}
+          >
+            <Icon className="size-3.5" />
+            <span>{g.label}</span>
+          </button>
+        );
+      })}
+      {sub.length > 1 &&
+        sub.map((id) => {
+          const Icon = ICONS[id] ?? MousePointer2;
+          const on = tool === id;
           return (
             <button
-              key={g.id}
+              key={id}
               type="button"
-              title={g.label}
-              onClick={() => {
-                if (!g.tools.includes(tool)) onTool(g.tools[0]!);
-              }}
+              title={TOOL_LABELS[id]}
+              onClick={() => onTool(id)}
               className={cn(
-                "hud-chip-press relative flex h-11 min-w-11 flex-col items-center justify-center rounded-lg px-2 text-[10px] tracking-wide uppercase transition-colors duration-150",
-                on ? "text-accent" : "text-muted/65 hover:bg-elevated/60 hover:text-fg",
+                "hud-chip-press flex size-8 shrink-0 items-center justify-center rounded-lg",
+                on
+                  ? "bg-accent/15 text-accent ring-1 ring-accent/45"
+                  : "text-muted/70 hover:bg-elevated/70 hover:text-fg",
               )}
             >
-              <Icon className="size-4" />
-              <span>{g.label}</span>
-              {on && <span className="tab-underline" />}
+              <Icon className="size-3.5" />
+              <span className="sr-only">{TOOL_LABELS[id]}</span>
             </button>
           );
         })}
-      </div>
     </div>
   );
 }
