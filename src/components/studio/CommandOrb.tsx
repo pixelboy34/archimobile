@@ -19,6 +19,7 @@ import {
   LayoutGrid,
   PenLine,
   Wrench,
+  ChevronUp,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -81,6 +82,8 @@ export function CommandOrb({
   const drawing = DRAW_TOOLS.includes(tool);
   const autoMode: RailMode = hasSel && !drawing ? "modifier" : "concevoir";
   const [pinned, setPinned] = useState<RailMode | null>(null);
+  const [repere, setRepere] = useState(false);
+  const [pas, setPas] = useState(false);
   const mode = pinned ?? autoMode;
 
   // Release pin when selection/tool naturally matches the other mode
@@ -89,6 +92,11 @@ export function CommandOrb({
     if (pinned === "modifier" && !hasSel) setPinned(null);
     if (pinned === "concevoir" && hasSel && !drawing) setPinned(null);
   }, [pinned, hasSel, drawing]);
+
+  useEffect(() => {
+    setRepere(false);
+    setPas(false);
+  }, [mode]);
 
   if (view === "ar" || view === "visite") return null;
 
@@ -160,28 +168,8 @@ export function CommandOrb({
 
       {mode === "modifier" ? (
         <div className="flex flex-col gap-1">
-          {movable && (
+          {movable && pas && (
             <div className="flex gap-0.5 overflow-x-auto">
-              {(view === "3d" || view === "coupe") && (
-                <>
-                  <OrbBtn
-                    label="Déplacer"
-                    active={gizmoMode === "translate"}
-                    accent={gizmoMode === "translate"}
-                    onClick={() => setGizmoMode("translate")}
-                  >
-                    <Move3d className="size-4" />
-                  </OrbBtn>
-                  <OrbBtn
-                    label="Pivoter 3D"
-                    active={gizmoMode === "rotate"}
-                    accent={gizmoMode === "rotate"}
-                    onClick={() => setGizmoMode("rotate")}
-                  >
-                    <RotateCw className="size-4" />
-                  </OrbBtn>
-                </>
-              )}
               <OrbBtn label="−X" onClick={() => nudge(-0.1, 0)}>
                 <span className="font-mono text-[11px]">−X</span>
               </OrbBtn>
@@ -203,6 +191,26 @@ export function CommandOrb({
             </div>
           )}
           <div className="flex gap-0.5 overflow-x-auto">
+            {(view === "3d" || view === "coupe") && movable && (
+              <>
+                <OrbBtn
+                  label="Déplacer"
+                  active={gizmoMode === "translate"}
+                  accent={gizmoMode === "translate"}
+                  onClick={() => setGizmoMode("translate")}
+                >
+                  <Move3d className="size-4" />
+                </OrbBtn>
+                <OrbBtn
+                  label="Pivoter 3D"
+                  active={gizmoMode === "rotate"}
+                  accent={gizmoMode === "rotate"}
+                  onClick={() => setGizmoMode("rotate")}
+                >
+                  <RotateCw className="size-4" />
+                </OrbBtn>
+              </>
+            )}
             <OrbBtn label="Dupliquer" onClick={duplicateSelected}>
               <Copy className="size-4" />
             </OrbBtn>
@@ -215,20 +223,35 @@ export function CommandOrb({
             <OrbBtn label="Matériau" onClick={() => onResources("materials")}>
               <Palette className="size-4" />
             </OrbBtn>
+            {movable && (
+              <OrbBtn label="Pas" active={pas} onClick={() => setPas((v) => !v)}>
+                <ChevronUp className={cn("size-4", pas && "rotate-180")} />
+              </OrbBtn>
+            )}
           </div>
         </div>
       ) : (
         <div className="flex flex-col gap-1">
-          {/* Compact config + history */}
+          {repere && (
+            <div className="flex gap-0.5 overflow-x-auto">
+              <OrbBtn label="Aimant" active={snap} onClick={() => setSnap(!snap)}>
+                <Magnet className="size-4" />
+              </OrbBtn>
+              <OrbBtn label="Grille" active={grid} onClick={() => setGrid(!grid)}>
+                <Grid3x3 className="size-4" />
+              </OrbBtn>
+              <OrbBtn label="Ortho" active={ortho} onClick={() => setOrtho(!ortho)}>
+                <MoveHorizontal className="size-4" />
+              </OrbBtn>
+            </div>
+          )}
           <div className="flex gap-0.5 overflow-x-auto">
-            <OrbBtn label="Aimant" active={snap} onClick={() => setSnap(!snap)}>
+            <OrbBtn
+              label="Repère"
+              active={repere || snap || grid || ortho}
+              onClick={() => setRepere((v) => !v)}
+            >
               <Magnet className="size-4" />
-            </OrbBtn>
-            <OrbBtn label="Grille" active={grid} onClick={() => setGrid(!grid)}>
-              <Grid3x3 className="size-4" />
-            </OrbBtn>
-            <OrbBtn label="Ortho" active={ortho} onClick={() => setOrtho(!ortho)}>
-              <MoveHorizontal className="size-4" />
             </OrbBtn>
             <OrbBtn label="Annuler" onClick={undo}>
               <Undo2 className="size-4" />

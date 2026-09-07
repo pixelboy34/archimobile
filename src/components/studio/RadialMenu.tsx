@@ -1,5 +1,9 @@
+import { useEffect, useState } from "react";
 import {
+  Archive,
   Building2,
+  ChevronLeft,
+  ChevronRight,
   Columns3,
   Hammer,
   HardDrive,
@@ -33,38 +37,43 @@ export type OverflowAction =
   | "layers"
   | "help";
 
-const SECTIONS: { title: string; items: { id: OverflowAction; label: string; icon: LucideIcon; pro?: boolean }[] }[] = [
-  {
-    title: "Concevoir",
-    items: [
-      { id: "building", label: "Bâtiment", icon: Building2 },
-      { id: "objects", label: "Objets", icon: Sofa },
-      { id: "materials", label: "Matières", icon: Palette },
-    ],
-  },
-  {
-    title: "Analyser",
-    items: [
-      { id: "faisabilite", label: "Site", icon: MapPinned },
-      { id: "struct", label: "Structure", icon: Columns3, pro: true },
-      { id: "analyse", label: "Chiffres", icon: Sun },
-      { id: "ai", label: "Copilote", icon: Sparkles },
-    ],
-  },
-  {
-    title: "Livrer",
-    items: [
-      { id: "dossier", label: "Dossier", icon: PackageCheck },
-      { id: "chantier", label: "Chantier", icon: Hammer, pro: true },
-      { id: "collab", label: "Collab", icon: Users, pro: true },
-      { id: "offline", label: "Hors ligne", icon: HardDrive },
-      { id: "layers", label: "Calques", icon: Layers, pro: true },
-      { id: "help", label: "Guide", icon: HelpCircle },
-    ],
-  },
+type Folder = "root" | "analyser" | "livrer";
+
+type Tile =
+  | { kind: "action"; id: OverflowAction; label: string; icon: LucideIcon; pro?: boolean }
+  | { kind: "folder"; id: Folder; label: string; icon: LucideIcon };
+
+const ROOT: Tile[] = [
+  { kind: "action", id: "building", label: "Bâtiment", icon: Building2 },
+  { kind: "action", id: "objects", label: "Objets", icon: Sofa },
+  { kind: "action", id: "materials", label: "Matières", icon: Palette },
+  { kind: "action", id: "dossier", label: "Dossier", icon: PackageCheck },
+  { kind: "folder", id: "analyser", label: "Analyser", icon: Sun },
+  { kind: "folder", id: "livrer", label: "Livrer", icon: Archive },
 ];
 
-/** Compact atelier overflow — one menu, no radial rings, no second Studio sheet. */
+const ANALYSER: Tile[] = [
+  { kind: "action", id: "faisabilite", label: "Site", icon: MapPinned },
+  { kind: "action", id: "struct", label: "Structure", icon: Columns3, pro: true },
+  { kind: "action", id: "analyse", label: "Chiffres", icon: Sun },
+  { kind: "action", id: "ai", label: "Copilote", icon: Sparkles },
+];
+
+const LIVRER: Tile[] = [
+  { kind: "action", id: "chantier", label: "Chantier", icon: Hammer, pro: true },
+  { kind: "action", id: "collab", label: "Collab", icon: Users, pro: true },
+  { kind: "action", id: "offline", label: "Hors ligne", icon: HardDrive },
+  { kind: "action", id: "layers", label: "Calques", icon: Layers, pro: true },
+  { kind: "action", id: "help", label: "Guide", icon: HelpCircle },
+];
+
+const FOLDER_TITLE: Record<Folder, string> = {
+  root: "Atelier",
+  analyser: "Analyser",
+  livrer: "Livrer",
+};
+
+/** Compact atelier — 4 actions + 2 sous-menus. Surplus never on the first screen. */
 export function RadialMenu({
   open,
   onClose,
@@ -78,23 +87,45 @@ export function RadialMenu({
   onAction: (id: OverflowAction) => void;
 }) {
   const skill = useStudio((s) => s.skill);
-  if (!open) return null;
+  const [folder, setFolder] = useState<Folder>("root");
   const expert = skill === "pro";
+
+  useEffect(() => {
+    if (!open) setFolder("root");
+  }, [open]);
+
+  if (!open) return null;
+
+  const tiles = (folder === "analyser" ? ANALYSER : folder === "livrer" ? LIVRER : ROOT).filter(
+    (t) => t.kind === "folder" || expert || !(t.kind === "action" && t.pro),
+  );
 
   return (
     <div className="pointer-events-none absolute inset-0 z-30">
       <button
         type="button"
         aria-label="Fermer"
-        className="pointer-events-auto absolute inset-0 bg-bg/40"
+        className="pointer-events-auto absolute inset-0 bg-bg/35"
         onClick={onClose}
       />
       <div
-        className="pointer-events-auto absolute right-3 left-3 z-[31] flex max-h-[min(42dvh,22rem)] flex-col overflow-hidden rounded-xl border border-border bg-surface/98 shadow-border"
+        className="pointer-events-auto absolute right-3 left-3 z-[31] flex flex-col overflow-hidden rounded-xl border border-border bg-surface/98 shadow-border"
         style={{ bottom: "calc(env(safe-area-inset-bottom) + 11.75rem)" }}
       >
-        <div className="flex shrink-0 items-center justify-between border-b border-border px-2.5 py-1.5">
-          <p className="text-[11px] font-semibold tracking-[0.14em] text-muted uppercase">Atelier</p>
+        <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-1.5">
+          {folder !== "root" ? (
+            <button
+              type="button"
+              aria-label="Retour"
+              onClick={() => setFolder("root")}
+              className="flex size-8 items-center justify-center rounded-md text-muted hover:bg-elevated hover:text-fg"
+            >
+              <ChevronLeft className="size-4" />
+            </button>
+          ) : null}
+          <p className="min-w-0 flex-1 px-1 text-[11px] font-semibold tracking-[0.14em] text-muted uppercase">
+            {FOLDER_TITLE[folder]}
+          </p>
           <button
             type="button"
             aria-label="Fermer le menu"
@@ -104,30 +135,36 @@ export function RadialMenu({
             <X className="size-3.5" />
           </button>
         </div>
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-2.5 py-2">
-          {SECTIONS.map((section) => {
-            const items = section.items.filter((it) => expert || !it.pro);
-            if (!items.length) return null;
+        <div className="overflow-grid p-2">
+          {tiles.map((tile) => {
+            if (tile.kind === "folder") {
+              const Icon = tile.icon;
+              return (
+                <button
+                  key={tile.id}
+                  type="button"
+                  onClick={() => setFolder(tile.id)}
+                  className="flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-md bg-elevated px-1 py-1.5 text-muted hover:bg-accent/10 hover:text-fg"
+                >
+                  <span className="flex items-center gap-0.5">
+                    <Icon className="size-3.5" />
+                    <ChevronRight className="size-3 opacity-60" />
+                  </span>
+                  <span className="w-full truncate text-center text-[9px] font-medium leading-tight">{tile.label}</span>
+                </button>
+              );
+            }
+            const Icon = tile.icon;
             return (
-              <div key={section.title}>
-                <p className="mb-1.5 text-[10px] font-medium tracking-[0.16em] text-subtle uppercase">{section.title}</p>
-                <div className="overflow-grid">
-                  {items.map((item) => {
-                    const Icon = item.icon;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => onAction(item.id)}
-                        className="flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-md bg-elevated px-1 py-1.5 text-muted hover:bg-accent/10 hover:text-fg"
-                      >
-                        <Icon className={cn("size-3.5", item.id === "dossier" && "text-accent")} />
-                        <span className="w-full truncate text-center text-[9px] font-medium leading-tight">{item.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+              <button
+                key={tile.id}
+                type="button"
+                onClick={() => onAction(tile.id)}
+                className="flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-md bg-elevated px-1 py-1.5 text-muted hover:bg-accent/10 hover:text-fg"
+              >
+                <Icon className={cn("size-3.5", tile.id === "dossier" && "text-accent")} />
+                <span className="w-full truncate text-center text-[9px] font-medium leading-tight">{tile.label}</span>
+              </button>
             );
           })}
         </div>
