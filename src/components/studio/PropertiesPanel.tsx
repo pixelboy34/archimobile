@@ -123,7 +123,7 @@ export function PropertiesPanel({
   }, [hasEl, tabProp]);
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-3">
       {!compact && !tabProp && (
         <div className="flex gap-1 overflow-x-auto">
           {(
@@ -153,7 +153,11 @@ export function PropertiesPanel({
           {wall && (
             <Section title="Mur">
               <Row k="Longueur" v={formatMeters(wallLength(wall))} />
-              <Group title="Typologie">
+              <ParamGrid>
+              <Param label="Épaisseur" value={wall.thickness} min={0.06} max={0.8} step={0.01} onBegin={beginEdit} onChange={(v) => patchSelected({ thickness: v })} />
+              <Param label="Hauteur" value={wall.height} min={1} max={12} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ height: v })} />
+              </ParamGrid>
+              <More label="Typologie">
                 <div className="flex flex-wrap gap-1.5">
                   {WALL_PRESETS.map((pr) => (
                     <button
@@ -178,15 +182,9 @@ export function PropertiesPanel({
                     </button>
                   ))}
                 </div>
-              </Group>
-              <ParamGrid>
-              <Param label="Épaisseur" value={wall.thickness} min={0.06} max={0.8} step={0.01} onBegin={beginEdit} onChange={(v) => patchSelected({ thickness: v })} />
-              <Param label="Hauteur" value={wall.height} min={1} max={12} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ height: v })} />
-              </ParamGrid>
-              <Chips label="Matériau" value={wall.materialId} options={STRUCT_MATS} labels={MATERIAL_LABELS} onChange={(m) => commitSelected({ materialId: m })} />
-              <Chips label="Rôle" value={wall.role ?? "interior"} options={Object.keys(ROLE_LABELS)} labels={ROLE_LABELS} onChange={(m) => commitSelected({ role: m })} />
-              <ToggleRow label="Porteur" on={Boolean(wall.loadBearing)} onChange={(v) => commitSelected({ loadBearing: v, partition: !v })} />
-              <More>
+                <Chips label="Matériau" value={wall.materialId} options={STRUCT_MATS} labels={MATERIAL_LABELS} onChange={(m) => commitSelected({ materialId: m })} />
+                <Chips label="Rôle" value={wall.role ?? "interior"} options={Object.keys(ROLE_LABELS)} labels={ROLE_LABELS} onChange={(m) => commitSelected({ role: m })} />
+                <ToggleRow label="Porteur" on={Boolean(wall.loadBearing)} onChange={(v) => commitSelected({ loadBearing: v, partition: !v })} />
                 <Chips label="Alignement" value={wall.alignment ?? "center"} options={Object.keys(ALIGN_LABELS)} labels={ALIGN_LABELS} onChange={(m) => commitSelected({ alignment: m })} />
                 <Param label="Isolation" value={wall.insulationMm ?? 0} min={0} max={300} step={5} unit="mm" digits={0} onBegin={beginEdit} onChange={(v) => patchSelected({ insulationMm: v })} />
                 <Chips label="Feu" value={wall.fireRating ?? "none"} options={Object.keys(FIRE_LABELS)} labels={FIRE_LABELS} onChange={(m) => commitSelected({ fireRating: m })} />
@@ -195,29 +193,33 @@ export function PropertiesPanel({
           )}
           {opening && (
             <Section title={opening.kind === "door" ? "Porte" : "Fenêtre"}>
-              <div className="flex flex-wrap gap-1.5">
-                {(opening.kind === "door" ? DOOR_PRESETS : WINDOW_PRESETS).map((pr) => (
-                  <button
-                    key={pr.id}
-                    type="button"
-                    onClick={() => commitSelected({ width: pr.width, height: pr.height, sill: pr.sill, variant: pr.variant })}
-                    className="h-9 bg-elevated px-2.5 text-xs"
-                  >
-                    {pr.label}
-                  </button>
-                ))}
-              </div>
               <ParamGrid>
               <Param label="Largeur" value={opening.width} min={0.4} max={6} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ width: v })} />
               <Param label="Hauteur" value={opening.height} min={0.4} max={4} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ height: v })} />
               </ParamGrid>
-              <Param label="Allège" value={opening.sill} min={0} max={2.4} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ sill: v })} />
               {opening.kind === "window" && (
-                <Chips label="Vitrage" value={opening.glazing ?? "double"} options={Object.keys(GLAZING_LABELS)} labels={GLAZING_LABELS} onChange={(m) => commitSelected({ glazing: m })} />
+                <Param label="Allège" value={opening.sill} min={0} max={2.4} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ sill: v })} />
               )}
-              {opening.kind === "door" && (
-                <Chips label="Sens" value={opening.swing ?? "left"} options={Object.keys(SWING_LABELS)} labels={SWING_LABELS} onChange={(m) => commitSelected({ swing: m })} />
-              )}
+              <More label="Type">
+                <div className="flex flex-wrap gap-1.5">
+                  {(opening.kind === "door" ? DOOR_PRESETS : WINDOW_PRESETS).map((pr) => (
+                    <button
+                      key={pr.id}
+                      type="button"
+                      onClick={() => commitSelected({ width: pr.width, height: pr.height, sill: pr.sill, variant: pr.variant })}
+                      className="h-9 bg-elevated px-2.5 text-xs"
+                    >
+                      {pr.label}
+                    </button>
+                  ))}
+                </div>
+                {opening.kind === "window" && (
+                  <Chips label="Vitrage" value={opening.glazing ?? "double"} options={Object.keys(GLAZING_LABELS)} labels={GLAZING_LABELS} onChange={(m) => commitSelected({ glazing: m })} />
+                )}
+                {opening.kind === "door" && (
+                  <Chips label="Sens" value={opening.swing ?? "left"} options={Object.keys(SWING_LABELS)} labels={SWING_LABELS} onChange={(m) => commitSelected({ swing: m })} />
+                )}
+              </More>
             </Section>
           )}
           {room && (
@@ -226,6 +228,7 @@ export function PropertiesPanel({
                 <Input value={room.name} onFocus={beginEdit} onChange={(e) => patchSelected({ name: e.target.value })} />
               </Field>
               <Chips label="Fonction" value={room.function} options={ROOM_FNS} labels={ROOM_LABELS} onChange={(m) => commitSelected({ function: m })} />
+              <More label="Sol">
               <Chips
                 label="Sol"
                 value={(room.floorFinish ?? "parquet") as MaterialId}
@@ -233,6 +236,7 @@ export function PropertiesPanel({
                 labels={MATERIAL_LABELS}
                 onChange={(m) => commitSelected({ floorFinish: m })}
               />
+              </More>
             </Section>
           )}
           {furn && (
@@ -247,9 +251,13 @@ export function PropertiesPanel({
               <ParamGrid>
               <Param label="Largeur" value={furn.w} min={0.1} max={12} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ w: v })} />
               <Param label="Profondeur" value={furn.d} min={0.1} max={12} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ d: v })} />
+              </ParamGrid>
+              <More label="Hauteur · rotation">
+              <ParamGrid>
               <Param label="Hauteur" value={furn.h} min={0.02} max={8} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ h: v })} />
               <Param label="Rotation" value={(furn.rotation * 180) / Math.PI} min={0} max={360} step={5} unit="°" digits={0} onBegin={beginEdit} onChange={(v) => patchSelected({ rotation: (v * Math.PI) / 180 })} />
               </ParamGrid>
+              </More>
             </Section>
           )}
           {column && (
@@ -259,53 +267,64 @@ export function PropertiesPanel({
               <Param label="Section Y" value={column.depth} min={0.1} max={1.2} step={0.02} onBegin={beginEdit} onChange={(v) => patchSelected({ depth: v })} />
               </ParamGrid>
               <Param label="Hauteur" value={column.height} min={1} max={12} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ height: v })} />
+              <More label="Matériau">
               <Chips label="Matériau" value={column.materialId} options={STRUCT_MATS} labels={MATERIAL_LABELS} onChange={(m) => commitSelected({ materialId: m })} />
+              </More>
             </Section>
           )}
           {stair && (
             <Section title="Escalier">
-              <div className="flex flex-wrap gap-1.5">
-                {STAIR_PRESETS.map((pr) => (
-                  <button key={pr.id} type="button" onClick={() => commitSelected({ width: pr.width, steps: pr.steps })} className="h-9 bg-elevated px-2.5 text-xs">
-                    {pr.label}
-                  </button>
-                ))}
-              </div>
               <ParamGrid>
               <Param label="Largeur" value={stair.width} min={0.7} max={2.4} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ width: v })} />
               <Param label="Giron total" value={stair.run} min={1.5} max={12} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ run: v })} />
               </ParamGrid>
               <Param label="Hauteur" value={stair.rise} min={2} max={6} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ rise: v })} />
+              <More label="Type">
+                <div className="flex flex-wrap gap-1.5">
+                  {STAIR_PRESETS.map((pr) => (
+                    <button key={pr.id} type="button" onClick={() => commitSelected({ width: pr.width, steps: pr.steps })} className="h-9 bg-elevated px-2.5 text-xs">
+                      {pr.label}
+                    </button>
+                  ))}
+                </div>
+              </More>
             </Section>
           )}
           {slab && (
             <Section title="Dalle">
-              <div className="flex flex-wrap gap-1.5">
-                {SLAB_PRESETS.map((pr) => (
-                  <button key={pr.id} type="button" onClick={() => commitSelected({ thickness: pr.thickness })} className="h-9 bg-elevated px-2.5 text-xs">
-                    {pr.label}
-                  </button>
-                ))}
-              </div>
               <Param label="Épaisseur" value={slab.thickness} min={0.08} max={0.5} step={0.01} onBegin={beginEdit} onChange={(v) => patchSelected({ thickness: v })} />
-              <Chips label="Matériau" value={slab.materialId} options={STRUCT_MATS} labels={MATERIAL_LABELS} onChange={(m) => commitSelected({ materialId: m })} />
+              <More label="Type · matériau">
+                <div className="flex flex-wrap gap-1.5">
+                  {SLAB_PRESETS.map((pr) => (
+                    <button key={pr.id} type="button" onClick={() => commitSelected({ thickness: pr.thickness })} className="h-9 bg-elevated px-2.5 text-xs">
+                      {pr.label}
+                    </button>
+                  ))}
+                </div>
+                <Chips label="Matériau" value={slab.materialId} options={STRUCT_MATS} labels={MATERIAL_LABELS} onChange={(m) => commitSelected({ materialId: m })} />
+              </More>
             </Section>
           )}
           {roof && (
             <Section title="Toiture">
-              <div className="flex flex-wrap gap-1.5">
-                {ROOF_PRESETS.map((pr) => (
-                  <button key={pr.id} type="button" onClick={() => commitSelected({ pitch: pr.pitch, kind: pr.kind, overhang: pr.overhang })} className="h-9 bg-elevated px-2.5 text-xs">
-                    {pr.label}
-                  </button>
-                ))}
-              </div>
+              <ParamGrid>
               <Param label="Pente" value={roof.pitch} min={0} max={55} step={1} unit="°" digits={0} onBegin={beginEdit} onChange={(v) => patchSelected({ pitch: v })} />
               <Param label="Débord" value={roof.overhang} min={0} max={1.5} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ overhang: v })} />
-              <Chips label="Matériau" value={roof.materialId} options={STRUCT_MATS} labels={MATERIAL_LABELS} onChange={(m) => commitSelected({ materialId: m })} />
+              </ParamGrid>
+              <More label="Type · matériau">
+                <div className="flex flex-wrap gap-1.5">
+                  {ROOF_PRESETS.map((pr) => (
+                    <button key={pr.id} type="button" onClick={() => commitSelected({ pitch: pr.pitch, kind: pr.kind, overhang: pr.overhang })} className="h-9 bg-elevated px-2.5 text-xs">
+                      {pr.label}
+                    </button>
+                  ))}
+                </div>
+                <Chips label="Matériau" value={roof.materialId} options={STRUCT_MATS} labels={MATERIAL_LABELS} onChange={(m) => commitSelected({ materialId: m })} />
+              </More>
             </Section>
           )}
           {id && (
+            <More label="Actions">
             <div className="flex gap-2">
               <Button variant="outline" className="flex-1" onClick={duplicateSelected}>
                 Dupliquer
@@ -314,6 +333,7 @@ export function PropertiesPanel({
                 Supprimer
               </Button>
             </div>
+            </More>
           )}
           {!id && !compact && (
             <p className="text-sm text-muted">Touchez un mur, une pièce ou un objet — ou passez à Étages pour un immeuble.</p>
@@ -340,6 +360,7 @@ export function PropertiesPanel({
             <Field label="Lieu">
               <Input value={project.meta.location} onFocus={beginEdit} onChange={(e) => patchMeta({ location: e.target.value })} />
             </Field>
+            <More label="Parcelle">
             <Param label="Latitude" value={project.meta.latitude} min={-45} max={65} step={0.5} unit="°" digits={1} onBegin={beginEdit} onChange={(v) => patchMeta({ latitude: v })} />
             <Param label="Nord" value={project.meta.north} min={0} max={360} step={5} unit="°" digits={0} onBegin={beginEdit} onChange={(v) => patchMeta({ north: v })} />
             <Chips label="Typologie" value={project.meta.typology ?? "house"} options={["house", "villa", "collective", "office", "atelier"] as Typology[]} labels={TYPOLOGY_LABELS} onChange={(t) => patchMeta({ typology: t })} />
@@ -353,7 +374,8 @@ export function PropertiesPanel({
             <Param label="Parcelle" value={project.meta.plotM2 ?? 0} min={80} max={100000} step={50} unit="m²" digits={0} onBegin={beginEdit} onChange={(v) => patchMeta({ plotM2: v })} />
             <Param label="CES max" value={project.meta.ces ?? 0.4} min={0.1} max={1} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => patchMeta({ ces: v })} />
             <Param label="COS max" value={project.meta.cos ?? 0.6} min={0.1} max={8} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => patchMeta({ cos: v })} />
-            <More>
+            </More>
+            <More label="Réglementation">
               <Field label="Maître d'ouvrage">
                 <Input value={project.meta.client} onFocus={beginEdit} onChange={(e) => patchMeta({ client: e.target.value })} />
               </Field>
@@ -364,12 +386,7 @@ export function PropertiesPanel({
               <Chips label="Vent" value={project.meta.wind ?? "2"} options={["1", "2", "3", "4", "5"] as WindRegion[]} labels={WIND_LABELS} onChange={(z) => patchMeta({ wind: z })} />
             </More>
           </Section>
-          <Section title="Saisie">
-            <p className="text-[11px] leading-relaxed text-subtle">
-              Réglages dessin (grille, accrochage, ortho) : voir le rail CommandOrb — G / S / O.
-            </p>
-          </Section>
-          <Section title="Matériaux">
+          <More label="Matières">
             <MaterialSwatches
               value={activeMaterialId}
               onChange={(id) => {
@@ -377,7 +394,7 @@ export function PropertiesPanel({
                 applyMaterial(id, selectedIds.length ? "selected" : "walls");
               }}
             />
-          </Section>
+          </More>
         </>
       )}
 
@@ -385,14 +402,6 @@ export function PropertiesPanel({
 
       {!compact && tab === "rendu" && (
         <>
-          <Section title="Affichage">
-            <ToggleRow label="Physique (visite)" on={physics} onChange={setPhysics} />
-            <Param label="Coupe (clip Y)" value={clipY} min={0.15} max={1} step={0.02} unit="" digits={2} onBegin={beginEdit} onChange={setClipY} />
-            <p className="text-[11px] leading-relaxed text-subtle">
-              Grille / accrochage / ortho : rail CommandOrb. Isoler étage : ViewBar ou onglet Étages. Ossature : panneau Structure.
-            </p>
-            <p className="text-[11px] text-subtle">Passez en vue Coupe pour voir le plan sectionné en direct.</p>
-          </Section>
           <Section title="Lumière">
             <div className="flex gap-1.5 overflow-x-auto pb-1">
               {LIGHT_PRESETS.map((p) => (
@@ -412,6 +421,9 @@ export function PropertiesPanel({
               ))}
             </div>
             <Param label="Heure solaire" value={lighting.sunHour} min={5} max={22} step={0.25} unit="h" digits={1} onBegin={beginEdit} onChange={(v) => setLighting({ sunHour: v })} />
+            <More label="Réglages">
+            <ToggleRow label="Physique (visite)" on={physics} onChange={setPhysics} />
+            <Param label="Coupe (clip Y)" value={clipY} min={0.15} max={1} step={0.02} unit="" digits={2} onBegin={beginEdit} onChange={setClipY} />
             <Param
               label={`Saison · ${MONTH_LABELS[Math.min(11, Math.max(0, Math.round(lighting.month) - 1))]}`}
               value={lighting.month}
@@ -426,17 +438,16 @@ export function PropertiesPanel({
             <Param label="Soleil" value={lighting.sunIntensity} min={0} max={3} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ sunIntensity: v })} />
             <ToggleRow label="Ombres portées" on={lighting.shadows} onChange={(v) => setLighting({ shadows: v })} />
             <Param label="Douceur ombres" value={lighting.shadowSoftness} min={0} max={1} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ shadowSoftness: v })} />
-            <More>
-              <Param label="Ciel" value={lighting.hemi} min={0} max={1.5} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ hemi: v })} />
-              <Param label="Ambiance" value={lighting.ambient} min={0} max={1.2} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ ambient: v })} />
-              <Param label="Fill" value={lighting.fill} min={0} max={1.2} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ fill: v })} />
-              <Param label="Exposition" value={lighting.exposure} min={0.4} max={2} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ exposure: v })} />
-              <Chips label="Intérieur" value={lighting.interior} options={["off", "auto", "on"]} labels={{ off: "Éteint", auto: "Auto", on: "Allumé" }} onChange={(v) => setLighting({ interior: v as "off" | "auto" | "on" })} />
+            <Param label="Ciel" value={lighting.hemi} min={0} max={1.5} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ hemi: v })} />
+            <Param label="Ambiance" value={lighting.ambient} min={0} max={1.2} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ ambient: v })} />
+            <Param label="Fill" value={lighting.fill} min={0} max={1.2} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ fill: v })} />
+            <Param label="Exposition" value={lighting.exposure} min={0.4} max={2} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ exposure: v })} />
+            <Chips label="Intérieur" value={lighting.interior} options={["off", "auto", "on"]} labels={{ off: "Éteint", auto: "Auto", on: "Allumé" }} onChange={(v) => setLighting({ interior: v as "off" | "auto" | "on" })} />
             </More>
           </Section>
-          <Section title="Navigation 3D">
+          <More label="Navigation 3D">
             <NavOptions />
-          </Section>
+          </More>
         </>
       )}
     </div>
@@ -517,7 +528,7 @@ export function StoriesPanel() {
         </p>
         <p className="font-mono text-xs text-muted tabular">{tall.toFixed(1)} m hors sol</p>
       </div>
-      <More>
+      <More label="Massing">
       <Section title="Nouvel immeuble">
         <p className="text-xs text-muted">Volume A→Z — façades, poteaux, toiture, noyau. Jusqu’à R+80.</p>
         <Param label="Largeur" value={spanW} min={8} max={60} step={0.5} onBegin={beginEdit} onChange={setSpanW} />
@@ -564,7 +575,7 @@ export function StoriesPanel() {
             ))}
           </div>
         </div>
-        <More>
+        <More label="Façade">
           <Param label="Module fenêtres" value={winSpacing} min={1.6} max={6} step={0.1} onBegin={beginEdit} onChange={setWinSpacing} />
           <Param label="Allège" value={winSill} min={0.2} max={1.4} step={0.05} onBegin={beginEdit} onChange={setWinSill} />
           <Param label="L fenêtre" value={winW} min={0.8} max={2.8} step={0.05} onBegin={beginEdit} onChange={setWinW} />
@@ -603,6 +614,19 @@ export function StoriesPanel() {
           </button>
         ))}
       </div>
+      {project.stories.filter((st) => st.id === active).map((st) => {
+        const i = project.stories.findIndex((s) => s.id === st.id);
+        return (
+        <div key={st.id}>
+          <Param label="Hauteur sous plafond" value={st.height} min={2.2} max={12} step={0.05} onBegin={beginEdit} onChange={(v) => patchStory(st.id, { height: v })} />
+          {i === 0 && (
+            <Param label="Niveau 0" value={st.elevation} min={-12} max={40} step={0.05} onBegin={beginEdit} onChange={(v) => patchStory(st.id, { elevation: v })} />
+          )}
+        </div>
+        );
+      })}
+      <ToggleRow label="Isoler le niveau actif" on={isolateStory} onChange={setIsolateStory} />
+      <More label="Actions">
       <div className="grid grid-cols-4 gap-1.5">
         <Button variant="outline" onClick={() => addStory()}>+ Étage</Button>
         <Button variant="outline" onClick={() => copyStory()}>Dupliquer tout</Button>
@@ -651,24 +675,13 @@ export function StoriesPanel() {
           ))}
         </div>
       </div>
-      <ToggleRow label="Isoler le niveau actif" on={isolateStory} onChange={setIsolateStory} />
       {project.stories.filter((st) => st.id === active).map((st) => {
         const i = project.stories.findIndex((s) => s.id === st.id);
         return (
-        <div key={st.id} className={`border px-3 py-3 ${st.id === active ? "border-accent/50 bg-elevated" : "border-border"}`}>
-          <button type="button" onClick={() => setStory(st.id)} className="mb-3 flex w-full items-center justify-between text-left text-sm font-medium">
-            <span>{st.name || (i === 0 ? "RDC" : `R+${i}`)}</span>
-            <span className="font-mono text-[11px] text-muted">
-              {st.elevation.toFixed(1)} → {(st.elevation + st.height).toFixed(1)} m
-            </span>
-          </button>
+        <div key={st.id} className="rounded-md border border-border/70 px-2.5 py-2">
           <Field label="Nom">
             <Input value={st.name} onFocus={beginEdit} onChange={(e) => patchStory(st.id, { name: e.target.value })} />
           </Field>
-          <Param label="Hauteur sous plafond" value={st.height} min={2.2} max={12} step={0.05} onBegin={beginEdit} onChange={(v) => patchStory(st.id, { height: v })} />
-          {i === 0 && (
-            <Param label="Niveau 0" value={st.elevation} min={-12} max={40} step={0.05} onBegin={beginEdit} onChange={(v) => patchStory(st.id, { elevation: v })} />
-          )}
           <div className="mt-2 flex flex-wrap gap-1.5">
             {st.role === "typical" && !st.detached && (
               <button
@@ -753,6 +766,7 @@ export function StoriesPanel() {
         </div>
         );
       })}
+      </More>
     </div>
   );
 }
@@ -782,17 +796,17 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function More({ children }: { children: ReactNode }) {
+function More({ label = "Avancé", children }: { label?: string; children: ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2">
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex h-11 items-center justify-between rounded-lg bg-elevated px-3 text-xs tracking-wide text-muted uppercase ring-1 ring-border/60"
+        className="flex h-9 items-center justify-between rounded-md bg-elevated px-2.5 text-[11px] font-medium tracking-wide text-muted uppercase ring-1 ring-border/60"
       >
-        {open ? "Réduire" : "Avancé"}
+        {label}
         <span className="font-mono text-[10px] text-accent">{open ? "−" : "+"}</span>
       </button>
       {open ? children : null}
