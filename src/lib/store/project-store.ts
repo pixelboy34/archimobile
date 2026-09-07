@@ -27,6 +27,14 @@ import type {
   WorkspaceMode,
 } from "@/lib/bim/types";
 import { uid } from "@/lib/utils";
+import {
+  createCollabSession,
+  makeRoomCode,
+  normalizeRoomCode,
+  type CollabSession,
+} from "@/lib/multiplayer/collab";
+import type { PeerInfo } from "@/lib/multiplayer/p2p";
+import { toast } from "sonner";
 import { DEFAULT_LIGHTING, type Lighting } from "@/lib/render/lighting";
 import { DEFAULT_NAV, type NavPrefs } from "@/lib/nav/prefs";
 import { addRectWalls, copyStory as duplicateStoryLevel, healWallEnds, orthoPoint, repeatStories as stackStories, restackStories, splitWallAt as splitWallOp, syncStoryGeometry, translateSelection } from "@/lib/cad/ops";
@@ -157,7 +165,15 @@ interface StudioState {
   rotateSelected: (delta?: number) => void;
   splitWallAt: (p: Vec2) => void;
   analysis: () => ProjectAnalysis | null;
+  collabRoom: string | null;
+  collabPeers: PeerInfo[];
+  collabSelfId: string | null;
+  startCollab: (room?: string) => string;
+  stopCollab: () => void;
+  pushCollabProject: () => void;
+  applyRemoteProject: (project: Project) => void;
 }
+
 
 function withHistory(state: StudioState, next: Project): Partial<StudioState> {
   const history = [...state.history, cloneProject(state.current()!)].slice(-HISTORY_LIMIT);
@@ -180,6 +196,20 @@ function patchEntities(p: Project, ids: string[], patch: Record<string, unknown>
 
 /** When true, commit/patchNow skip live typical sync (used by sync itself). */
 let silentTypicalSync = false;
+
+let collabSession: CollabSession | null = null;
+let collabAutoPush: ReturnType<typeof setInterval> | null = null;
+const COLLAB_AUTO_PUSH_MS = 8_000;
+
+function clearCollabTimers() {
+  if (collabAutoPush) {
+    clearInterval(collabAutoPush);
+    collabAutoPush = null;
+  }
+}
+
+let lastRemoteFingerprint = "";
+
 
 function applyStoryPatch(
   p: Project,
@@ -239,6 +269,9 @@ export const useStudio = create<StudioState>()(
       history: [],
       future: [],
       hydrated: false,
+      collabRoom: null,
+      collabPeers: [],
+      collabSelfId: null,
       setHydrated: (v) => set({ hydrated: v }),
       setTool: (tool) => set({ tool, draft: null, measure: tool === "measure" ? get().measure : null }),
       setView: (view) => set({ view }),
@@ -978,6 +1011,107 @@ export const useStudio = create<StudioState>()(
         const storyId = get().storyId;
         if (!storyId) return;
         get().commit((p) => splitWallOp(p, storyId, point));
+      },
+      applyRemoteProject: (remote) => {
+        const incoming = ensureSketch(inferStoryRoles(cloneProject(remote)));
+        const fingerprint = JSON.stringify({
+          id: incoming.id,
+          updatedAt: incoming.updatedAt,
+          walls: incoming.walls.length,
+          stories: incoming.stories.length,
+          furniture: incoming.furniture.length,
+        });
+        if (fingerprint === lastRemoteFingerprint) return;
+        lastRemoteFingerprint = fingerprint;
+        const cur = get().current();
+        if (cur && cur.id === incoming.id) {
+          set((s) => {
+            const history = [...s.history, cloneProject(cur)].slice(-HISTORY_LIMIT);
+            const projects = s.projects.map((p) =>
+              p.id === incoming.id ? touch(incoming) : p,
+            );
+            const storyStill =
+              incoming.stories.find((st) => st.id === s.storyId)?.id ??
+              incoming.stories[0]?.id ??
+              null;
+            return {
+              projects,
+              history,
+              future: [],
+              storyId: storyStill,
+              selectedIds: [],
+            };
+          });
+        } else if (cur) {
+          const replaced = touch(incoming);
+          set((s) => {
+            const history = [...s.history, cloneProject(cur)].slice(-HISTORY_LIMIT);
+            const rest = s.projects.filter((p) => p.id !== cur.id && p.id !== replaced.id);
+            return {
+              projects: [replaced, ...rest],
+              currentId: replaced.id,
+              history,
+              future: [],
+              storyId: replaced.stories[0]?.id ?? null,
+              selectedIds: [],
+            };
+          });
+        } else {
+          get().addProject(incoming);
+        }
+        toast.success("Synchro reçue");
+      },
+      startCollab: (room) => {
+        const code = normalizeRoomCode(room ?? makeRoomCode());
+        if (code.length < 4) {
+          toast.error("Code salon invalide");
+          return get().collabRoom ?? "";
+        }
+        get().stopCollab();
+        const selfId = `p${Math.random().toString(36).slice(2, 10)}`;
+        const name = get().current()?.name?.slice(0, 40) || "FORMA";
+        collabSession = createCollabSession({
+          room: code,
+          selfId,
+          name,
+          onPeers: (peers) => set({ collabPeers: peers }),
+          onProject: (project) => get().applyRemoteProject(project),
+        });
+        set({ collabRoom: code, collabPeers: [], collabSelfId: selfId });
+        void collabSession.start().catch(() => {
+          toast.error("Signalisation indisponible — vérifiez le Network URL");
+        });
+        clearCollabTimers();
+        collabAutoPush = setInterval(() => {
+          const sess = collabSession;
+          if (!sess || sess.connectedPeerCount() === 0) return;
+          const curProj = get().current();
+          if (curProj) sess.pushProject(cloneProject(curProj));
+        }, COLLAB_AUTO_PUSH_MS);
+        toast.success(room ? `Salon ${code}` : `Salon créé · ${code}`);
+        return code;
+      },
+      stopCollab: () => {
+        clearCollabTimers();
+        if (collabSession) {
+          collabSession.stop();
+          collabSession = null;
+        }
+        set({ collabRoom: null, collabPeers: [], collabSelfId: null });
+      },
+      pushCollabProject: () => {
+        const sess = collabSession;
+        const cur = get().current();
+        if (!sess || !cur) {
+          toast.message("Aucun salon actif");
+          return;
+        }
+        if (sess.connectedPeerCount() === 0) {
+          toast.message("En attente d’un pair connecté");
+          return;
+        }
+        sess.pushProject(cloneProject(cur));
+        toast.success("Maquette envoyée");
       },
       analysis: () => {
         const cur = get().current();

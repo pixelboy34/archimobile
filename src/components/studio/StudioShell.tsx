@@ -14,6 +14,7 @@ import {
   Building2,
   PackageCheck,
   MapPinned,
+  Users,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast, Toaster } from "sonner";
@@ -27,6 +28,7 @@ import { exportIfc } from "@/lib/cad/ifc";
 import type { Project, ViewMode, WorkspaceMode } from "@/lib/bim/types";
 import { useStudio } from "@/lib/store/project-store";
 import { AnalysisPanel } from "./AnalysisPanel";
+import { CollabPanel } from "./CollabPanel";
 import { ConstructPanel } from "./ConstructPanel";
 import { CopilotPanel } from "./CopilotPanel";
 import { HelpPanel } from "./HelpPanel";
@@ -98,7 +100,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
   const setMeasure = useStudio((s) => s.setMeasure);
 
   const [panel, setPanel] = useState<
-    null | "ai" | "mats" | "chantier" | "help" | "studio" | "ouvrages" | "struct" | "layers" | "analyse" | "building"
+    null | "ai" | "mats" | "chantier" | "help" | "studio" | "ouvrages" | "struct" | "layers" | "analyse" | "building" | "collab"
   >(null);
   const [inspector, setInspector] = useState<ParamsTab | null>(null);
   const [radial, setRadial] = useState(false);
@@ -447,6 +449,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
                 title: "Livrer",
                 items: [
                   { id: "chantier" as const, label: "Chantier 4D", desc: "Phasage de construction", icon: Hammer },
+                  { id: "collab" as const, label: "Collab", desc: "Deux téléphones, même maquette", icon: Users },
                   {
                     id: "dossier" as const,
                     label: "Livrer le dossier",
@@ -496,6 +499,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
                           else if (item.id === "analyse") setPanel("analyse");
                           else if (item.id === "ai") setPanel("ai");
                           else if (item.id === "chantier") setPanel("chantier");
+                          else if (item.id === "collab") setPanel("collab");
                           else if (item.id === "layers") setPanel("layers");
                           else if (item.id === "help") setPanel("help");
                         }}
@@ -542,6 +546,11 @@ export function StudioShell({ projectId }: { projectId: string }) {
       <Sheet open={panel === "chantier"} onOpenChange={(o) => !o && setPanel(null)}>
         <SheetContent title="Chantier" tall>
           <ConstructPanel />
+        </SheetContent>
+      </Sheet>
+      <Sheet open={panel === "collab"} onOpenChange={(o) => !o && setPanel(null)}>
+        <SheetContent title="Collab" tall>
+          <CollabPanel />
         </SheetContent>
       </Sheet>
       <Sheet open={panel === "analyse"} onOpenChange={(o) => !o && setPanel(null)}>

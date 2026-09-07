@@ -10,11 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiRtcRouteImport } from './routes/api/rtc'
 import { Route as StudioProjectIdRouteImport } from './routes/studio.$projectId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiRtcRoute = ApiRtcRouteImport.update({
+  id: '/api/rtc',
+  path: '/api/rtc',
   getParentRoute: () => rootRouteImport,
 } as any)
 const StudioProjectIdRoute = StudioProjectIdRouteImport.update({
@@ -25,27 +31,31 @@ const StudioProjectIdRoute = StudioProjectIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/rtc': typeof ApiRtcRoute
   '/studio/$projectId': typeof StudioProjectIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/rtc': typeof ApiRtcRoute
   '/studio/$projectId': typeof StudioProjectIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/rtc': typeof ApiRtcRoute
   '/studio/$projectId': typeof StudioProjectIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/studio/$projectId'
+  fullPaths: '/' | '/api/rtc' | '/studio/$projectId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/studio/$projectId'
-  id: '__root__' | '/' | '/studio/$projectId'
+  to: '/' | '/api/rtc' | '/studio/$projectId'
+  id: '__root__' | '/' | '/api/rtc' | '/studio/$projectId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiRtcRoute: typeof ApiRtcRoute
   StudioProjectIdRoute: typeof StudioProjectIdRoute
 }
 
@@ -56,6 +66,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/rtc': {
+      id: '/api/rtc'
+      path: '/api/rtc'
+      fullPath: '/api/rtc'
+      preLoaderRoute: typeof ApiRtcRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/studio/$projectId': {
@@ -70,6 +87,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiRtcRoute: ApiRtcRoute,
   StudioProjectIdRoute: StudioProjectIdRoute,
 }
 export const routeTree = rootRouteImport

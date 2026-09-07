@@ -7,3 +7,13 @@ export type {
   SignalRow,
   RtcPollResponse,
 } from "./p2p";
+export {
+  createCollabSession,
+  makeRoomCode,
+  normalizeRoomCode,
+} from "./collab";
+export type {
+  CollabSession,
+  CollabSessionOptions,
+  CollabProjectMessage,
+} from "./collab";

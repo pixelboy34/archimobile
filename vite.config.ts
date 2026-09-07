@@ -142,6 +142,96 @@ function authPopupPlugin(): Plugin {
   };
 }
 
+
+/**
+ * In-memory WebRTC signaling at /api/rtc for local Alpha (LAN phones).
+ * Same early-middleware pattern as authPopupPlugin so TanStack SPA fallback
+ * never swallows the path. Production can also use src/routes/api/rtc.ts.
+ */
+function rtcSignalingPlugin(): Plugin {
+  return {
+    name: "forma:rtc-signaling",
+    apply: "serve",
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        try {
+          const rawUrl = req.url ?? "";
+          const pathOnly = rawUrl.split("?", 1)[0] ?? "";
+          if (pathOnly !== "/api/rtc") {
+            next();
+            return;
+          }
+          const method = (req.method ?? "GET").toUpperCase();
+          if (method !== "GET" && method !== "POST") {
+            res.statusCode = 405;
+            res.setHeader("content-type", "application/json");
+            res.end(JSON.stringify({ error: "method not allowed" }));
+            return;
+          }
+
+          const host = String(
+            req.headers["x-forwarded-host"] ?? req.headers.host ?? "localhost:8080",
+          );
+          const proto = String(
+            req.headers["x-forwarded-proto"] ??
+              ((req.socket as { encrypted?: boolean } | undefined)?.encrypted ? "https" : "http"),
+          );
+
+          const requestHeaders = new Headers();
+          for (const [key, value] of Object.entries(req.headers)) {
+            if (value === undefined) continue;
+            if (Array.isArray(value)) {
+              for (const v of value) requestHeaders.append(key, v);
+            } else {
+              requestHeaders.set(key, value);
+            }
+          }
+          if (!requestHeaders.has("host")) requestHeaders.set("host", host);
+
+          let bodyInit: BodyInit | undefined;
+          if (method === "POST") {
+            const chunks: Buffer[] = [];
+            await new Promise<void>((resolve, reject) => {
+              req.on("data", (c: Buffer) => chunks.push(c));
+              req.on("end", () => resolve());
+              req.on("error", reject);
+            });
+            bodyInit = Buffer.concat(chunks);
+            if (!requestHeaders.has("content-type")) {
+              requestHeaders.set("content-type", "application/json");
+            }
+          }
+
+          const request = new Request(`${proto}://${host}${rawUrl}`, {
+            method,
+            headers: requestHeaders,
+            body: bodyInit,
+          });
+
+          const mod = (await server.ssrLoadModule("/src/lib/multiplayer/signaling.server.ts")) as {
+            handleSignaling: (req: Request) => Promise<Response>;
+          };
+          const response = await mod.handleSignaling(request);
+
+          res.statusCode = response.status;
+          response.headers.forEach((value, key) => {
+            res.setHeader(key, value);
+          });
+          const body = Buffer.from(await response.arrayBuffer());
+          res.end(body);
+        } catch (err) {
+          console.error("[forma] /api/rtc handler failed:", err);
+          if (!res.headersSent) {
+            res.statusCode = 500;
+            res.setHeader("content-type", "application/json");
+            res.end(JSON.stringify({ error: "signaling failed" }));
+          }
+        }
+      });
+    },
+  };
+}
+
 // `0.0.0.0:8080` is the live-preview contract — don't change host/port.
 // The dev server starts once `src/router.tsx` and `src/routes/` exist — see
 // AGENTS.md § "First scaffold".
@@ -161,6 +251,8 @@ export default defineConfig(({ command, isPreview }) => ({
     pgliteBootstrapPlugin(),
     // Before tanstackStart so /auth/popup never falls through to the SPA.
     authPopupPlugin(),
+    // Before tanstackStart so /api/rtc never falls through to the SPA.
+    rtcSignalingPlugin(),
     // Dev-only /__app-env, read by scripts/check-auth-invariant.mjs.
     appEnvPlugin(),
     // PWA head + ?install=1 tutorial page; runs before Start/Nitro.
