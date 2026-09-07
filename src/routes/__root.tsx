@@ -1,6 +1,7 @@
 import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
 import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
+import { PwaBootstrap } from "@/components/pwa/PwaBootstrap";
 import appCss from "../styles.css?url";
 
 const APP_NAME = "FORMA";
@@ -20,7 +21,7 @@ export const Route = createRootRoute({
         content:
           "FORMA — studio BIM mobile. Modélisez, visitez et faites concevoir par l'IA, sur iPhone et Android.",
       },
-      { name: "theme-color", content: "#04080c" },
+      { name: "theme-color", content: "#6ed0c3" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-title", content: APP_NAME },
       { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
@@ -32,6 +33,8 @@ export const Route = createRootRoute({
       { rel: "stylesheet", href: appCss },
       { rel: "manifest", href: "/__grok/manifest.webmanifest" },
       { rel: "apple-touch-icon", href: "/__grok/icon-180.png" },
+      { rel: "icon", type: "image/png", sizes: "192x192", href: "/__grok/icon-192.png" },
+      { rel: "icon", type: "image/png", sizes: "512x512", href: "/__grok/icon-512.png" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
@@ -48,6 +51,7 @@ export const Route = createRootRoute({
       <body className="bg-bg text-fg">
         <PreviewHostBridge />
         <AuthProvider>
+          <PwaBootstrap />
           <Outlet />
         </AuthProvider>
         <Scripts />

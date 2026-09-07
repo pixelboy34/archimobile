@@ -59,6 +59,42 @@ function placeholderCardColor(site = {}) {
  * display name in the first label. Preview / guest hosts are image origins
  * only — slugifying them produced internal names like "Hds Abc 3000 Xy".
  */
+
+/** Normalize site color fields to `#rrggbb`, or fallback. */
+export function siteHexColor(value, fallback = "#000000") {
+  const raw = String(value ?? "").trim();
+  const hex = raw.startsWith("#") ? raw.slice(1) : raw;
+  return /^[0-9a-fA-F]{6}$/.test(hex) ? `#${hex.toLowerCase()}` : fallback;
+}
+
+/** Display name: site.title wins, then host slug, then default. */
+export function resolveAppDisplayName(hostHeader, site = {}) {
+  const fromSite = String(site.title ?? "").trim();
+  if (fromSite) return fromSite;
+  return appNameFromHost(hostHeader);
+}
+
+/** Icons under public/__grok. Prefer disk when available; else emit known CDN paths. */
+export function pwaIconEntries(cwd = process.cwd()) {
+  const candidates = [
+    ["icon-180.png", "180x180"],
+    ["icon-192.png", "192x192"],
+    ["icon-512.png", "512x512"],
+  ];
+  const grokDir = join(cwd, "public/__grok");
+  const canStat = existsSync(grokDir);
+  const icons = [];
+  for (const [file, sizes] of candidates) {
+    if (!canStat || existsSync(join(grokDir, file))) {
+      icons.push({ src: `/__grok/${file}`, sizes, type: "image/png" });
+    }
+  }
+  if (icons.length === 0) {
+    icons.push({ src: "/__grok/icon-180.png", sizes: "180x180", type: "image/png" });
+  }
+  return icons;
+}
+
 export function appNameFromHost(hostHeader) {
   const host = String(hostHeader ?? "")
     .split(",")[0]
@@ -151,38 +187,40 @@ export function stripInstallParams(url) {
   return rest ? `${path}?${rest}` : path;
 }
 
-export function renderInstallPageHtml(template, { host, url } = {}) {
+export function renderInstallPageHtml(template, { host, url, site } = {}) {
+  const resolvedSite = site ?? readOgSite();
+  const name = resolveAppDisplayName(host, resolvedSite);
   return String(template)
-    .replaceAll("{{APP_NAME}}", escapeHtml(appNameFromHost(host)))
+    .replaceAll("{{APP_NAME}}", escapeHtml(name))
     .replaceAll("{{APP_URL}}", escapeHtml(stripInstallParams(url)));
 }
 
-export function renderWebManifest(hostHeader) {
-  const name = appNameFromHost(hostHeader);
+export function renderWebManifest(hostHeader, siteInput, cwd = process.cwd()) {
+  const site = siteInput ?? readOgSite(cwd);
+  const name = resolveAppDisplayName(hostHeader, site);
+  const short =
+    String(site.short_name ?? "").trim() || name;
+  const background_color = siteHexColor(site.color, "#000000");
+  const theme_color = siteHexColor(site.theme_color, "#000000");
   return JSON.stringify(
     {
       name,
-      short_name: name,
+      short_name: short,
       id: "/",
       start_url: "/",
       scope: "/",
       display: "standalone",
-      background_color: "#000000",
-      theme_color: "#000000",
-      icons: [
-        {
-          src: "/__grok/icon-180.png",
-          sizes: "180x180",
-          type: "image/png",
-        },
-      ],
+      background_color,
+      theme_color,
+      icons: pwaIconEntries(cwd),
     },
     null,
     2,
   );
 }
 
-export function grokPwaHeadTags(appName = DEFAULT_APP_NAME) {
+export function grokPwaHeadTags(appName = DEFAULT_APP_NAME, { themeColor = "#000000" } = {}) {
+  const theme = siteHexColor(themeColor, "#000000");
   return [
     // Standalone display comes from the manifest ("display": "standalone");
     // the legacy *-web-app-capable metas it replaces are deliberately absent.
@@ -196,7 +234,7 @@ export function grokPwaHeadTags(appName = DEFAULT_APP_NAME) {
       "apple-mobile-web-app-status-bar-style",
       '<meta name="apple-mobile-web-app-status-bar-style" content="black">',
     ],
-    ["theme-color", '<meta name="theme-color" content="#000000">'],
+    ["theme-color", `<meta name="theme-color" content="${escapeHtml(theme)}">`],
   ];
 }
 
@@ -434,7 +472,8 @@ export function injectGrokPwaHead(html, ctx = {}) {
   );
   let next = stripShareMetaTags(html);
 
-  const missing = grokPwaHeadTags(appName)
+  const themeColor = siteHexColor(site.theme_color, "#000000");
+  const missing = grokPwaHeadTags(appName, { themeColor })
     .filter(([key]) => {
       if (key === "manifest") return !next.includes('href="/__grok/manifest.webmanifest"');
       if (key === "apple-touch-icon") return !next.includes('href="/__grok/icon-180.png"');

@@ -474,10 +474,24 @@ test("escapes host-derived values in the install page", () => {
 });
 
 test("renders the manifest with the per-app name", () => {
-  const manifest = JSON.parse(renderWebManifest("wild-race.grok.me"));
-  assert.equal(manifest.name, "Wild Race");
-  assert.equal(manifest.short_name, "Wild Race");
-  assert.equal(manifest.icons[0].src, "/__grok/icon-180.png");
+  // site.json title (FORMA) wins over host slug when present in this workspace
+  const fromSite = JSON.parse(renderWebManifest("wild-race.grok.me"));
+  assert.equal(fromSite.name, "FORMA");
+  assert.equal(fromSite.short_name, "FORMA");
+  assert.equal(fromSite.theme_color, "#6ed0c3");
+  assert.equal(fromSite.background_color, "#0c0c0b");
+  assert.equal(fromSite.icons[0].src, "/__grok/icon-180.png");
+
+  const fromHost = JSON.parse(
+    renderWebManifest("wild-race.grok.me", { /* no title */ }, "/tmp"),
+  );
+  assert.equal(fromHost.name, "Wild Race");
+  assert.equal(fromHost.short_name, "Wild Race");
+});
+
+test("install page prefers site title over host slug", () => {
+  const html = renderInstallPage("localhost:8080", "/?install=1&platform=ios");
+  assert.match(html, /Add FORMA to your/);
 });
 
 // Tripwires: the deployed-app path only works if Nitro scans server/ — an

@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Copy, FileUp, Plus, Sparkles, Trash2 } from "lucide-react";
+import { Copy, FileUp, HardDrive, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast, Toaster } from "sonner";
 import { PlanThumbnail } from "@/components/plan/PlanThumbnail";
@@ -9,6 +9,8 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { CopilotPanel } from "@/components/studio/CopilotPanel";
 import { Onboarding, shouldOnboard } from "@/components/home/Onboarding";
 import { InstallBanner } from "@/components/pwa/InstallBanner";
+import { PwaStatusChip } from "@/components/pwa/PwaStatusChip";
+import { OfflineMaquettesPanel } from "@/components/pwa/OfflineMaquettesPanel";
 import { analyzeProject } from "@/lib/bim/analysis";
 import { emptyProject } from "@/lib/bim/builder";
 import { downloadText, exportBimJson, parseImportedProject } from "@/lib/bim/quantities";
@@ -28,6 +30,7 @@ export function HomePage() {
   const setSkill = useStudio((s) => s.setSkill);
   const [q, setQ] = useState("");
   const [aiOpen, setAiOpen] = useState(false);
+  const [offlineOpen, setOfflineOpen] = useState(false);
   const [onboard, setOnboard] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -74,7 +77,11 @@ export function HomePage() {
             <h1 className="mark mt-2 text-4xl">FORMA</h1>
           </div>
           <div className="flex flex-col items-end gap-2">
-            <LiveStamp />
+            <div className="flex items-center gap-2">
+              <PwaStatusChip />
+              <InstallBanner discreet />
+              <LiveStamp />
+            </div>
             <div className="flex rounded-full border border-accent/20 bg-elevated/90 p-0.5 text-[11px] tracking-[0.12em] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
               <button
                 type="button"
@@ -109,7 +116,7 @@ export function HomePage() {
         />
       </div>
 
-      <div className="mt-4 flex gap-2 px-5">
+      <div className="mt-4 flex flex-wrap gap-2 px-5">
         <Button className="flex-1" onClick={create}>
           <Plus className="size-4" />
           Nouveau
@@ -121,6 +128,10 @@ export function HomePage() {
         <Button variant="outline" className="flex-1" onClick={() => fileRef.current?.click()}>
           <FileUp className="size-4" />
           Importer
+        </Button>
+        <Button variant="outline" className="flex-1" onClick={() => setOfflineOpen(true)}>
+          <HardDrive className="size-4" />
+          Hors ligne
         </Button>
         <input
           ref={fileRef}
@@ -241,6 +252,11 @@ export function HomePage() {
               if (latest) navigate({ to: "/studio/$projectId", params: { projectId: latest } });
             }}
           />
+        </SheetContent>
+      </Sheet>
+      <Sheet open={offlineOpen} onOpenChange={setOfflineOpen}>
+        <SheetContent title="Maquettes hors ligne">
+          <OfflineMaquettesPanel />
         </SheetContent>
       </Sheet>
       <InstallBanner />

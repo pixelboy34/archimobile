@@ -15,6 +15,7 @@ import {
   PackageCheck,
   MapPinned,
   Users,
+  HardDrive,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast, Toaster } from "sonner";
@@ -40,6 +41,8 @@ import { OuvrageExplorer } from "./OuvrageExplorer";
 import { NavCoach } from "./NavCoach";
 import { NavPad } from "./NavPad";
 import { InstallBanner } from "@/components/pwa/InstallBanner";
+import { OfflineMaquettesPanel } from "@/components/pwa/OfflineMaquettesPanel";
+import { PwaStatusChip } from "@/components/pwa/PwaStatusChip";
 import { RadialMenu } from "./RadialMenu";
 import { dispatchCam } from "./OrbitRig";
 import { StructurePanel } from "./StructurePanel";
@@ -101,7 +104,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
   const setMeasure = useStudio((s) => s.setMeasure);
 
   const [panel, setPanel] = useState<
-    null | "ai" | "mats" | "chantier" | "help" | "studio" | "ouvrages" | "struct" | "layers" | "analyse" | "building" | "collab"
+    null | "ai" | "mats" | "chantier" | "help" | "studio" | "ouvrages" | "struct" | "layers" | "analyse" | "building" | "collab" | "offline"
   >(null);
   const [inspector, setInspector] = useState<ParamsTab | null>(null);
   const [radial, setRadial] = useState(false);
@@ -394,6 +397,8 @@ export function StudioShell({ projectId }: { projectId: string }) {
             <div className="min-w-0 flex-1">
               <p className="truncate font-display text-sm font-semibold leading-tight tracking-tight">{current.name}</p>
             </div>
+            <PwaStatusChip />
+            <InstallBanner discreet />
             <div className="flex shrink-0 rounded-full border border-accent/25 bg-elevated/90 p-0.5 shadow-[0_0_0_1px_rgba(126,208,195,0.08)]">
               {WORKSPACES.map((w) => (
                 <button
@@ -472,6 +477,12 @@ export function StudioShell({ projectId }: { projectId: string }) {
                   { id: "chantier" as const, label: "Chantier 4D", desc: "Phasage de construction", icon: Hammer },
                   { id: "collab" as const, label: "Collab", desc: "Deux téléphones, même maquette", icon: Users },
                   {
+                    id: "offline" as const,
+                    label: "Maquettes hors ligne",
+                    desc: "Sauver / ouvrir sans réseau",
+                    icon: HardDrive,
+                  },
+                  {
                     id: "dossier" as const,
                     label: "Livrer le dossier",
                     desc: "Plans SVG, coupe, IFC/DXF/CSV",
@@ -521,6 +532,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
                           else if (item.id === "ai") setPanel("ai");
                           else if (item.id === "chantier") setPanel("chantier");
                           else if (item.id === "collab") setPanel("collab");
+                          else if (item.id === "offline") setPanel("offline");
                           else if (item.id === "layers") setPanel("layers");
                           else if (item.id === "help") setPanel("help");
                         }}
@@ -567,6 +579,11 @@ export function StudioShell({ projectId }: { projectId: string }) {
       <Sheet open={panel === "chantier"} onOpenChange={(o) => !o && setPanel(null)}>
         <SheetContent title="Chantier" tall>
           <ConstructPanel />
+        </SheetContent>
+      </Sheet>
+      <Sheet open={panel === "offline"} onOpenChange={(o) => !o && setPanel(null)}>
+        <SheetContent title="Maquettes hors ligne" tall>
+          <OfflineMaquettesPanel projectId={projectId} />
         </SheetContent>
       </Sheet>
       <Sheet open={panel === "collab"} onOpenChange={(o) => !o && setPanel(null)}>

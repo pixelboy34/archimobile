@@ -1,5 +1,7 @@
 {
   "title": "FORMA",
+  "short_name": "FORMA",
   "card": "custom",
-  "color": "0c0c0b"
+  "color": "0c0c0b",
+  "theme_color": "6ed0c3"
 }
