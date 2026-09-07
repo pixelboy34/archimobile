@@ -54,9 +54,9 @@ export function wallAngle(w: Wall): number {
 }
 
 export function wallNormalOffset(w: Wall): Vec2 {
+  if (w.alignment !== "interior" && w.alignment !== "exterior") return { x: 0, y: 0 };
   const ang = wallAngle(w);
-  const mag =
-    w.alignment === "interior" ? w.thickness / 2 : w.alignment === "exterior" ? -w.thickness / 2 : 0;
+  const mag = w.alignment === "interior" ? w.thickness / 2 : -w.thickness / 2;
   return { x: Math.sin(ang) * mag, y: -Math.cos(ang) * mag };
 }
 

@@ -1,6 +1,6 @@
 import { uid } from "@/lib/utils";
-import { OBJECT_SIZES } from "./catalog";
-import { polygonArea, rectPolygon, uniqueWallEdges, findWallAt, wallAngle } from "./geometry";
+import { OBJECT_SIZES, objectDef } from "./catalog";
+import { findWallAt, lerp, polygonArea, rectPolygon, uniqueWallEdges, wallAngle } from "./geometry";
 import { defaultLayers } from "./sketch";
 import type {
   FurnitureKind,
@@ -228,14 +228,30 @@ export function addFurnitureAt(
   rotation = 0,
 ): Project {
   const s = OBJECT_SIZES[kind] ?? OBJECT_SIZES.sofa;
-  const hit = findWallAt(project, storyId, position, 2.4);
-  const rot = hit ? wallAngle(hit.wall) : rotation;
+  const hug =
+    objectDef(kind).style === "panel" ||
+    objectDef(kind).style === "screen" ||
+    ["millwork", "radiator", "wallcab", "console", "tv", "artwork", "curtain", "ac", "panelboard", "towelrail"].includes(
+      kind,
+    );
+  const hit = hug ? findWallAt(project, storyId, position, 2.4) : null;
+  let pos = position;
+  let rot = rotation;
+  if (hit) {
+    const along = lerp(hit.wall.a, hit.wall.b, hit.t);
+    const ang = wallAngle(hit.wall);
+    const nx = Math.sin(ang);
+    const ny = -Math.cos(ang);
+    const off = hit.wall.thickness / 2 + s.d / 2;
+    pos = { x: along.x + nx * off, y: along.y + ny * off };
+    rot = ang;
+  }
   const next = cloneProject(project);
   next.furniture.push({
     id: uid("fn"),
     storyId,
     kind,
-    position,
+    position: pos,
     rotation: rot,
     ...s,
   });

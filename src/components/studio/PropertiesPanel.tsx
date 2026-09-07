@@ -270,14 +270,37 @@ export function PropertiesPanel({
                 <Input value={room.name} onFocus={beginEdit} onChange={(e) => patchSelected({ name: e.target.value })} />
               </Field>
               <Chips label="Fonction" value={room.function} options={ROOM_FNS} labels={ROOM_LABELS} onChange={(m) => commitSelected({ function: m })} />
+              <More label="Occupation">
+                <Param
+                  label="Occupants"
+                  value={room.occupancy ?? 1}
+                  min={0}
+                  max={40}
+                  step={1}
+                  unit=""
+                  digits={0}
+                  onBegin={beginEdit}
+                  onChange={(v) => patchSelected({ occupancy: Math.round(v) })}
+                />
+                <Param
+                  label="HSP"
+                  value={room.clearHeight ?? 2.5}
+                  min={2.1}
+                  max={6}
+                  step={0.05}
+                  onBegin={beginEdit}
+                  onChange={(v) => patchSelected({ clearHeight: v })}
+                />
+                <ToggleRow label="Chauffé" on={room.heated !== false} onChange={(v) => commitSelected({ heated: v })} />
+              </More>
               <More label="Sol">
-              <Chips
-                label="Sol"
-                value={(room.floorFinish ?? "parquet") as MaterialId}
-                options={STRUCT_MATS}
-                labels={MATERIAL_LABELS}
-                onChange={(m) => commitSelected({ floorFinish: m })}
-              />
+                <Chips
+                  label="Sol"
+                  value={(room.floorFinish ?? "parquet") as MaterialId}
+                  options={STRUCT_MATS}
+                  labels={MATERIAL_LABELS}
+                  onChange={(m) => commitSelected({ floorFinish: m })}
+                />
               </More>
             </Section>
           )}

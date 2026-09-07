@@ -1,5 +1,19 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+
+if (typeof ImageData === "undefined") {
+  (globalThis as { ImageData: unknown }).ImageData = class FakeImageData {
+    data: Uint8ClampedArray;
+    width: number;
+    height: number;
+    colorSpace = "srgb";
+    constructor(data: Uint8ClampedArray, w: number, h?: number) {
+      this.data = data;
+      this.width = w;
+      this.height = h ?? data.length / (4 * w);
+    }
+  };
+}
 import { analyzeProject } from "./analysis.ts";
 import { assessFeasibility, CITY_PRESETS, applyCityPresetMeta } from "./feasibility.ts";
 import { OBJECT_CATALOG, OBJECT_MESH, OBJECT_SIZES, WALL_PRESETS } from "./catalog.ts";

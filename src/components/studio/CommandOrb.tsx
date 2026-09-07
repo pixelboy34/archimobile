@@ -19,6 +19,7 @@ import {
   LayoutGrid,
   PenLine,
   Wrench,
+  Scissors,
   ChevronUp,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -79,6 +80,7 @@ export function CommandOrb({
   const copyToNextStory = useStudio((s) => s.copyToNextStory);
   const arraySelected = useStudio((s) => s.arraySelected);
   const applyDraftToSelection = useStudio((s) => s.applyDraftToSelection);
+  const splitSelectedWall = useStudio((s) => s.splitSelectedWall);
   const cycleStory = useStudio((s) => s.cycleStory);
   const wallDraft = useStudio((s) => s.wallDraft);
   const setWallDraft = useStudio((s) => s.setWallDraft);
@@ -245,6 +247,9 @@ export function CommandOrb({
             </OrbBtn>
             <OrbBtn label="Appliquer type" onClick={applyDraftToSelection}>
               <Wrench className="size-4" />
+            </OrbBtn>
+            <OrbBtn label="Couper mur" onClick={splitSelectedWall}>
+              <Scissors className="size-4" />
             </OrbBtn>
             <OrbBtn label="Pivoter" onClick={() => rotateSelected(Math.PI / 2)}>
               <RotateCw className="size-4" />

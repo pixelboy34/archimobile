@@ -221,6 +221,7 @@ interface StudioState {
   moveSelected: (dx: number, dy: number) => void;
   rotateSelected: (delta?: number) => void;
   splitWallAt: (p: Vec2) => void;
+  splitSelectedWall: () => void;
   analysis: () => ProjectAnalysis | null;
   collabRoom: string | null;
   collabPeers: PeerInfo[];
@@ -1288,6 +1289,18 @@ export const useStudio = create<StudioState>()(
         const storyId = get().storyId;
         if (!storyId) return;
         get().commit((p) => splitWallOp(p, storyId, point));
+      },
+      splitSelectedWall: () => {
+        const cur = get().current();
+        const id = get().selectedIds[0];
+        if (!cur || !id) return;
+        const w = cur.walls.find((x) => x.id === id);
+        if (!w) {
+          toast.message("Sélectionnez un mur");
+          return;
+        }
+        get().commit((p) => splitWallOp(p, w.storyId, { x: (w.a.x + w.b.x) / 2, y: (w.a.y + w.b.y) / 2 }));
+        toast.success("Mur coupé");
       },
       applyRemoteProject: (remote, epoch = 0) => {
         const incoming = ensureSketch(inferStoryRoles(cloneProject(remote)));
