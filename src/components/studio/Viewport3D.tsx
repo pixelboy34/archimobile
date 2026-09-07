@@ -8,7 +8,7 @@ import { WalkController } from "./WalkController";
 import { PhysicsRig } from "./PhysicsRig";
 import { PLAYER_HALF, PLAYER_RADIUS } from "@/lib/physics/rapier-world";
 import { dist, findWallAt, projectBounds, polygonArea, polygonCentroid, wallAngle } from "@/lib/bim/geometry";
-import { detectQuality, type RenderQuality } from "@/lib/render/quality";
+import { detectQuality, tallBoost, type RenderQuality } from "@/lib/render/quality";
 import {
   interiorOn,
   skyColor,
@@ -115,10 +115,12 @@ function InteriorLights({
   project,
   gain,
   cap,
+  preferStoryId,
 }: {
   project: Project;
   gain: number;
   cap: number;
+  preferStoryId?: string | null;
 }) {
   const lights = useMemo(() => {
     if (cap <= 0) return [];
@@ -126,15 +128,21 @@ function InteriorLights({
       .filter((r) => !OUTDOOR.has(r.function) && r.polygon.length >= 3)
       .map((r) => ({
         id: r.id,
+        storyId: r.storyId,
         c: polygonCentroid(r.polygon),
         area: polygonArea(r.polygon),
         elev: (project.stories.find((s) => s.id === r.storyId)?.elevation ?? 0) +
           (project.stories.find((s) => s.id === r.storyId)?.height ?? 2.8) - 0.22,
       }))
-      .sort((a, b) => b.area - a.area)
+      .sort((a, b) => {
+        const ap = preferStoryId && a.storyId === preferStoryId ? 1 : 0;
+        const bp = preferStoryId && b.storyId === preferStoryId ? 1 : 0;
+        if (ap !== bp) return bp - ap;
+        return b.area - a.area;
+      })
       .slice(0, cap);
     return rooms;
-  }, [project, cap]);
+  }, [project, cap, preferStoryId]);
   return (
     <>
       {lights.map((l) => (
@@ -315,7 +323,11 @@ export function Viewport3D({
   const physicsOn = useStudio((s) => s.physics);
   const orthoCam = useStudio((s) => s.nav.orthoCam);
   const fov = useStudio((s) => s.nav.fov);
-  const [quality] = useState<RenderQuality>(() => detectQuality());
+  const [baseQuality] = useState<RenderQuality>(() => detectQuality());
+  const quality = useMemo(
+    () => tallBoost(baseQuality, project.stories.length),
+    [baseQuality, project.stories.length],
+  );
   const b = projectBounds(project);
   const cx = (b.min.x + b.max.x) / 2;
   const cz = (b.min.y + b.max.y) / 2;
@@ -353,7 +365,10 @@ export function Viewport3D({
     ? [cx, elev + PLAYER_HALF + PLAYER_RADIUS, cz]
     : [cx, elev + 1.65, cz];
   const drawing = !walking && tool !== "select";
-  const sceneQuality = { ...quality, shadows };
+  const sceneQuality = useMemo(
+    () => ({ ...quality, shadows }),
+    [quality, shadows],
+  );
   const ambient = lighting.ambient;
   const lens = fov || (quality.mobile ? 58 : 48);
   const camFar = Math.max(180, horiz * 8, tall * 14);
@@ -437,7 +452,12 @@ export function Viewport3D({
           color={night ? "#7a88a8" : "#c5d0dc"}
         />
       {showInterior && (
-        <InteriorLights project={project} gain={lighting.interiorGain} cap={quality.interiorLights} />
+        <InteriorLights
+          project={project}
+          gain={lighting.interiorGain}
+          cap={quality.interiorLights}
+          preferStoryId={storyId ?? project.stories[0]?.id ?? null}
+        />
       )}
       <mesh position={sun} raycast={noopRaycast}>
           <sphereGeometry args={[1.35, 14, 14]} />

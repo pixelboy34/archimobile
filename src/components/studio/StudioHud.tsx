@@ -27,6 +27,7 @@ export function StudioHud() {
   const setTool = useStudio((s) => s.setTool);
   const project = useStudio((s) => s.projects.find((p) => p.id === s.currentId) ?? null);
   const storyId = useStudio((s) => s.storyId);
+  const isolateStory = useStudio((s) => s.isolateStory);
   if (!project) return null;
   const typicalHint = linkedTypicalHint(project, storyId);
   if (view === "ar") return null;
@@ -62,7 +63,9 @@ export function StudioHud() {
                 ? "Accroche façade — tapez pour poser"
                 : sel
                   ? sel.line
-                  : null;
+                  : project.stories.length >= 8 && !isolateStory
+                    ? "Isoler l’étage pour plus de détail"
+                    : null;
 
   return (
     <div

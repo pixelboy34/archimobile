@@ -11,7 +11,7 @@ import {
   wallNormalOffset,
   wallSolidSegments,
 } from "@/lib/bim/geometry";
-import type { RenderQuality } from "@/lib/render/quality";
+import { storyDistance, type RenderQuality } from "@/lib/render/quality";
 import { furniturePhase, visibleAt } from "@/lib/bim/construction";
 import { isBearingWall } from "@/lib/bim/structure";
 import type {
@@ -560,6 +560,7 @@ function FurnitureMesh({
   mats,
   selectMat,
   shadows,
+  simple = false,
 }: {
   item: Furniture;
   elev: number;
@@ -571,6 +572,7 @@ function FurnitureMesh({
   mats: MatMap;
   selectMat: THREE.Material;
   shadows: boolean;
+  simple?: boolean;
 }) {
   const pick = {
     castShadow: shadows,
@@ -583,6 +585,14 @@ function FurnitureMesh({
   const deco = { castShadow: shadows, receiveShadow: shadows, raycast: skipRaycast };
   const def = OBJECT_MESH[item.kind] ?? { style: "box" as const, mat: "wood" as const };
   const body = selected ? selectMat : pickMat(mats, def.mat);
+  if (simple) {
+    const { w, d, h } = item;
+    return (
+      <group position={[item.position.x, elev, item.position.y]} rotation={[0, item.rotation, 0]}>
+        <mesh geometry={box} material={body} position={[0, h / 2, 0]} scale={[w, h, d]} {...pick} />
+      </group>
+    );
+  }
   const wood = selected ? selectMat : pickMat(mats, "wood");
   const dark = pickMat(mats, "darkwood");
   const white = selected ? selectMat : pickMat(mats, "white");
@@ -899,19 +909,114 @@ export function BuildingScene({
       }),
     [],
   );
+  const massingMat = useMemo(
+    () =>
+      new THREE.MeshLambertMaterial({
+        color: "#6a7874",
+        transparent: true,
+        opacity: 0.55,
+        depthWrite: true,
+      }),
+    [],
+  );
   useEffect(() => () => {
     structMat.dispose();
     ghostMat.dispose();
-  }, [structMat, ghostMat]);
+    massingMat.dispose();
+  }, [structMat, ghostMat, massingMat]);
   const maxH = Math.max(...project.stories.map((s) => s.elevation + s.height), 3);
   const cut = showClip ? clipY * maxH : 999;
   const shadows = quality.shadows;
+  const isolate = Boolean(storyFilter);
+  const activeId = storyFilter ?? labelStory ?? project.stories[0]?.id ?? null;
+  const windowR = quality.storyWindow ?? (quality.mobile ? 1 : 2);
+  const windowing = !isolate && project.stories.length >= 6;
+
+  const storyLod = useMemo(() => {
+    const map = new Map<string, "full" | "shell" | "massing">();
+    for (const st of project.stories) {
+      if (isolate) {
+        map.set(st.id, st.id === storyFilter ? "full" : "massing");
+        continue;
+      }
+      if (!windowing) {
+        map.set(st.id, "full");
+        continue;
+      }
+      const d = storyDistance(project.stories, st.id, activeId);
+      if (d <= windowR) map.set(st.id, "full");
+      else if (d <= windowR + 2) map.set(st.id, "shell");
+      else map.set(st.id, "massing");
+    }
+    return map;
+  }, [project.stories, isolate, storyFilter, windowing, activeId, windowR]);
+
   const keep = (sid: string) => !storyFilter || sid === storyFilter;
+  const lodOf = (sid: string) => storyLod.get(sid) ?? "full";
+  const castFor = (sid: string) => shadows && lodOf(sid) === "full";
+
+  const massingBoxes = useMemo(() => {
+    // Isolate = that story only (no far massing). Windowing = far floors as cheap boxes.
+    if (!windowing || isolate) return [] as { id: string; cx: number; cz: number; sx: number; sy: number; sz: number; y: number }[];
+    const out: { id: string; cx: number; cz: number; sx: number; sy: number; sz: number; y: number }[] = [];
+    for (const st of project.stories) {
+      if (lodOf(st.id) !== "massing") continue;
+      const polys = [
+        ...project.slabs.filter((s) => s.storyId === st.id).map((s) => s.polygon),
+        ...project.rooms.filter((r) => r.storyId === st.id).map((r) => r.polygon),
+      ];
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const poly of polys) {
+        for (const p of poly) {
+          minX = Math.min(minX, p.x);
+          minY = Math.min(minY, p.y);
+          maxX = Math.max(maxX, p.x);
+          maxY = Math.max(maxY, p.y);
+        }
+      }
+      if (!Number.isFinite(minX)) {
+        const walls = project.walls.filter((w) => w.storyId === st.id);
+        for (const w of walls) {
+          minX = Math.min(minX, w.a.x, w.b.x);
+          minY = Math.min(minY, w.a.y, w.b.y);
+          maxX = Math.max(maxX, w.a.x, w.b.x);
+          maxY = Math.max(maxY, w.a.y, w.b.y);
+        }
+      }
+      if (!Number.isFinite(minX)) continue;
+      const sx = Math.max(1, maxX - minX);
+      const sz = Math.max(1, maxY - minY);
+      out.push({
+        id: st.id,
+        cx: (minX + maxX) / 2,
+        cz: (minY + maxY) / 2,
+        sx,
+        sy: st.height,
+        sz,
+        y: st.elevation + st.height / 2,
+      });
+    }
+    return out;
+  }, [project, windowing, isolate, storyFilter, storyLod]);
 
   return (
     <group>
+      {massingBoxes.map((m) => (
+        <mesh
+          key={`mass-${m.id}`}
+          geometry={box}
+          material={massingMat}
+          position={[m.cx, m.y, m.cz]}
+          scale={[m.sx, m.sy, m.sz]}
+          castShadow={false}
+          receiveShadow={shadows}
+          raycast={skipRaycast}
+        />
+      ))}
       {project.slabs.map((s) => {
         if (!keep(s.storyId)) return null;
+        const lod = lodOf(s.storyId);
+        if (lod === "massing") return null;
         const elev = storyElev(project, s.storyId);
         if (!visibleAt(phase, s.outdoor ? 0 : elev < 0.4 ? 1 : 4)) return null;
         if (elev > cut) return null;
@@ -924,28 +1029,31 @@ export function BuildingScene({
             y={elev}
             material={pickMat(mats, s.materialId)}
             outdoor={s.outdoor}
-            shadows={shadows}
+            shadows={castFor(s.storyId)}
             onSelect={onSelect}
           />
         );
       })}
       {project.walls.map((w) => {
         if (!keep(w.storyId) || !visibleAt(phase, 3)) return null;
+        const lod = lodOf(w.storyId);
+        if (lod === "massing") return null;
         const elev = storyElev(project, w.storyId);
         if (elev > cut) return null;
         const wall = elev + w.height > cut ? { ...w, height: Math.max(0.1, cut - elev) } : w;
+        const showOpenings = lod === "full" && visibleAt(phase, 6);
         return (
           <WallGroup
             key={w.id}
             wall={wall}
-            openings={visibleAt(phase, 6) ? project.openings : []}
+            openings={showOpenings ? project.openings : []}
             elev={elev}
             selected={selected.has(w.id)}
             onSelect={onSelect}
             box={box}
             mats={mats}
             selectMat={select}
-            shadows={shadows}
+            shadows={castFor(w.storyId)}
             structureMode={showStructure}
             structMat={structMat}
             ghostMat={ghostMat}
@@ -954,6 +1062,8 @@ export function BuildingScene({
       })}
       {project.columns.map((c) => {
         if (!keep(c.storyId) || !visibleAt(phase, 2)) return null;
+        const lod = lodOf(c.storyId);
+        if (lod === "massing") return null;
         const elev = storyElev(project, c.storyId);
         if (elev > cut) return null;
         const mat = selected.has(c.id)
@@ -963,19 +1073,20 @@ export function BuildingScene({
             : pickMat(mats, c.materialId);
         const rot = c.rotation ?? 0;
         const round = c.shape === "round";
+        const sh = castFor(c.storyId);
         return round ? (
           <mesh
             key={c.id}
             material={mat}
             position={[c.position.x, elev + c.height / 2, c.position.y]}
             rotation={[0, -rot, 0]}
-            castShadow={shadows}
+            castShadow={sh}
             onClick={(e) => {
               e.stopPropagation();
               onSelect(c.id);
             }}
           >
-            <cylinderGeometry args={[c.width / 2, c.width / 2, c.height, 24]} />
+            <cylinderGeometry args={[c.width / 2, c.width / 2, c.height, lod === "shell" ? 10 : 24]} />
           </mesh>
         ) : (
           <mesh
@@ -985,7 +1096,7 @@ export function BuildingScene({
             position={[c.position.x, elev + c.height / 2, c.position.y]}
             rotation={[0, -rot, 0]}
             scale={[c.width, c.height, c.depth]}
-            castShadow={shadows}
+            castShadow={sh}
             onClick={(e) => {
               e.stopPropagation();
               onSelect(c.id);
@@ -995,6 +1106,8 @@ export function BuildingScene({
       })}
       {project.stairs.map((st) => {
         if (!keep(st.storyId) || !visibleAt(phase, 2)) return null;
+        const lod = lodOf(st.storyId);
+        if (lod !== "full") return null;
         const elev = storyElev(project, st.storyId);
         if (elev > cut) return null;
         return (
@@ -1004,7 +1117,7 @@ export function BuildingScene({
             elev={elev}
             box={box}
             material={pickMat(mats, st.materialId ?? "stone")}
-            shadows={shadows}
+            shadows={castFor(st.storyId)}
             onSelect={onSelect}
           />
         );
@@ -1012,8 +1125,13 @@ export function BuildingScene({
       {project.furniture.map((f) => {
         if (showStructure) return null;
         if (!keep(f.storyId) || !visibleAt(phase, furniturePhase(f))) return null;
+        const lod = lodOf(f.storyId);
+        if (lod === "massing") return null;
+        if (lod === "shell") return null;
         const elev = storyElev(project, f.storyId);
         if (elev > cut) return null;
+        const dist = storyDistance(project.stories, f.storyId, activeId);
+        const simple = quality.simpleProps && dist > 1;
         return (
           <FurnitureMesh
             key={f.id}
@@ -1026,13 +1144,16 @@ export function BuildingScene({
             sph={sph}
             mats={mats}
             selectMat={select}
-            shadows={shadows}
+            shadows={castFor(f.storyId)}
+            simple={simple}
           />
         );
       })}
       {!showClip &&
         project.roofs.map((r) => {
           if (!keep(r.storyId) || !visibleAt(phase, 5)) return null;
+          const lod = lodOf(r.storyId);
+          if (lod === "massing") return null;
           const story = project.stories.find((s) => s.id === r.storyId);
           const elev = (story?.elevation ?? 0) + (story?.height ?? 2.8);
           return (
@@ -1042,20 +1163,27 @@ export function BuildingScene({
               elev={elev}
               box={box}
               material={pickMat(mats, r.materialId)}
-              shadows={shadows}
+              shadows={castFor(r.storyId)}
               onSelect={onSelect}
             />
           );
         })}
       {project.rooms.map((r) => {
         if (!keep(r.storyId)) return null;
+        const lod = lodOf(r.storyId);
+        if (lod === "massing") return null;
         const c = polygonCentroid(r.polygon);
         const b = boundsOf(r.polygon);
         const elev = storyElev(project, r.storyId);
         if (elev > cut) return null;
+        const showLabels =
+          quality.labels &&
+          lod === "full" &&
+          (!labelStory || r.storyId === labelStory) &&
+          (!windowing || storyDistance(project.stories, r.storyId, activeId) <= 1);
         return (
           <group key={r.id}>
-            {r.floorFinish && r.function !== "terrace" && r.function !== "patio" && (
+            {lod === "full" && r.floorFinish && r.function !== "terrace" && r.function !== "patio" && (
               <mesh
                 geometry={box}
                 material={pickMat(mats, r.floorFinish)}
@@ -1065,7 +1193,7 @@ export function BuildingScene({
                   0.03,
                   Math.max(0.8, b.max.y - b.min.y - 0.4),
                 ]}
-                receiveShadow={shadows}
+                receiveShadow={castFor(r.storyId)}
                 onClick={(e) => {
                   e.stopPropagation();
                   onSelect(r.id);
@@ -1091,12 +1219,12 @@ export function BuildingScene({
               />
             </mesh>
             )}
-            {quality.labels && (!labelStory || r.storyId === labelStory) && (
+            {showLabels && (
               <sprite position={[c.x, elev + 1.35, c.y]} scale={[2.4, 0.6, 1]} raycast={skipRaycast}>
                 <spriteMaterial map={labelTexture(r.name)} transparent depthWrite={false} />
               </sprite>
             )}
-            {r.function === "patio" && (
+            {lod === "full" && r.function === "patio" && (
               <mesh
                 geometry={box}
                 material={pickMat(mats, "vegetation")}
@@ -1106,7 +1234,7 @@ export function BuildingScene({
                   0.04,
                   Math.max(2.2, b.max.y - b.min.y - 0.2),
                 ]}
-                receiveShadow={shadows}
+                receiveShadow={castFor(r.storyId)}
                 raycast={skipRaycast}
               />
             )}

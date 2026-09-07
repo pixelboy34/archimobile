@@ -1,13 +1,14 @@
 import { polygonArea, wallLength, wallMid } from "../bim/geometry";
-import type { Project } from "../bim/types";
+import type { Project, Vec2 } from "../bim/types";
 
-/** Minimal IFC2X3 CoordinationView subset for walls, slabs, openings, columns, stories. */
+/** Minimal IFC2X3 CoordinationView subset — walls, slabs (polygon), roofs, stairs, spaces, openings, columns, stories. */
 export function exportIfc(project: Project): string {
   const lines: string[] = [];
   let n = 0;
   const id = () => `#${++n}`;
   const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/'/g, "''");
   const elevOf = (storyId: string) => project.stories.find((s) => s.id === storyId)?.elevation ?? 0;
+  const heightOf = (storyId: string) => project.stories.find((s) => s.id === storyId)?.height ?? 2.8;
 
   const push = (entity: string) => {
     const r = id();
@@ -37,16 +38,16 @@ export function exportIfc(project: Project): string {
   const worldPlacement = push(`IFCLOCALPLACEMENT($,${world})`);
 
   const projectRef = push(
-    `IFCPROJECT('${guid()}',${owner},'${esc(project.name)}',$,$,$,$,(${geoCtx}),${units})`,
+    `IFCPROJECT('${guid(project.id)}',${owner},'${esc(project.name)}',$,$,$,$,(${geoCtx}),${units})`,
   );
 
   const site = push(
-    `IFCSITE('${guid()}',${owner},'Site',$,$,${worldPlacement},$,$,.ELEMENT.,(0.,0.),(0.,0.),0.,$,$)`,
+    `IFCSITE('${guid(project.id + "-site")}',${owner},'Site',$,$,${worldPlacement},$,$,.ELEMENT.,(0.,0.),(0.,0.),0.,$,$)`,
   );
   push(`IFCRELAGGREGATES('${guid()}',${owner},$,$,${projectRef},(${site}))`);
 
   const building = push(
-    `IFCBUILDING('${guid()}',${owner},'${esc(project.name)}',$,$,${worldPlacement},$,$,.ELEMENT.,$,$,$)`,
+    `IFCBUILDING('${guid(project.id + "-bldg")}',${owner},'${esc(project.name)}',$,$,${worldPlacement},$,$,.ELEMENT.,$,$,$)`,
   );
   push(`IFCRELAGGREGATES('${guid()}',${owner},$,$,${site},(${building}))`);
 
@@ -57,7 +58,7 @@ export function exportIfc(project: Project): string {
     const axis = push(`IFCAXIS2PLACEMENT3D(${origin},$,$)`);
     const place = push(`IFCLOCALPLACEMENT(${worldPlacement},${axis})`);
     const storey = push(
-      `IFCBUILDINGSTOREY('${guid()}',${owner},'${esc(st.name)}',$,$,${place},$,$,.ELEMENT.,${num(st.elevation)})`,
+      `IFCBUILDINGSTOREY('${guid(st.id)}',${owner},'${esc(st.name)}',$,$,${place},$,$,.ELEMENT.,${num(st.elevation)})`,
     );
     storeyById[st.id] = storey;
     storeyRefs.push(storey);
@@ -86,7 +87,7 @@ export function exportIfc(project: Project): string {
     const axis = push(`IFCAXIS2PLACEMENT3D(${origin},${zDir},${xDir})`);
     const place = push(`IFCLOCALPLACEMENT(${worldPlacement},${axis})`);
     const wall = push(
-      `IFCWALLSTANDARDCASE('${guid()}',${owner},'Wall',$,$,${place},${solid},$)`,
+      `IFCWALLSTANDARDCASE('${guid(w.id)}',${owner},'Wall',$,$,${place},${solid},$)`,
     );
     addToStorey(w.storyId, wall);
 
@@ -101,12 +102,12 @@ export function exportIfc(project: Project): string {
       const oAxis = push(`IFCAXIS2PLACEMENT3D(${oOrigin},${zDir},${xDir})`);
       const oPlace = push(`IFCLOCALPLACEMENT(${worldPlacement},${oAxis})`);
       const opening = push(
-        `IFCOPENINGELEMENT('${guid()}',${owner},'${o.kind}',$,$,${oPlace},${oSolid},$)`,
+        `IFCOPENINGELEMENT('${guid(o.id)}',${owner},'${o.kind}',$,$,${oPlace},${oSolid},$)`,
       );
       push(`IFCRELVOIDSELEMENT('${guid()}',${owner},$,$,${wall},${opening})`);
       const fillType = o.kind === "door" ? "IFCDOOR" : "IFCWINDOW";
       const fill = push(
-        `${fillType}('${guid()}',${owner},'${o.kind}',$,$,${oPlace},${oSolid},$)`,
+        `${fillType}('${guid(o.id + "-fill")}',${owner},'${o.kind}',$,$,${oPlace},${oSolid},$)`,
       );
       push(`IFCRELFILLSELEMENT('${guid()}',${owner},$,$,${opening},${fill})`);
       addToStorey(w.storyId, fill);
@@ -115,19 +116,33 @@ export function exportIfc(project: Project): string {
 
   for (const s of project.slabs) {
     const area = polygonArea(s.polygon);
-    if (area < 0.05) continue;
-    const cx = s.polygon.reduce((a, p) => a + p.x, 0) / s.polygon.length;
-    const cy = s.polygon.reduce((a, p) => a + p.y, 0) / s.polygon.length;
-    const side = Math.sqrt(Math.max(area, 0.01));
+    if (area < 0.05 || s.polygon.length < 3) continue;
     const z0 = elevOf(s.storyId);
-    const solid = extrudedBox(push, bodyCtx, side, side, s.thickness);
-    const origin = push(`IFCCARTESIANPOINT((${num(cx)},${num(cy)},${num(z0)}))`);
+    const solid = extrudedPolygon(push, bodyCtx, s.polygon, s.thickness);
+    const origin = push(`IFCCARTESIANPOINT((0.,0.,${num(z0)}))`);
     const axis = push(`IFCAXIS2PLACEMENT3D(${origin},$,$)`);
     const place = push(`IFCLOCALPLACEMENT(${worldPlacement},${axis})`);
     const slab = push(
-      `IFCSLAB('${guid()}',${owner},'Slab',$,$,${place},${solid},$,.FLOOR.)`,
+      `IFCSLAB('${guid(s.id)}',${owner},'Slab',$,$,${place},${solid},$,.FLOOR.)`,
     );
     addToStorey(s.storyId, slab);
+  }
+
+  for (const r of project.roofs) {
+    if (r.polygon.length < 3) continue;
+    const story = project.stories.find((s) => s.id === r.storyId);
+    const z0 = (story?.elevation ?? 0) + (story?.height ?? 2.8);
+    const pitchRise =
+      r.kind === "flat" ? r.thickness : Math.max(r.thickness, Math.tan((r.pitch * Math.PI) / 180) * 1.2);
+    const solid = extrudedPolygon(push, bodyCtx, r.polygon, pitchRise);
+    const origin = push(`IFCCARTESIANPOINT((0.,0.,${num(z0)}))`);
+    const axis = push(`IFCAXIS2PLACEMENT3D(${origin},$,$)`);
+    const place = push(`IFCLOCALPLACEMENT(${worldPlacement},${axis})`);
+    // Prefer IFCROOF; also emit PredefinedType via property-less name for CoordinationView.
+    const roof = push(
+      `IFCROOF('${guid(r.id)}',${owner},'Roof',$,$,${place},${solid},$,.${r.kind === "flat" ? "FLAT_ROOF" : "GABLE_ROOF"}.)`,
+    );
+    addToStorey(r.storyId, roof);
   }
 
   for (const c of project.columns) {
@@ -139,9 +154,40 @@ export function exportIfc(project: Project): string {
     const axis = push(`IFCAXIS2PLACEMENT3D(${origin},$,$)`);
     const place = push(`IFCLOCALPLACEMENT(${worldPlacement},${axis})`);
     const col = push(
-      `IFCCOLUMN('${guid()}',${owner},'Column',$,$,${place},${solid},$)`,
+      `IFCCOLUMN('${guid(c.id)}',${owner},'Column',$,$,${place},${solid},$)`,
     );
     addToStorey(c.storyId, col);
+  }
+
+  for (const st of project.stairs) {
+    const z0 = elevOf(st.storyId);
+    const ang = st.direction;
+    const cx = st.origin.x + Math.cos(ang) * (st.run / 2);
+    const cy = st.origin.y + Math.sin(ang) * (st.run / 2);
+    const solid = extrudedBox(push, bodyCtx, st.run, st.width, Math.max(0.2, st.rise));
+    const origin = push(`IFCCARTESIANPOINT((${num(cx)},${num(cy)},${num(z0)}))`);
+    const zDir = push(`IFCDIRECTION((0.,0.,1.))`);
+    const xDir = push(`IFCDIRECTION((${num(Math.cos(ang))},${num(Math.sin(ang))},0.))`);
+    const axis = push(`IFCAXIS2PLACEMENT3D(${origin},${zDir},${xDir})`);
+    const place = push(`IFCLOCALPLACEMENT(${worldPlacement},${axis})`);
+    const stair = push(
+      `IFCSTAIR('${guid(st.id)}',${owner},'Stair',$,$,${place},${solid},$,.STRAIGHT_RUN_STAIR.)`,
+    );
+    addToStorey(st.storyId, stair);
+  }
+
+  for (const room of project.rooms) {
+    if (room.polygon.length < 3) continue;
+    const z0 = elevOf(room.storyId);
+    const h = room.clearHeight ?? heightOf(room.storyId);
+    const solid = extrudedPolygon(push, bodyCtx, room.polygon, h);
+    const origin = push(`IFCCARTESIANPOINT((0.,0.,${num(z0)}))`);
+    const axis = push(`IFCAXIS2PLACEMENT3D(${origin},$,$)`);
+    const place = push(`IFCLOCALPLACEMENT(${worldPlacement},${axis})`);
+    const space = push(
+      `IFCSPACE('${guid(room.id)}',${owner},'${esc(room.name)}',$,$,${place},${solid},$,.ELEMENT.,.INTERNAL.,$)`,
+    );
+    addToStorey(room.storyId, space);
   }
 
   for (const [storyId, prods] of productInStorey) {
@@ -172,10 +218,30 @@ function num(v: number): string {
   return s.includes(".") ? s : `${s}.`;
 }
 
-function guid(): string {
+/** Stable-ish IFC GUID from seed, else random. */
+function guid(seed?: string): string {
   const hex = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
+  if (!seed) {
+    let s = "";
+    for (let i = 0; i < 22; i++) s += hex[(Math.random() * 64) | 0]!;
+    return s;
+  }
+  let h1 = 2166136261;
+  let h2 = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i++) {
+    const c = seed.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 16777619);
+    h2 = Math.imul(h2 ^ (c + i * 13), 2246822519);
+  }
   let s = "";
-  for (let i = 0; i < 22; i++) s += hex[(Math.random() * 64) | 0]!;
+  let a = h1 >>> 0;
+  let b = h2 >>> 0;
+  for (let i = 0; i < 22; i++) {
+    const mix = (a + b * (i + 1)) >>> 0;
+    s += hex[mix % 64]!;
+    a = Math.imul(a, 1664525) + 1013904223;
+    b = Math.imul(b ^ mix, 22695477) + 1;
+  }
   return s;
 }
 
@@ -188,11 +254,28 @@ function extrudedBox(
 ): string {
   const hx = dx / 2;
   const hy = dy / 2;
-  const p1 = push(`IFCCARTESIANPOINT((${num(-hx)},${num(-hy)}))`);
-  const p2 = push(`IFCCARTESIANPOINT((${num(hx)},${num(-hy)}))`);
-  const p3 = push(`IFCCARTESIANPOINT((${num(hx)},${num(hy)}))`);
-  const p4 = push(`IFCCARTESIANPOINT((${num(-hx)},${num(hy)}))`);
-  const poly = push(`IFCPOLYLINE((${p1},${p2},${p3},${p4},${p1}))`);
+  const pts: Vec2[] = [
+    { x: -hx, y: -hy },
+    { x: hx, y: -hy },
+    { x: hx, y: hy },
+    { x: -hx, y: hy },
+  ];
+  return extrudedPolygon(push, bodyCtx, pts, dz);
+}
+
+function extrudedPolygon(
+  push: (e: string) => string,
+  bodyCtx: string,
+  polygon: Vec2[],
+  dz: number,
+): string {
+  const refs: string[] = [];
+  for (const p of polygon) {
+    refs.push(push(`IFCCARTESIANPOINT((${num(p.x)},${num(p.y)}))`));
+  }
+  // Close loop
+  refs.push(refs[0]!);
+  const poly = push(`IFCPOLYLINE((${refs.join(",")}))`);
   const bound = push(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,${poly})`);
   const pos = push(`IFCAXIS2PLACEMENT3D(IFCCARTESIANPOINT((0.,0.,0.)),$,$)`);
   const solid = push(
