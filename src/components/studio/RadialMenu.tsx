@@ -110,7 +110,7 @@ export function RadialMenu({
       />
       <div
         className="pointer-events-auto absolute z-[31] flex flex-col overflow-hidden rounded-xl border border-border bg-surface/94 shadow-border"
-        style={{ left: 8, right: 8, bottom: 136 }}
+        style={{ left: 8, right: 8, bottom: 162 }}
       >
         <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border px-1.5">
           {folder !== "root" ? (
@@ -147,10 +147,10 @@ export function RadialMenu({
                   className="flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-md bg-elevated px-1 py-1.5 text-muted hover:bg-accent/10 hover:text-fg"
                 >
                   <span className="flex items-center gap-0.5">
-                    <Icon className="size-3.5" />
+                    <Icon className="ico-live size-3.5" />
                     <ChevronRight className="size-3 opacity-60" />
                   </span>
-                  <span className="w-full truncate text-center text-[9px] font-medium leading-tight">{tile.label}</span>
+                  <span className="w-full truncate text-center text-[11px] font-medium leading-tight">{tile.label}</span>
                 </button>
               );
             }
@@ -162,8 +162,8 @@ export function RadialMenu({
                 onClick={() => onAction(tile.id)}
                 className="flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-md bg-elevated px-1 py-1.5 text-muted hover:bg-accent/10 hover:text-fg"
               >
-                <Icon className={cn("size-3.5", tile.id === "dossier" && "text-accent")} />
-                <span className="w-full truncate text-center text-[9px] font-medium leading-tight">{tile.label}</span>
+                <Icon className={cn("ico-live size-3.5", tile.id === "dossier" && "text-accent")} />
+                <span className="w-full truncate text-center text-[11px] font-medium leading-tight">{tile.label}</span>
               </button>
             );
           })}

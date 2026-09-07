@@ -1,5 +1,14 @@
+import { Box, Footprints, LayoutDashboard, Scan, SquareSplitVertical } from "lucide-react";
 import type { Project, ViewMode } from "@/lib/bim/types";
 import { useStudio } from "@/lib/store/project-store";
+
+const VIEW_META: { id: ViewMode; label: string; Icon: typeof Box }[] = [
+  { id: "3d", label: "3D", Icon: Box },
+  { id: "plan", label: "Plan", Icon: LayoutDashboard },
+  { id: "visite", label: "Visite", Icon: Footprints },
+  { id: "coupe", label: "Coupe", Icon: SquareSplitVertical },
+  { id: "ar", label: "AR", Icon: Scan },
+];
 
 /** BOTTOM-LEFT corner: vues. */
 export function ViewBar({
@@ -17,33 +26,31 @@ export function ViewBar({
   const simple = skill === "simple";
   if (workspace !== "modele" && view !== "ar") return null;
 
-  const views: { id: ViewMode; label: string }[] = [
-    { id: "3d", label: "3D" },
-    { id: "plan", label: "Plan" },
-    { id: "visite", label: "Visite" },
-    ...(!simple
-      ? ([
-          { id: "coupe", label: "Coupe" },
-          { id: "ar", label: "AR" },
-        ] as { id: ViewMode; label: string }[])
-      : []),
-  ];
+  const views = simple ? VIEW_META.slice(0, 3) : VIEW_META;
 
   return (
     <div
-      className="view-bar pointer-events-auto z-10 flex max-w-[min(58%,14rem)] flex-nowrap gap-1 overflow-x-auto"
-      style={{ position: "absolute", left: 8, bottom: 136 }}
+      className={
+        docked
+          ? "view-bar pointer-events-auto flex w-36 min-w-36 max-w-36 shrink-0 flex-nowrap gap-1 overflow-x-auto"
+          : "view-bar pointer-events-auto z-10 flex max-w-[min(58%,14rem)] flex-nowrap gap-1 overflow-x-auto"
+      }
+      style={docked ? undefined : { position: "absolute", left: 8, bottom: 162 }}
     >
-      {views.map((v) => (
-        <button
-          key={v.id}
-          type="button"
-          onClick={() => setView(v.id)}
-          className={`hud-chip ${view === v.id ? "hud-chip-on" : ""}`}
-        >
-          {v.label}
-        </button>
-      ))}
+      {views.map((v) => {
+        const Icon = v.Icon;
+        return (
+          <button
+            key={v.id}
+            type="button"
+            onClick={() => setView(v.id)}
+            className={`hud-chip ${view === v.id ? "hud-chip-on" : ""}`}
+          >
+            <Icon className="ico-live size-3.5" />
+            {v.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

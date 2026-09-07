@@ -98,11 +98,11 @@ export function ToolDock({
               if (!g.tools.includes(tool)) onTool(g.tools[0]!);
             }}
             className={cn(
-              "hud-chip-press relative flex h-8 shrink-0 items-center gap-1 rounded-lg px-1.5 text-[9px] tracking-wide uppercase",
-              on ? "text-accent" : "text-muted/65 hover:bg-elevated/60 hover:text-fg",
+              "hud-chip-press relative flex h-8 shrink-0 items-center gap-1 rounded-lg px-1.5 text-[11px] font-medium tracking-wide uppercase",
+              on ? "text-accent" : "text-fg/70 hover:bg-elevated/60 hover:text-fg",
             )}
           >
-            <Icon className="size-3.5" />
+            <Icon className="ico-live size-3.5" />
             <span>{g.label}</span>
           </button>
         );
@@ -116,15 +116,17 @@ export function ToolDock({
               key={id}
               type="button"
               title={TOOL_LABELS[id]}
+              aria-label={TOOL_LABELS[id]}
+              aria-pressed={on}
               onClick={() => onTool(id)}
               className={cn(
-                "hud-chip-press flex size-8 shrink-0 items-center justify-center rounded-lg",
+                "ico-btn hud-chip-press flex size-8 shrink-0 items-center justify-center rounded-lg",
                 on
                   ? "bg-accent/15 text-accent ring-1 ring-accent/45"
-                  : "text-muted/70 hover:bg-elevated/70 hover:text-fg",
+                  : "text-fg/70 hover:bg-elevated/70 hover:text-fg",
               )}
             >
-              <Icon className="size-3.5" />
+              <Icon className="ico-live size-3.5" />
               <span className="sr-only">{TOOL_LABELS[id]}</span>
             </button>
           );

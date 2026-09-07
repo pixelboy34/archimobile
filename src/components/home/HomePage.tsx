@@ -123,7 +123,7 @@ export function HomePage() {
             </div>
           </div>
         </div>
-        <p className="mt-3 max-w-md text-sm text-muted">
+        <p className="mt-3 max-w-md text-[15px] leading-relaxed text-muted">
           {skill === "simple"
             ? "Le volume suit le doigt. Posez un mur, laissez l’IA concevoir."
             : "Maquette 3D, relevé, 4D et métré. Le modèle est le chantier."}
@@ -141,19 +141,19 @@ export function HomePage() {
 
       <div className="mt-4 flex flex-wrap gap-2 px-5">
         <Button className="flex-1" onClick={create}>
-          <Plus className="size-4" />
+          <Plus className="ico-live size-4" />
           Nouveau
         </Button>
         <Button variant="outline" className="flex-1" onClick={() => setAiOpen(true)}>
-          <Sparkles className="size-4" />
+          <Sparkles className="ico-live size-4" />
           Générer
         </Button>
         <Button variant="outline" className="flex-1" onClick={() => fileRef.current?.click()}>
-          <FileUp className="size-4" />
+          <FileUp className="ico-live size-4" />
           Importer
         </Button>
         <Button variant="outline" className="flex-1" onClick={() => setOfflineOpen(true)}>
-          <HardDrive className="size-4" />
+          <HardDrive className="ico-live size-4" />
           Hors ligne
         </Button>
         <input
@@ -172,7 +172,7 @@ export function HomePage() {
 
       <section className="mt-8 px-5 pb-24">
         <div className="mb-3 flex items-end justify-between">
-          <h2 className="hud-label">Archives</h2>
+          <h2 className="font-display text-sm font-semibold tracking-wide text-fg">Archives</h2>
           <button
             type="button"
             className="text-xs text-subtle"
@@ -199,7 +199,7 @@ export function HomePage() {
             {filtered.map((p) => {
               const a = analyzeProject(p);
               return (
-                <li key={p.id} className="hud-panel group relative overflow-hidden">
+                <li key={p.id} className="hud-panel archive-card rise-in group relative overflow-hidden">
                   <Link
                     to="/studio/$projectId"
                     params={{ projectId: p.id }}
@@ -213,9 +213,9 @@ export function HomePage() {
                       <span className="vf-arm vf-br" />
                     </div>
                     <div className="px-4 pt-3 pb-4">
-                      <p className="font-display font-semibold tracking-tight">{p.name}</p>
-                      <p className="mt-0.5 hud-label">{p.meta.location}</p>
-                      <p className="mt-2 font-mono text-xs text-subtle tabular">
+                      <p className="font-display text-base font-semibold tracking-tight">{p.name}</p>
+                      <p className="mt-0.5 text-xs text-muted">{p.meta.location}</p>
+                      <p className="mt-2 font-mono text-xs text-muted tabular">
                         {formatArea(a.netArea)} · {p.stories.length} niv. · {p.rooms.length} pièces
                       </p>
                     </div>
@@ -228,9 +228,9 @@ export function HomePage() {
                         const id = duplicateProjectById(p.id);
                         if (id) toast.success("Copie créée");
                       }}
-                      className="flex size-10 items-center justify-center rounded-xl border border-border/50 bg-bg/75 text-muted backdrop-blur-sm hover:border-accent/35 hover:text-fg"
+                      className="flex size-10 items-center justify-center rounded-xl border border-border/50 bg-bg/75 text-muted backdrop-blur-sm hover:border-accent/35 hover:text-accent"
                     >
-                      <Copy className="size-4" />
+                      <Copy className="ico-live size-4" />
                     </button>
                     <button
                       type="button"
@@ -241,9 +241,9 @@ export function HomePage() {
                           exportBimJson(p),
                         )
                       }
-                      className="flex size-10 items-center justify-center rounded-xl border border-border/50 bg-bg/75 text-muted backdrop-blur-sm hover:border-accent/35 hover:text-fg"
+                      className="flex size-10 items-center justify-center rounded-xl border border-border/50 bg-bg/75 text-muted backdrop-blur-sm hover:border-accent/35 hover:text-accent"
                     >
-                      <FileUp className="size-4 rotate-180" />
+                      <FileUp className="ico-live size-4 rotate-180" />
                     </button>
                     <button
                       type="button"
@@ -254,9 +254,9 @@ export function HomePage() {
                           toast("Projet retiré");
                         }
                       }}
-                      className="flex size-10 items-center justify-center rounded-xl border border-border/50 bg-bg/75 text-muted backdrop-blur-sm hover:border-accent/35 hover:text-fg"
+                      className="flex size-10 items-center justify-center rounded-xl border border-border/50 bg-bg/75 text-muted backdrop-blur-sm hover:border-accent/35 hover:text-accent"
                     >
-                      <Trash2 className="size-4" />
+                      <Trash2 className="ico-live size-4" />
                     </button>
                   </div>
                 </li>

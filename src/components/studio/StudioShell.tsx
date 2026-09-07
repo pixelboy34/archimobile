@@ -121,6 +121,31 @@ export function StudioShell({ projectId }: { projectId: string }) {
   }, [radial]);
 
   useEffect(() => {
+    const root = document.querySelector(".studio-canvas");
+    if (!root) return;
+    let timer = 0;
+    const down = (e: Event) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.tagName === "CANVAS") {
+        root.classList.add("is-sculpting");
+        window.clearTimeout(timer);
+      }
+    };
+    const up = () => {
+      timer = window.setTimeout(() => root.classList.remove("is-sculpting"), 850);
+    };
+    root.addEventListener("pointerdown", down, true);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => {
+      root.removeEventListener("pointerdown", down, true);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      window.clearTimeout(timer);
+    };
+  }, [view, projectId]);
+
+  useEffect(() => {
     if (!hydrated) return;
     openProject(projectId);
   }, [hydrated, projectId, openProject]);
@@ -422,7 +447,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
                 <ChevronLeft className="size-5" />
               </Link>
             </Button>
-            <p className="min-w-0 truncate font-display text-[12px] font-semibold tracking-tight drop-shadow-[0_1px_8px_rgba(11,13,16,0.85)]">
+            <p className="min-w-0 truncate font-display text-sm font-semibold tracking-tight drop-shadow-[0_1px_8px_rgba(11,13,16,0.85)]">
               {current.name}
             </p>
           </div>
@@ -433,7 +458,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
                   key={w.id}
                   type="button"
                   onClick={() => setWorkspace(w.id)}
-                  className={`h-8 min-h-8 shrink-0 rounded-full px-2 text-[10px] font-medium tracking-wide ${
+                  className={`h-8 min-h-8 shrink-0 rounded-full px-2.5 text-[11px] font-medium tracking-wide ${
                     workspace === w.id ? "bg-accent/15 text-accent ring-1 ring-accent/40" : "text-muted"
                   }`}
                 >
@@ -546,7 +571,7 @@ function HeaderSkillToggle() {
       <button
         type="button"
         onClick={() => setSkill("simple")}
-        className={`h-8 min-h-8 px-2 text-[10px] font-medium tracking-wide ${
+        className={`h-8 min-h-8 px-2.5 text-[11px] font-medium tracking-wide ${
           skill === "simple" ? "rounded-full bg-accent/15 text-accent ring-1 ring-accent/40" : "text-muted"
         }`}
       >
@@ -555,7 +580,7 @@ function HeaderSkillToggle() {
       <button
         type="button"
         onClick={() => setSkill("pro")}
-        className={`h-8 min-h-8 px-2 text-[10px] font-medium tracking-wide ${
+        className={`h-8 min-h-8 px-2.5 text-[11px] font-medium tracking-wide ${
           skill === "pro" ? "rounded-full bg-accent/15 text-accent ring-1 ring-accent/40" : "text-muted"
         }`}
       >

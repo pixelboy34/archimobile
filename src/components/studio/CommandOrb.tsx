@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import type { Tool } from "@/lib/bim/types";
+import { TOOL_LABELS, type Tool } from "@/lib/bim/types";
 import { useStudio } from "@/lib/store/project-store";
 import { ToolDock } from "./ToolDock";
 
@@ -165,6 +165,10 @@ export function CommandOrb({
           <Plus className="size-4" />
         </OrbBtn>
       </div>
+      <p className="rail-whisper truncate">
+        {TOOL_LABELS[tool]}
+        {hasSel ? " · sélection" : ""}
+      </p>
 
       {mode === "modifier" ? (
         <div className="flex flex-col gap-1">
@@ -301,8 +305,8 @@ function ModeBtn({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "relative flex h-8 min-h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-full px-2 text-[10px] font-semibold tracking-wide uppercase transition-[transform,background-color,color] duration-200",
-        active ? "bg-accent/18 text-accent" : "text-muted/80 hover:text-fg",
+        "relative flex h-8 min-h-8 min-w-0 flex-1 items-center justify-center gap-1 rounded-full px-2 text-[11px] font-semibold tracking-wide uppercase transition-[transform,background-color,color] duration-200",
+        active ? "bg-accent/18 text-accent" : "text-fg/70 hover:text-fg",
         disabled && "opacity-40",
       )}
     >
@@ -339,14 +343,14 @@ function OrbBtn({
       onClick={onClick}
       onContextMenu={onContextMenu}
       className={cn(
-        "hud-chip-press flex size-9 shrink-0 items-center justify-center rounded-lg text-muted/80 hover:bg-elevated/80 hover:text-fg",
+        "ico-btn hud-chip-press flex size-9 shrink-0 items-center justify-center rounded-lg text-fg/75 hover:bg-elevated/80 hover:text-fg",
         danger && "text-danger hover:bg-danger/10",
         accent && !danger && "bg-accent/15 text-accent ring-1 ring-accent/45",
         active && !accent && !danger && "bg-accent/15 text-accent ring-1 ring-accent/50",
         !active && !accent && !danger && "text-muted/80 hover:bg-elevated/80 hover:text-fg",
       )}
     >
-      {children}
+      <span className="ico-live inline-flex">{children}</span>
     </button>
   );
 }

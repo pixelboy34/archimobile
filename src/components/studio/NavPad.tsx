@@ -25,7 +25,7 @@ export function NavPad({ docked = false }: { docked?: boolean }) {
   return (
     <div
       className="nav-pad pointer-events-auto z-10 flex flex-col items-end gap-1"
-      style={{ position: "absolute", right: 8, bottom: 136 }}
+      style={{ position: "absolute", right: 8, bottom: 162 }}
     >
       {open && (
         <div className="grid grid-cols-3 overflow-hidden rounded-md bg-surface/80 shadow-border backdrop-blur-sm">
@@ -67,9 +67,9 @@ export function NavPad({ docked = false }: { docked?: boolean }) {
           title="Cadrer"
           aria-label="Cadrer"
           onClick={() => dispatchCam({ kind: "fit" })}
-          className="flex size-10 items-center justify-center rounded-full bg-surface/70 text-muted shadow-border backdrop-blur-sm hover:text-fg"
+          className="flex size-10 items-center justify-center rounded-full bg-surface/70 text-fg/80 shadow-border backdrop-blur-sm hover:text-accent"
         >
-          <Maximize2 className="size-3.5" />
+          <Maximize2 className="ico-live size-3.5" />
         </button>
         {showCompass && (
           <button

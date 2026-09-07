@@ -86,7 +86,7 @@ export function InspectorDock({
               key={t.id}
               type="button"
               onClick={() => onTab(t.id)}
-              className={cn("seg-item h-8 min-h-8 flex-1 px-2 text-[11px]", tab === t.id && "seg-item-on")}
+              className={cn("seg-item h-8 min-h-8 flex-1 px-2 text-xs", tab === t.id && "seg-item-on")}
             >
               {t.label}
             </button>
@@ -103,8 +103,8 @@ export function InspectorDock({
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2.5 pt-1.5 pb-[max(0.6rem,env(safe-area-inset-bottom))]">
         <p className="mb-1 flex items-baseline gap-2 px-0.5">
-          <span className="text-[10px] font-medium tracking-tight text-fg">{chip.type}</span>
-          <span className="min-w-0 truncate font-mono text-[10px] text-muted tabular">{chip.dims}</span>
+          <span className="text-xs font-medium tracking-tight text-fg">{chip.type}</span>
+          <span className="min-w-0 truncate font-mono text-[11px] text-muted tabular">{chip.dims}</span>
         </p>
         <PropertiesPanel tab={tab} onTab={onTab} />
       </div>

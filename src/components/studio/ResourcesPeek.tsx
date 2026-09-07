@@ -54,7 +54,7 @@ export function ResourcesPeek({
   return (
     <div
       className="resources-peek pointer-events-auto absolute z-[25] flex flex-col overflow-hidden rounded-xl border border-border bg-surface/94 shadow-border"
-      style={{ left: 8, right: 8, bottom: 136, maxHeight: "min(28dvh, 15.5rem)" }}
+      style={{ left: 8, right: 8, bottom: 162, maxHeight: "min(28dvh, 15.5rem)" }}
       role="dialog"
       aria-label="Bibliothèque"
     >
