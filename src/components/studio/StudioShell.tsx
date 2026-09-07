@@ -333,7 +333,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
    */
   return (
     <div className="relative h-dvh overflow-hidden bg-bg text-fg">
-      <Toaster theme="dark" position="top-center" />
+      <Toaster theme="dark" position="top-center" toastOptions={{ className: "forma-toast" }} />
       <div className={`absolute inset-0 studio-canvas bg-elevated ${inspector || radial || resources ? "has-inspector" : ""}`}>
         {view === "ar" ? (
           <ArGate project={current} />
@@ -610,22 +610,18 @@ function HeaderSkillToggle() {
   const skill = useStudio((s) => s.skill);
   const setSkill = useStudio((s) => s.setSkill);
   return (
-    <div className="flex shrink-0 rounded-full border border-border/50 bg-surface/55 p-0.5 backdrop-blur-sm">
+    <div className="seg shrink-0 text-[11px] tracking-wide">
       <button
         type="button"
         onClick={() => setSkill("simple")}
-        className={`h-8 min-h-8 px-2.5 text-[11px] font-medium tracking-wide ${
-          skill === "simple" ? "rounded-full bg-accent/15 text-accent ring-1 ring-accent/40" : "text-muted"
-        }`}
+        className={`seg-item h-8 min-h-8 px-2.5 ${skill === "simple" ? "seg-item-on" : ""}`}
       >
         Amateur
       </button>
       <button
         type="button"
         onClick={() => setSkill("pro")}
-        className={`h-8 min-h-8 px-2.5 text-[11px] font-medium tracking-wide ${
-          skill === "pro" ? "rounded-full bg-accent/15 text-accent ring-1 ring-accent/40" : "text-muted"
-        }`}
+        className={`seg-item h-8 min-h-8 px-2.5 ${skill === "pro" ? "seg-item-on" : ""}`}
       >
         Expert
       </button>

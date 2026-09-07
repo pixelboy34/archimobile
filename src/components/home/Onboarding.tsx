@@ -20,7 +20,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-end bg-bg/55 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:items-center sm:justify-center">
+    <div className="fixed inset-0 z-40 flex items-end bg-bg/60 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-[3px] sm:items-center sm:justify-center">
       <div className="panel-card w-full max-w-md p-5">
         {step === 0 && (
           <div className="rise-in">

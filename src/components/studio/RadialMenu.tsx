@@ -141,7 +141,7 @@ export function RadialMenu({
                   key={tile.id}
                   type="button"
                   onClick={() => setFolder(tile.id)}
-                  className="flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-md bg-elevated px-1 py-1.5 text-muted hover:bg-accent/10 hover:text-fg"
+                  className="flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-lg bg-elevated/80 px-1 py-1.5 text-muted ring-1 ring-border/40 hover:bg-accent/10 hover:text-fg hover:ring-accent/30"
                 >
                   <span className="flex items-center gap-0.5">
                     <Icon className="ico-live size-3.5" />
@@ -157,7 +157,7 @@ export function RadialMenu({
                 key={tile.id}
                 type="button"
                 onClick={() => onAction(tile.id)}
-                className="flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-md bg-elevated px-1 py-1.5 text-muted hover:bg-accent/10 hover:text-fg"
+                className="flex min-h-11 flex-col items-center justify-center gap-0.5 rounded-lg bg-elevated/80 px-1 py-1.5 text-muted ring-1 ring-border/40 hover:bg-accent/10 hover:text-fg hover:ring-accent/30"
               >
                 <Icon className={cn("ico-live size-3.5", tile.id === "dossier" && "text-accent")} />
                 <span className="w-full truncate text-center text-[11px] font-medium leading-tight">{tile.label}</span>

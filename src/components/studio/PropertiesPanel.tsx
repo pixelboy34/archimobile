@@ -887,7 +887,7 @@ function More({ label = "Avancé", children }: { label?: string; children: React
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="flex h-9 items-center justify-between rounded-md bg-elevated px-2.5 text-[11px] font-medium tracking-wide text-muted uppercase ring-1 ring-border/60"
+        className="more-btn flex h-9 items-center justify-between rounded-md px-2.5 text-[11px] font-medium uppercase ring-1 ring-border/50"
       >
         {label}
         <span className="font-mono text-[10px] text-accent">{open ? "−" : "+"}</span>

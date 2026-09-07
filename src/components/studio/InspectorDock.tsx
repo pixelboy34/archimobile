@@ -64,7 +64,7 @@ export function InspectorDock({
   return (
     <div
       className={cn(
-        "inspector-dock pointer-events-auto absolute z-30 flex flex-col bg-surface/92 shadow-border",
+        "inspector-dock pointer-events-auto absolute z-30 flex flex-col",
         "inset-x-0 bottom-0 border-t border-border",
         expanded ? "max-h-[min(36dvh,20rem)]" : "max-h-[min(20dvh,10.5rem)]",
         "lg:inset-x-auto lg:top-[calc(env(safe-area-inset-top)+3.15rem)] lg:right-0 lg:bottom-0 lg:w-[22rem] lg:max-h-none lg:border-t-0 lg:border-l",
@@ -86,7 +86,7 @@ export function InspectorDock({
               key={t.id}
               type="button"
               onClick={() => onTab(t.id)}
-              className={cn("seg-item h-8 min-h-8 flex-1 px-2 text-xs", tab === t.id && "seg-item-on")}
+              className={cn("seg-item relative h-8 min-h-8 flex-1 px-2 text-xs", tab === t.id && "seg-item-on")}
             >
               {t.label}
             </button>

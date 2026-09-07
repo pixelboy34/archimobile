@@ -91,7 +91,7 @@ export function HomePage() {
 
   return (
     <div className="page-grid min-h-dvh text-fg">
-      <Toaster theme="dark" position="top-center" />
+      <Toaster theme="dark" position="top-center" toastOptions={{ className: "forma-toast" }} />
       <header className="px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-4">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -99,7 +99,7 @@ export function HomePage() {
               <span className="led" />
               <p className="hud-label">Atelier 03 · noyau live</p>
             </div>
-            <h1 className="mark mt-2 text-4xl">FORMA</h1>
+            <h1 className="mark mt-2 text-[2.6rem] leading-none">FORMA</h1>
           </div>
           <div className="flex flex-col items-end gap-2">
             <div className="flex items-center gap-2">
@@ -107,18 +107,18 @@ export function HomePage() {
               <InstallBanner discreet />
               <LiveStamp />
             </div>
-            <div className="flex rounded-full border border-accent/20 bg-elevated/90 p-0.5 text-[11px] tracking-[0.12em] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+            <div className="seg text-[11px] tracking-[0.12em]">
               <button
                 type="button"
                 onClick={() => setSkill("simple")}
-                className={`h-8 rounded-full px-3 ${skill === "simple" ? "bg-accent/18 text-accent ring-1 ring-accent/40" : "text-muted"}`}
+                className={`seg-item h-8 px-3 ${skill === "simple" ? "seg-item-on" : ""}`}
               >
                 Amateur
               </button>
               <button
                 type="button"
                 onClick={() => setSkill("pro")}
-                className={`h-8 rounded-full px-3 ${skill === "pro" ? "bg-accent/18 text-accent ring-1 ring-accent/40" : "text-muted"}`}
+                className={`seg-item h-8 px-3 ${skill === "pro" ? "seg-item-on" : ""}`}
               >
                 Expert
               </button>
@@ -144,7 +144,7 @@ export function HomePage() {
       <div className="mt-4 flex flex-wrap gap-2 px-5">
         {last && (
           <Button
-            className="w-full"
+            className="h-12 w-full rounded-full text-[15px]"
             onClick={() => navigate({ to: "/studio/$projectId", params: { projectId: last.id } })}
           >
             Continuer · {last.name}
@@ -201,8 +201,10 @@ export function HomePage() {
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <p className="panel-card px-4 py-10 text-center text-sm text-muted">
-            Aucun projet. Créez une esquisse ou générez un massing.
+          <p className="panel-card px-4 py-12 text-center">
+            <span className="led mx-auto mb-3 block" />
+            <span className="font-display text-sm font-semibold text-fg">Archives vides</span>
+            <span className="mt-1.5 block text-sm text-muted">Créez une esquisse ou générez un massing.</span>
           </p>
         ) : (
           <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -223,6 +225,7 @@ export function HomePage() {
                       <span className="vf-arm vf-br" />
                     </div>
                     <div className="px-4 pt-3 pb-4">
+                      <div className="mark-line mb-2.5" />
                       <p className="font-display text-base font-semibold tracking-tight">{p.name}</p>
                       <p className="mt-0.5 text-xs text-muted">{p.meta.location}</p>
                       <p className="mt-2 font-mono text-xs text-muted tabular">
