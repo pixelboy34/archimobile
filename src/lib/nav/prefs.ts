@@ -29,5 +29,5 @@ export const DEFAULT_NAV: NavPrefs = {
   showCompass: true,
   showHud: true,
   walkSpeed: 1,
-  fov: 60,
+  fov: 48,
 };

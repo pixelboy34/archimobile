@@ -50,8 +50,8 @@ const OUTDOOR = new Set(["terrace", "patio", "garage"]);
 function AdaptiveGpu({ mobile }: { mobile: boolean }) {
   const gl = useThree((s) => s.gl);
   useEffect(() => {
-    gl.shadowMap.autoUpdate = gl.shadowMap.enabled;
-    if (mobile) gl.shadowMap.type = THREE.PCFSoftShadowMap;
+    gl.shadowMap.autoUpdate = false;
+    gl.shadowMap.type = mobile ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
   }, [gl, mobile]);
   return null;
 }
@@ -93,22 +93,24 @@ function LightRig({
   shadows,
   type,
   mobile,
+  tick,
 }: {
   lighting: Lighting;
   shadows: boolean;
   type: THREE.ShadowMapType;
   mobile: boolean;
+  tick: string;
 }) {
   const { gl, invalidate } = useThree();
   useEffect(() => {
     gl.shadowMap.enabled = shadows;
     gl.shadowMap.type = type;
-    gl.shadowMap.needsUpdate = true;
-    gl.shadowMap.autoUpdate = shadows;
+    gl.shadowMap.autoUpdate = false;
+    gl.shadowMap.needsUpdate = shadows;
     gl.toneMapping = THREE.ACESFilmicToneMapping;
     gl.toneMappingExposure = lighting.exposure;
     invalidate();
-  }, [gl, invalidate, shadows, type, lighting.exposure, mobile]);
+  }, [gl, invalidate, shadows, type, lighting.exposure, mobile, tick]);
   return null;
 }
 
@@ -340,7 +342,7 @@ export function Viewport3D({
   const horiz = Math.max(b.max.x - b.min.x, b.max.y - b.min.y, 8);
   const tall = Math.max(...project.stories.map((s) => s.elevation + s.height), 8);
   const span = Math.max(horiz, tall * 0.55);
-  const camDist = Math.max(14, Math.max(horiz, tall) * 1.05);
+  const camDist = Math.max(12, Math.max(horiz, tall) * 0.88);
   const hour = lighting.sunHour;
   const sun = useMemo(
     () =>
@@ -359,8 +361,8 @@ export function Viewport3D({
   const sunCol = sunColor(hour);
   const shadows = lighting.shadows && quality.shadows;
   const mapSize = quality.shadowMap;
-  const shadowType = THREE.PCFSoftShadowMap;
-  const half = Math.max(12, span * (quality.mobile ? 0.7 : 0.9));
+  const shadowType = quality.mobile || quality.weak ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+  const half = Math.max(10, span * (quality.mobile ? 0.58 : 0.72));
   const night = hour < 7 || hour >= 19.5;
   const sunI = lighting.sunIntensity * (night ? 0.18 : 1);
   const showInterior = interiorOn(lighting) && quality.interiorLights > 0;
@@ -376,7 +378,7 @@ export function Viewport3D({
     [quality, shadows],
   );
   const ambient = lighting.ambient;
-  const lens = fov || (quality.mobile ? 58 : 48);
+  const lens = fov || (quality.mobile ? 52 : 46);
   const camFar = Math.max(180, horiz * 8, tall * 14);
   const plotArea = project.meta.parcelle?.areaM2 ?? project.meta.plotM2;
   const plotSide = Math.sqrt(Math.max(220, plotArea ?? span * span));
@@ -395,19 +397,20 @@ export function Viewport3D({
         powerPreference: "high-performance",
         stencil: false,
         depth: true,
-        preserveDrawingBuffer: !quality.mobile,
+        preserveDrawingBuffer: false,
         precision: quality.precision,
       }}
       camera={{
-        position: [cx + camDist * 0.62, camDist * 0.48, cz + camDist * 0.62],
+        position: [cx + camDist * 0.55, camDist * 0.42, cz + camDist * 0.55],
         fov: lens,
-        near: 0.15,
+        near: 0.2,
         far: camFar,
       }}
       onCreated={({ gl }) => {
         gl.shadowMap.enabled = shadows;
-        gl.shadowMap.type = THREE.PCFSoftShadowMap;
-        gl.shadowMap.autoUpdate = shadows;
+        gl.shadowMap.type = shadowType;
+        gl.shadowMap.autoUpdate = false;
+        gl.shadowMap.needsUpdate = shadows;
         gl.outputColorSpace = THREE.SRGBColorSpace;
         gl.toneMapping = THREE.ACESFilmicToneMapping;
         gl.toneMappingExposure = lighting.exposure || 1;
@@ -432,9 +435,15 @@ export function Viewport3D({
       <Invalidate
         tick={`${project.updatedAt}|${selectedIds.join(",")}|${hour}|${clipY}|${view}|${lighting.month}|${lighting.sunIntensity}|${lighting.fill}|${lighting.ambient}|${lighting.hemi}|${lighting.exposure}|${shadows}|${lighting.shadowSoftness}|${lighting.interior}|${lighting.interiorGain}|${buildPhase}|${tool}|${draft ? "d" : ""}|${showGrid ? "g" : ""}|${isolateStory ? storyId : "all"}|${showStructure ? "st" : ""}|${orthoCam ? "o" : ""}|${fov}|${gizmoMode}`}
       />
-      <LightRig lighting={lighting} shadows={shadows} type={shadowType} mobile={quality.mobile} />
+      <LightRig
+        lighting={lighting}
+        shadows={shadows}
+        type={shadowType}
+        mobile={quality.mobile}
+        tick={`${project.updatedAt}|${hour}|${lighting.month}|${shadows}|${lighting.shadowSoftness}|${isolateStory ? storyId : "all"}`}
+      />
       <color attach="background" args={[sky]} />
-      {quality.fog && <fog attach="fog" args={[sky, Math.max(36, span * 2.0), Math.max(110, span * 5.5)]} />}
+      {quality.fog && <fog attach="fog" args={[sky, Math.max(28, span * 1.6), Math.max(80, span * 4.2)]} />}
       <hemisphereLight args={[night ? "#9aa4b8" : "#f2f0ea", "#4a4a40", lighting.hemi]} />
       <ambientLight intensity={ambient} />
       <directionalLight
@@ -444,7 +453,7 @@ export function Viewport3D({
         shadow-mapSize-width={mapSize}
         shadow-mapSize-height={mapSize}
         shadow-camera-near={2}
-        shadow-camera-far={Math.max(60, span * 3.2)}
+        shadow-camera-far={Math.max(48, span * 2.4)}
         shadow-camera-left={-half}
         shadow-camera-right={half}
         shadow-camera-top={half}
@@ -468,12 +477,12 @@ export function Viewport3D({
         />
       )}
       <mesh position={sun} raycast={noopRaycast}>
-          <sphereGeometry args={[1.35, 14, 14]} />
+          <sphereGeometry args={[1.1, 10, 10]} />
           <meshBasicMaterial color={sunCol} />
         </mesh>
       <mesh raycast={noopRaycast}>
-        <sphereGeometry args={[camFar * 0.48, 28, 18]} />
-        <meshBasicMaterial color={sky} side={THREE.BackSide} />
+        <sphereGeometry args={[camFar * 0.46, 16, 10]} />
+        <meshBasicMaterial color={sky} side={THREE.BackSide} fog={false} />
       </mesh>
       <BuildingScene
         project={project}

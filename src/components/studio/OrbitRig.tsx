@@ -48,15 +48,15 @@ export function OrbitRig({
   const nav = useStudio((s) => s.nav);
   const northRad = (north * Math.PI) / 180;
   const s = useRef({
-    theta: 0.7 + northRad,
-    phi: 1.05,
-    radius: Math.max(12, span * 1.25),
+    theta: 0.62 + northRad,
+    phi: 1.12,
+    radius: Math.max(10, span * 0.92),
     tx: target[0],
     ty: target[1],
     tz: target[2],
-    dTheta: 0.7 + northRad,
-    dPhi: 1.05,
-    dRadius: Math.max(12, span * 1.25),
+    dTheta: 0.62 + northRad,
+    dPhi: 1.12,
+    dRadius: Math.max(10, span * 0.92),
     dTx: target[0],
     dTy: target[1],
     dTz: target[2],
@@ -97,8 +97,8 @@ export function OrbitRig({
     const st = s.current;
 
     const applyFit = () => {
-      st.dRadius = Math.min(maxDistance, Math.max(minDistance, span * 1.35));
-      st.dPhi = 1.05;
+      st.dRadius = Math.min(maxDistance, Math.max(minDistance, span * 1.02));
+      st.dPhi = 1.12;
       st.dTheta = 0.7 + northRad;
       st.dTx = target[0];
       st.dTy = target[1];

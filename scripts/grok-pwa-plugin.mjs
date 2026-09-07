@@ -30,11 +30,7 @@ function requestHost(req) {
 
 export function renderInstallPage(hostHeader, url = "/") {
   const template = readFileSync(INSTALL_PAGE_PATH, "utf8");
-  return renderInstallPageHtml(template, {
-    host: hostHeader,
-    url,
-    site: snapshotOgIdentity(process.cwd()).site,
-  });
+  return renderInstallPageHtml(template, { host: hostHeader, url });
 }
 
 function sendHtml(res, html) {
@@ -46,7 +42,7 @@ function sendHtml(res, html) {
   res.end(body);
 }
 
-function serveGrokPwa(middlewares, cwd = process.cwd()) {
+function serveGrokPwa(middlewares) {
   middlewares.use((req, res, next) => {
     const rawUrl = req.url ?? "";
     const pathOnly = rawUrl.split("?", 1)[0] ?? "";
@@ -57,8 +53,7 @@ function serveGrokPwa(middlewares, cwd = process.cwd()) {
     }
 
     if (pathOnly === "/__grok/manifest.webmanifest" || pathOnly === "/__grok/manifest.json") {
-      const site = snapshotOgIdentity(cwd).site;
-      const body = Buffer.from(renderWebManifest(requestHost(req), site, cwd), "utf8");
+      const body = Buffer.from(renderWebManifest(requestHost(req)), "utf8");
       res.statusCode = 200;
       res.setHeader("content-type", "application/manifest+json; charset=utf-8");
       res.setHeader("cache-control", "no-cache");
@@ -179,11 +174,11 @@ export function grokPwaPlugin() {
     configureServer(server) {
       // Registered directly (not in a returned post-hook) so both run BEFORE
       // TanStack Start's SSR middleware, like the auth-popup plugin.
-      serveGrokPwa(server.middlewares, root);
+      serveGrokPwa(server.middlewares);
       wrapHtmlResponses(server.middlewares, root);
     },
     configurePreviewServer(server) {
-      serveGrokPwa(server.middlewares, root);
+      serveGrokPwa(server.middlewares);
       // Post-hook: preview registers compression between the direct hooks and
       // the post-hooks, and the injector must wrap AFTER compression so it
       // sees plaintext HTML (compression then compresses the injected output).
