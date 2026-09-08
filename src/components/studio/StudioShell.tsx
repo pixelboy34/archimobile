@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
   ChevronLeft,
   Building2,
@@ -49,6 +49,7 @@ const WORKSPACES: { id: WorkspaceMode; label: string }[] = [
 ];
 
 export function StudioShell({ projectId }: { projectId: string }) {
+  const navigate = useNavigate();
   const hydrated = useStudio((s) => s.hydrated);
   const openProject = useStudio((s) => s.openProject);
   const current = useStudio((s) => s.projects.find((p) => p.id === projectId) ?? s.current());
@@ -117,8 +118,19 @@ export function StudioShell({ projectId }: { projectId: string }) {
   };
 
   useEffect(() => {
-    useStudio.getState().setHydrated(true);
-  }, []);
+    const s = useStudio.getState();
+    s.setHydrated(true);
+    const hit = s.projects.find((p) => p.id === projectId);
+    if (hit) {
+      if (s.currentId !== projectId) s.openProject(projectId);
+      return;
+    }
+    const fallback = s.current() ?? s.projects[0];
+    if (fallback) {
+      s.openProject(fallback.id);
+      void navigate({ to: "/studio/$projectId", params: { projectId: fallback.id }, replace: true });
+    }
+  }, [projectId, navigate]);
 
   useEffect(() => {
     const on = () => setInspector("rendu");
@@ -179,11 +191,6 @@ export function StudioShell({ projectId }: { projectId: string }) {
       window.clearTimeout(timer);
     };
   }, [view, projectId]);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    openProject(projectId);
-  }, [hydrated, projectId, openProject]);
 
   // Deep link: /?collab=CODE → open Collab sheet + join once hydrated
   useEffect(() => {

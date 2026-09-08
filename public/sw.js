@@ -1,5 +1,5 @@
 /* FORMA offline shell — custom SW (no Workbox). Do not cache live APIs. */
-const CACHE = "forma-shell-v1";
+const CACHE = "forma-shell-v2";
 const PRECACHE = [
   "/",
   "/favicon.svg",

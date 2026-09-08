@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { CopilotPanel } from "@/components/studio/CopilotPanel";
-import { Onboarding, markOnboarded, shouldOnboard } from "@/components/home/Onboarding";
 import { InstallBanner } from "@/components/pwa/InstallBanner";
 import { PwaStatusChip } from "@/components/pwa/PwaStatusChip";
 import { OfflineMaquettesPanel } from "@/components/pwa/OfflineMaquettesPanel";
@@ -33,17 +32,10 @@ export function HomePage() {
   const [q, setQ] = useState("");
   const [aiOpen, setAiOpen] = useState(false);
   const [offlineOpen, setOfflineOpen] = useState(false);
-  const [onboard, setOnboard] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     useStudio.getState().setHydrated(true);
-    const hasWork = useStudio.getState().projects.length > 0;
-    if (hasWork) {
-      markOnboarded();
-      return;
-    }
-    if (shouldOnboard()) setOnboard(true);
   }, []);
 
   // Deep link: /?collab=CODE → open a project studio so StudioShell can join
@@ -297,7 +289,6 @@ export function HomePage() {
         </SheetContent>
       </Sheet>
       <InstallBanner />
-      {onboard && <Onboarding onDone={() => setOnboard(false)} />}
     </div>
   );
 }

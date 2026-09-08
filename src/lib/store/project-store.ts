@@ -441,9 +441,10 @@ export const useStudio = create<StudioState>()(
       },
       openProject: (id) => {
         const p = get().projects.find((x) => x.id === id);
+        if (!p) return;
         set({
           currentId: id,
-          storyId: p?.stories[0]?.id ?? null,
+          storyId: p.stories[0]?.id ?? null,
           history: [],
           future: [],
           selectedIds: [],
@@ -1605,7 +1606,9 @@ export const useStudio = create<StudioState>()(
             window: { ...DEFAULT_OPENING_DRAFT.window, ...(p?.openingDraft?.window ?? {}) },
           },
           furnitureKind: p?.furnitureKind ?? current.furnitureKind,
-          currentId: p?.currentId ?? current.currentId,
+          currentId: projects.some((x) => x.id === (p?.currentId ?? current.currentId))
+            ? (p?.currentId ?? current.currentId)
+            : (projects[0]?.id ?? null),
           snap: p?.snap ?? current.snap,
           snapStep: p?.snapStep ?? current.snapStep,
           grid: p?.grid ?? current.grid,
@@ -1626,8 +1629,10 @@ export const useStudio = create<StudioState>()(
       },
       onRehydrateStorage: () => (state) => {
         state?.setHydrated(true);
-        if (state && state.projects.length === 0) {
-          state.projects = seedProjects();
+        if (!state) return;
+        if (state.projects.length === 0) state.projects = seedProjects();
+        if (!state.projects.some((p) => p.id === state.currentId)) {
+          state.currentId = state.projects[0]?.id ?? null;
         }
       },
     },
