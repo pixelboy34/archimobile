@@ -89,6 +89,7 @@ export function InspectorDock({
               className={cn("seg-item relative h-8 min-h-8 flex-1 px-2 text-xs", tab === t.id && "seg-item-on")}
             >
               {t.label}
+              {tab === t.id && <span className="tab-underline" />}
             </button>
           ))}
         </div>

@@ -24,13 +24,13 @@ export function SheetContent({
 }) {
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-bg/40 backdrop-blur-[2px] data-[state=open]:animate-in data-[state=closed]:animate-out" />
+      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-bg/55 data-[state=open]:animate-in data-[state=closed]:animate-out" />
       <DialogPrimitive.Content
         className={cn(
           "fixed z-50 flex flex-col border-border bg-surface/96 text-fg shadow-border",
           "data-[state=open]:animate-in data-[state=closed]:animate-out",
           side === "bottom" &&
-            "inset-x-0 bottom-0 max-h-[min(46dvh,26rem)] overflow-hidden rounded-t-2xl border-t border-accent/25 pb-[env(safe-area-inset-bottom)]",
+            "inset-x-0 bottom-0 max-h-[min(46dvh,26rem)] overflow-hidden rounded-t-[1.25rem] border-t pb-[env(safe-area-inset-bottom)]",
           side === "right" &&
             "inset-y-0 right-0 h-full w-full max-w-md overflow-hidden border-l sm:max-w-sm",
           tall && side === "bottom" && !half && "max-h-[min(52dvh,30rem)]",

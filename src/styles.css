@@ -6,40 +6,37 @@
   --font-display: "Syne", "Outfit", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
 
-  /* Void + glass hierarchy — cyan brand, violet rings only */
-  --color-bg: #02060a;
-  --color-surface: #071018;
-  --color-elevated: #0c1822;
-  --color-fg: #e6f5f2;
-  --color-muted: #9aafb6;
-  --color-subtle: #6d828c;
-  --color-border: #152833;
-  --color-primary: #c8f0e6;
-  --color-primary-fg: #041016;
-  --color-accent: #6ed0c3;
-  --color-accent-fg: #041016;
-  --color-ring: #7b8cff;
-  --color-danger: #d46755;
+  /* Atelier graphite — one cool accent, no violet */
+  --color-bg: #07090b;
+  --color-surface: #101418;
+  --color-elevated: #171c21;
+  --color-fg: #ece8e1;
+  --color-muted: #9aa39c;
+  --color-subtle: #6e7772;
+  --color-border: #242a2e;
+  --color-primary: #e8e4dc;
+  --color-primary-fg: #101418;
+  --color-accent: #7aa89c;
+  --color-accent-fg: #07100e;
+  --color-ring: #7aa89c;
+  --color-danger: #c46a5c;
   --color-ok: #6b9a78;
-  --color-warn: #c4a35a;
+  --color-warn: #b89a62;
 
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 14px;
-  --radius-2xl: 16px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-2xl: 22px;
 
   --shadow-border:
-    0 0 0 1px color-mix(in oklab, var(--color-accent) 32%, transparent),
-    inset 0 1px 0 color-mix(in oklab, white 6%, transparent),
-    0 16px 48px -28px rgb(0 0 0 / 0.75);
+    0 0 0 1px color-mix(in oklab, var(--color-fg) 8%, transparent),
+    0 12px 32px -24px rgb(0 0 0 / 0.55);
   --shadow-glow:
-    0 0 0 1px color-mix(in oklab, var(--color-accent) 40%, transparent),
-    0 0 24px -8px color-mix(in oklab, var(--color-accent) 35%, transparent),
-    inset 0 1px 0 color-mix(in oklab, white 8%, transparent);
+    0 0 0 1px color-mix(in oklab, var(--color-fg) 12%, transparent),
+    0 18px 40px -28px rgb(0 0 0 / 0.6);
   --shadow-ring:
-    0 0 0 1px color-mix(in oklab, var(--color-ring) 45%, transparent),
-    0 0 20px -6px color-mix(in oklab, var(--color-ring) 40%, transparent);
+    0 0 0 1px color-mix(in oklab, var(--color-accent) 40%, transparent);
 }
 
 @layer base {
@@ -65,9 +62,11 @@
     overscroll-behavior: none;
     touch-action: manipulation;
     background-color: var(--color-bg);
-    background-image:
-      radial-gradient(1200px 680px at 85% -12%, color-mix(in oklab, var(--color-accent) 10%, transparent), transparent 55%),
-      radial-gradient(900px 520px at -8% 110%, color-mix(in oklab, var(--color-ring) 8%, transparent), transparent 50%);
+    background-image: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--color-elevated) 55%, transparent) 0%,
+      transparent 42%
+    );
     background-attachment: fixed;
   }
 
@@ -117,38 +116,18 @@
 
 .page-grid {
   background-image:
-    linear-gradient(color-mix(in oklab, var(--color-accent) 6%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in oklab, var(--color-accent) 6%, transparent) 1px, transparent 1px),
-    radial-gradient(900px 520px at 100% -8%, color-mix(in oklab, var(--color-accent) 12%, transparent), transparent 62%),
-    radial-gradient(700px 420px at 0% 100%, color-mix(in oklab, var(--color-ring) 7%, transparent), transparent 55%);
-  background-size: 28px 28px, 28px 28px, auto, auto;
-  background-position: -1px -1px, -1px -1px, 0 0, 0 0;
+    linear-gradient(color-mix(in oklab, var(--color-fg) 4%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in oklab, var(--color-fg) 4%, transparent) 1px, transparent 1px);
+  background-size: 32px 32px, 32px 32px;
+  background-position: -1px -1px, -1px -1px;
 }
 
 .studio-canvas {
   touch-action: none;
   transform: translateZ(0);
   isolation: isolate;
-  box-shadow:
-    inset 0 0 0 1px color-mix(in oklab, var(--color-accent) 24%, transparent),
-    inset 0 0 80px color-mix(in oklab, var(--color-bg) 55%, transparent);
   position: absolute;
   inset: 0;
-}
-.studio-canvas::after {
-  content: "";
-  pointer-events: none;
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  opacity: 0.035;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    color-mix(in oklab, var(--color-accent) 40%, transparent) 3px
-  );
-  mix-blend-mode: soft-light;
 }
 .studio-canvas canvas {
   display: block;
@@ -167,17 +146,12 @@
 .panel-card,
 .cmd-rail,
 .hud-panel {
-  background:
-    linear-gradient(
-      165deg,
-      color-mix(in oklab, var(--color-surface) 88%, white 4%) 0%,
-      color-mix(in oklab, var(--color-surface) 94%, transparent) 100%
-    );
-  border: 1px solid color-mix(in oklab, var(--color-accent) 22%, var(--color-border));
+  background: color-mix(in oklab, var(--color-surface) 92%, transparent);
+  border: 1px solid color-mix(in oklab, var(--color-fg) 10%, transparent);
   box-shadow: var(--shadow-border);
-  backdrop-filter: blur(18px) saturate(1.15);
-  -webkit-backdrop-filter: blur(18px) saturate(1.15);
-  border-radius: var(--radius-2xl);
+  backdrop-filter: blur(16px) saturate(1.05);
+  -webkit-backdrop-filter: blur(16px) saturate(1.05);
+  border-radius: var(--radius-xl);
 }
 
 .hud-panel {
@@ -223,24 +197,18 @@
     transform 0.15s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .hud-chip-on {
-  color: var(--color-accent);
-  background: color-mix(in oklab, var(--color-accent) 14%, transparent);
-  border-color: color-mix(in oklab, var(--color-accent) 55%, transparent);
-  box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--color-accent) 30%, transparent),
-    0 0 16px -4px color-mix(in oklab, var(--color-accent) 40%, transparent),
-    inset 0 1px 0 color-mix(in oklab, white 8%, transparent);
+  color: var(--color-fg);
+  background: color-mix(in oklab, var(--color-fg) 8%, transparent);
+  border-color: color-mix(in oklab, var(--color-fg) 22%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in oklab, white 6%, transparent);
 }
 
 .led {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: 999px;
   background: var(--color-accent);
-  box-shadow:
-    0 0 8px color-mix(in oklab, var(--color-accent) 80%, transparent),
-    0 0 16px color-mix(in oklab, var(--color-ring) 35%, transparent);
-  animation: led-breathe 2.4s ease-in-out infinite;
+  opacity: 0.85;
 }
 
 .vf-arm {
@@ -313,10 +281,9 @@
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-lg);
-  background: color-mix(in oklab, var(--color-accent) 15%, transparent);
-  color: var(--color-accent);
-  box-shadow: 0 0 12px -4px color-mix(in oklab, var(--color-accent) 50%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--color-fg) 6%, transparent);
+  color: var(--color-fg);
 }
 
 /* ——— Living UI motion (respects prefers-reduced-motion above) ——— */
@@ -326,10 +293,8 @@
 }
 
 .cmd-rail-modify {
-  border-color: color-mix(in oklab, var(--color-accent) 48%, transparent);
-  box-shadow:
-    var(--shadow-glow),
-    0 0 0 1px color-mix(in oklab, var(--color-ring) 18%, transparent);
+  border-color: color-mix(in oklab, var(--color-fg) 18%, transparent);
+  box-shadow: var(--shadow-border);
 }
 
 .hud-chip {
@@ -342,7 +307,7 @@
 }
 
 .hud-chip-on {
-  animation: chip-pulse 0.55s ease-out 1;
+  animation: none;
 }
 
 .hud-chip-press {
@@ -358,12 +323,12 @@
 
 .tab-underline {
   position: absolute;
-  inset-inline: 0.5rem;
-  bottom: 0.15rem;
-  height: 2px;
+  inset-inline: 0.45rem;
+  bottom: 0.12rem;
+  height: 1.5px;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--color-accent), color-mix(in oklab, var(--color-ring) 70%, var(--color-accent)));
-  animation: underline-spring 0.35s cubic-bezier(0.34, 1.4, 0.64, 1);
+  background: var(--color-fg);
+  animation: underline-spring 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .sel-chip-pulse {
@@ -574,9 +539,9 @@
 .ico-live:hover,
 button:hover > .ico-live,
 a:hover > .ico-live {
-  transform: scale(1.08);
-  color: var(--color-accent);
-  filter: drop-shadow(0 0 6px color-mix(in oklab, var(--color-accent) 45%, transparent));
+  transform: scale(1.06);
+  color: var(--color-fg);
+  filter: none;
 }
 button:active > .ico-live,
 .ico-live:active {
@@ -614,7 +579,7 @@ button:active > .ico-live,
 .overflow-grid > button:hover {
   transform: translateY(-1px);
   color: var(--color-fg);
-  box-shadow: 0 0 16px -8px color-mix(in oklab, var(--color-accent) 50%, transparent);
+  box-shadow: none;
 }
 .overflow-grid > button:active {
   transform: scale(0.96);
@@ -633,9 +598,9 @@ button:active > .ico-live,
     box-shadow 0.22s;
 }
 .archive-card:hover {
-  transform: translateY(-3px);
-  border-color: color-mix(in oklab, var(--color-accent) 45%, var(--color-border));
-  box-shadow: var(--shadow-glow);
+  transform: translateY(-2px);
+  border-color: color-mix(in oklab, var(--color-fg) 18%, transparent);
+  box-shadow: var(--shadow-border);
 }
 
 .studio-canvas.is-sculpting .view-bar,
@@ -685,16 +650,11 @@ button:active > .ico-live,
 }
 
 .inspector-dock {
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in oklab, var(--color-surface) 92%, white 3%) 0%,
-      color-mix(in oklab, var(--color-surface) 96%, transparent) 100%
-    );
-  border-color: color-mix(in oklab, var(--color-accent) 22%, var(--color-border));
+  background: color-mix(in oklab, var(--color-surface) 94%, transparent);
+  border-color: color-mix(in oklab, var(--color-fg) 10%, transparent);
   box-shadow: var(--shadow-border);
-  backdrop-filter: blur(22px) saturate(1.2);
-  -webkit-backdrop-filter: blur(22px) saturate(1.2);
+  backdrop-filter: blur(18px) saturate(1.05);
+  -webkit-backdrop-filter: blur(18px) saturate(1.05);
 }
 
 .resources-peek {
@@ -710,8 +670,8 @@ button:active > .ico-live,
 }
 .more-btn:hover,
 .more-btn[aria-expanded="true"] {
-  color: var(--color-accent);
-  background: color-mix(in oklab, var(--color-accent) 10%, var(--color-elevated));
+  color: var(--color-fg);
+  background: color-mix(in oklab, var(--color-fg) 8%, var(--color-elevated));
 }
 
 .seg {
@@ -719,9 +679,9 @@ button:active > .ico-live,
   background: color-mix(in oklab, var(--color-bg) 55%, transparent);
 }
 .seg-item-on {
-  background: color-mix(in oklab, var(--color-accent) 14%, transparent);
-  color: var(--color-accent);
-  box-shadow: inset 0 1px 0 color-mix(in oklab, white 8%, transparent);
+  background: color-mix(in oklab, var(--color-fg) 10%, transparent);
+  color: var(--color-fg);
+  box-shadow: none;
 }
 
 .vf-arm {
@@ -749,10 +709,10 @@ button:active > .ico-live,
 }
 
 .sheet-handle {
-  width: 2.4rem;
+  width: 2.25rem;
   height: 3px;
   border-radius: 99px;
-  background: color-mix(in oklab, var(--color-accent) 55%, transparent);
+  background: color-mix(in oklab, var(--color-fg) 22%, transparent);
 }
 
 input[type="range"]::-webkit-slider-runnable-track {
@@ -767,21 +727,17 @@ input[type="range"]::-webkit-slider-thumb {
   height: 14px;
   margin-top: -5.5px;
   border-radius: 99px;
-  background: var(--color-accent);
-  box-shadow: 0 0 10px color-mix(in oklab, var(--color-accent) 55%, transparent);
+  background: var(--color-fg);
+  box-shadow: none;
   border: 0;
 }
 
 .archive-card {
-  background:
-    linear-gradient(
-      165deg,
-      color-mix(in oklab, var(--color-surface) 90%, white 4%) 0%,
-      var(--color-surface) 100%
-    );
+  background: var(--color-surface);
+  border-radius: var(--radius-xl);
 }
 .archive-card .mark-line {
   height: 1px;
-  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--color-accent) 45%, transparent), transparent);
+  background: color-mix(in oklab, var(--color-fg) 12%, transparent);
 }
 

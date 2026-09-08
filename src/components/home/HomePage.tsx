@@ -95,11 +95,8 @@ export function HomePage() {
       <header className="px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="led" />
-              <p className="hud-label">Atelier 03 · noyau live</p>
-            </div>
-            <h1 className="mark mt-2 text-[2.6rem] leading-none">FORMA</h1>
+            <p className="hud-label">Atelier</p>
+            <h1 className="mark mt-3 text-[2.4rem] leading-none">FORMA</h1>
           </div>
           <div className="flex flex-col items-end gap-2">
             <div className="flex items-center gap-2">
@@ -125,10 +122,10 @@ export function HomePage() {
             </div>
           </div>
         </div>
-        <p className="mt-3 max-w-md text-[15px] leading-relaxed text-muted">
+        <p className="mt-4 max-w-sm text-sm leading-relaxed text-muted">
           {skill === "simple"
-            ? "Le volume suit le doigt. Posez un mur, laissez l’IA concevoir."
-            : "Maquette 3D, relevé, 4D et métré. Le modèle est le chantier."}
+            ? "Le volume suit le doigt. Posez un mur, ouvrez le 3D."
+            : "Maquette, relevé, 4D et métré. Un seul modèle."}
         </p>
       </header>
 
@@ -182,7 +179,7 @@ export function HomePage() {
 
       <section className="mt-8 px-5 pb-24">
         <div className="mb-3 flex items-end justify-between">
-          <h2 className="font-display text-sm font-semibold tracking-wide text-fg">Archives</h2>
+          <h2 className="hud-label">Archives</h2>
           <button
             type="button"
             className="text-xs text-subtle"
@@ -225,10 +222,9 @@ export function HomePage() {
                       <span className="vf-arm vf-br" />
                     </div>
                     <div className="px-4 pt-3 pb-4">
-                      <div className="mark-line mb-2.5" />
-                      <p className="font-display text-base font-semibold tracking-tight">{p.name}</p>
-                      <p className="mt-0.5 text-xs text-muted">{p.meta.location}</p>
-                      <p className="mt-2 font-mono text-xs text-muted tabular">
+                      <p className="hud-label">{p.meta.location || "Sans lieu"}</p>
+                      <p className="mt-1.5 font-display text-[1.05rem] font-semibold tracking-tight">{p.name}</p>
+                      <p className="mt-2 font-mono text-[11px] text-muted tabular">
                         {formatArea(a.netArea)} · {p.stories.length} niv. · {p.rooms.length} pièces
                       </p>
                     </div>

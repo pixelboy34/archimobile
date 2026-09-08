@@ -26,7 +26,7 @@ export function PlanThumbnail({
       aria-hidden
       preserveAspectRatio="xMidYMid meet"
     >
-      <rect width={w} height={h} fill="#141412" />
+      <rect width={w} height={h} fill="var(--color-elevated)" />
       {rooms.map((r) => {
         const xs = r.polygon.map((p) => p.x);
         const ys = r.polygon.map((p) => p.y);
@@ -51,8 +51,8 @@ export function PlanThumbnail({
           y1={h - (wall.a.y - oy)}
           x2={wall.b.x - ox}
           y2={h - (wall.b.y - oy)}
-          stroke="#e8e4d9"
-          strokeWidth={0.18}
+          stroke="var(--color-fg)"
+          strokeWidth={0.16}
           strokeLinecap="square"
         />
       ))}
