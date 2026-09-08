@@ -1,7 +1,7 @@
 import { Maximize2, RotateCcw, RotateCw, Settings2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useStudio } from "@/lib/store/project-store";
-import { dispatchCam } from "./OrbitRig";
+import { dispatchCam } from "@/lib/viewport/cam";
 
 export function NavPad({ docked = false }: { docked?: boolean }) {
   const north = useStudio(

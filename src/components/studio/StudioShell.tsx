@@ -25,7 +25,7 @@ import { NavPad } from "./NavPad";
 import { InstallBanner } from "@/components/pwa/InstallBanner";
 import { OfflineMaquettesPanel } from "@/components/pwa/OfflineMaquettesPanel";
 import { RadialMenu, type OverflowAction } from "./RadialMenu";
-import { dispatchCam } from "./OrbitRig";
+import { dispatchCam } from "@/lib/viewport/cam";
 import { StructurePanel } from "./StructurePanel";
 import { Plan2D } from "./Plan2D";
 import { InspectorDock } from "./InspectorDock";

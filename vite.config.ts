@@ -240,6 +240,7 @@ export default defineConfig(({ command, isPreview }) => ({
     host: "0.0.0.0",
     port: 8080,
     strictPort: true,
+    hmr: { overlay: false },
   },
   preview: {
     host: "127.0.0.1",

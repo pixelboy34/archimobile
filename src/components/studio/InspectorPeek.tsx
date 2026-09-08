@@ -3,7 +3,7 @@ import { FURNITURE_LABELS, ROOM_LABELS } from "@/lib/bim/types";
 import { polygonCentroid, wallLength, wallMid } from "@/lib/bim/geometry";
 import { formatMeters } from "@/lib/utils";
 import { useStudio } from "@/lib/store/project-store";
-import { dispatchCam } from "./OrbitRig";
+import { dispatchCam } from "@/lib/viewport/cam";
 
 export function InspectorPeek({ onOpen }: { onOpen: () => void }) {
   const project = useStudio((s) => s.projects.find((p) => p.id === s.currentId) ?? null);

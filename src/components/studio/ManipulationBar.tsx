@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { deliverDossier } from "@/lib/bim/dossier";
 import { useStudio } from "@/lib/store/project-store";
-import { dispatchCam } from "./OrbitRig";
+import { dispatchCam } from "@/lib/viewport/cam";
 
 /** Legacy context row — drawing toggles owned by CommandOrb; isolate by ViewBar/Étages. */
 export function ManipulationBar({

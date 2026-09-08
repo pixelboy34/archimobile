@@ -2,15 +2,8 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { useStudio } from "@/lib/store/project-store";
+import { dispatchCam, type CamCommand } from "@/lib/viewport/cam";
 import { isOrbitLocked } from "@/lib/viewport/orbit-lock";
-
-export type CamCommand =
-  | { kind: "iso" | "top" | "front" | "right" | "left" | "back" | "fit" | "north" | "yawL" | "yawR" }
-  | { kind: "focus"; x: number; y: number; z: number; radius?: number };
-
-export function dispatchCam(cmd: CamCommand) {
-  window.dispatchEvent(new CustomEvent<CamCommand>("forma-cam", { detail: cmd }));
-}
 
 const _fwd = new THREE.Vector3();
 const _right = new THREE.Vector3();
