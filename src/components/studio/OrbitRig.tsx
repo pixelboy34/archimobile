@@ -2,8 +2,10 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { useStudio } from "@/lib/store/project-store";
-import { dispatchCam, type CamCommand } from "@/lib/viewport/cam";
-import { isOrbitLocked } from "@/lib/viewport/orbit-lock";
+import { dispatchCam, type CamCommand } from "../../lib/viewport/cam";
+import { isOrbitLocked } from "../../lib/viewport/orbit-lock";
+
+export { dispatchCam, type CamCommand } from "../../lib/viewport/cam";
 
 const _fwd = new THREE.Vector3();
 const _right = new THREE.Vector3();

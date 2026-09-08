@@ -741,3 +741,8 @@ input[type="range"]::-webkit-slider-thumb {
   background: color-mix(in oklab, var(--color-fg) 12%, transparent);
 }
 
+
+
+vite-error-overlay {
+  display: none !important;
+}
