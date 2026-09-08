@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { CopilotPanel } from "@/components/studio/CopilotPanel";
-import { Onboarding, shouldOnboard } from "@/components/home/Onboarding";
+import { Onboarding, markOnboarded, shouldOnboard } from "@/components/home/Onboarding";
 import { InstallBanner } from "@/components/pwa/InstallBanner";
 import { PwaStatusChip } from "@/components/pwa/PwaStatusChip";
 import { OfflineMaquettesPanel } from "@/components/pwa/OfflineMaquettesPanel";
@@ -38,6 +38,11 @@ export function HomePage() {
 
   useEffect(() => {
     useStudio.getState().setHydrated(true);
+    const hasWork = useStudio.getState().projects.length > 0;
+    if (hasWork) {
+      markOnboarded();
+      return;
+    }
     if (shouldOnboard()) setOnboard(true);
   }, []);
 

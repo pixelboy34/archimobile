@@ -91,24 +91,12 @@ export function createStyledMaterial(
   const glassLike = style.texture === "glass" || style.texture === "water";
   const mat = lambert
     ? new THREE.MeshLambertMaterial(common)
-    : glassLike
-      ? new THREE.MeshPhysicalMaterial({
-          ...common,
-          roughness: style.roughness,
-          metalness: style.metalness,
-          transmission: style.texture === "glass" ? 0.62 : 0.28,
-          thickness: style.texture === "glass" ? 0.05 : 0.18,
-          ior: style.texture === "water" ? 1.33 : 1.5,
-          envMapIntensity: 1.15,
-          attenuationColor: style.color,
-          attenuationDistance: style.texture === "water" ? 2.4 : 4,
-        })
-      : new THREE.MeshStandardMaterial({
-          ...common,
-          roughness: style.roughness,
-          metalness: style.metalness,
-          envMapIntensity: style.metalness > 0.4 ? 1.2 : 0.72,
-        });
+    : new THREE.MeshStandardMaterial({
+        ...common,
+        roughness: glassLike ? Math.min(style.roughness, 0.12) : style.roughness,
+        metalness: glassLike ? 0.12 : style.metalness,
+        envMapIntensity: glassLike || style.metalness > 0.4 ? 1.15 : 0.72,
+      });
   if (map) {
     attachWorldUVs(mat, invScale);
     mat.userData.invScaleAttached = true;
@@ -124,10 +112,8 @@ export function syncMaterial(mat: THREE.Material, style: MaterialStyle, texSize:
   if ("roughness" in m) m.roughness = style.roughness;
   if ("metalness" in m) m.metalness = style.metalness;
   if ("envMapIntensity" in m) {
-    m.envMapIntensity = style.texture === "glass" || style.texture === "water" ? 1.15 : style.metalness > 0.4 ? 1.2 : 0.72;
-  }
-  if ("transmission" in m) {
-    (m as THREE.MeshPhysicalMaterial).transmission = style.texture === "glass" ? 0.62 : style.texture === "water" ? 0.28 : 0;
+    const glassLike = style.texture === "glass" || style.texture === "water";
+    m.envMapIntensity = glassLike || style.metalness > 0.4 ? 1.15 : 0.72;
   }
   m.opacity = style.opacity;
   m.transparent = style.transparent;

@@ -93,22 +93,29 @@ function StudioEnv({ sky, gain }: { sky: string; gain: number }) {
   const gl = useThree((s) => s.gl);
   const invalidate = useThree((s) => s.invalidate);
   useEffect(() => {
-    const pmrem = new THREE.PMREMGenerator(gl);
-    const env = new THREE.Scene();
-    const geo = new THREE.SphereGeometry(8, 16, 10);
-    const mat = new THREE.MeshBasicMaterial({ color: sky, side: THREE.BackSide });
-    env.add(new THREE.Mesh(geo, mat));
-    env.add(new THREE.HemisphereLight("#f3f0e8", "#6a5e50", 1));
-    const rt = pmrem.fromScene(env, 0.06);
-    scene.environment = rt.texture;
-    if ("environmentIntensity" in scene) scene.environmentIntensity = gain;
-    geo.dispose();
-    mat.dispose();
-    pmrem.dispose();
-    invalidate();
+    let rt: THREE.WebGLRenderTarget | null = null;
+    try {
+      const pmrem = new THREE.PMREMGenerator(gl);
+      const env = new THREE.Scene();
+      const geo = new THREE.SphereGeometry(8, 16, 10);
+      const mat = new THREE.MeshBasicMaterial({ color: sky, side: THREE.BackSide });
+      env.add(new THREE.Mesh(geo, mat));
+      env.add(new THREE.HemisphereLight("#f3f0e8", "#6a5e50", 1));
+      rt = pmrem.fromScene(env, 0.06);
+      scene.environment = rt.texture;
+      if ("environmentIntensity" in scene) scene.environmentIntensity = gain;
+      geo.dispose();
+      mat.dispose();
+      pmrem.dispose();
+      invalidate();
+    } catch {
+      scene.environment = null;
+    }
     return () => {
-      rt.dispose();
-      if (scene.environment === rt.texture) scene.environment = null;
+      if (rt) {
+        if (scene.environment === rt.texture) scene.environment = null;
+        rt.dispose();
+      }
     };
   }, [gl, scene, sky, gain, invalidate]);
   return null;
@@ -526,7 +533,7 @@ export function Viewport3D({
         showStructure={showStructure}
       />
       <Ground size={site} shadows={shadows} plot={plotSide} cx={cx} cz={cz} parcelRing={project.meta.parcelle?.ring} />
-      {!quality.weak && !walking && (
+      {!quality.weak && !quality.mobile && !walking && (
         <ContactShadows
           position={[cx, elev + 0.015, cz]}
           opacity={night ? 0.22 : 0.38}
