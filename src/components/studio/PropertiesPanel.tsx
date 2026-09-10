@@ -99,8 +99,20 @@ export function PropertiesPanel({
   const deleteSelected = useStudio((s) => s.deleteSelected);
   const renameCurrent = useStudio((s) => s.renameCurrent);
   const patchMeta = useStudio((s) => s.patchMeta);
-  if (!project) return null;
   const id = selectedIds[0];
+  const hasEl = Boolean(id);
+  // Les deux hooks ci-dessous precedent le garde-fou `!project` : place apres,
+  // ils disparaissaient du rendu des que le projet courant devenait nul
+  // (suppression du projet, import, reset collab) et React levait
+  // « Rendered fewer hooks than expected », ecran blanc sur tout le studio.
+  const [tabLocal, setTabLocal] = useState<ParamsTab>(hasEl ? "ouvrage" : "niveaux");
+  const tab = tabProp ?? tabLocal;
+  const setTab = onTab ?? setTabLocal;
+  useEffect(() => {
+    if (tabProp) return;
+    if (hasEl) setTabLocal("ouvrage");
+  }, [hasEl, tabProp]);
+  if (!project) return null;
   const wall = project.walls.find((w) => w.id === id);
   const room = project.rooms.find((r) => r.id === id);
   const furn = project.furniture.find((f) => f.id === id);
@@ -109,14 +121,6 @@ export function PropertiesPanel({
   const stair = project.stairs.find((st) => st.id === id);
   const slab = project.slabs.find((s) => s.id === id);
   const roof = project.roofs.find((r) => r.id === id);
-  const hasEl = Boolean(id);
-  const [tabLocal, setTabLocal] = useState<ParamsTab>(hasEl ? "ouvrage" : "niveaux");
-  const tab = tabProp ?? tabLocal;
-  const setTab = onTab ?? setTabLocal;
-  useEffect(() => {
-    if (tabProp) return;
-    if (hasEl) setTabLocal("ouvrage");
-  }, [hasEl, tabProp]);
 
   return (
     <div className="flex flex-col gap-2">

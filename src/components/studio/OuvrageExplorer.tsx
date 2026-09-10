@@ -49,13 +49,26 @@ export function OuvrageExplorer() {
     if (!project || !selectedIds[0]) return;
     setFamily(detectFamily(project, selectedIds[0]));
   }, [project, selectedIds]);
-  if (!project) return null;
 
-  const activeStory = storyId ?? project.stories[0]?.id;
-  const storyLabel = (id: string) => project.stories.find((s) => s.id === id)?.name ?? "";
+  // Le garde-fou `!project` est descendu sous les deux useMemo : place au-dessus,
+  // il supprimait des hooks entre deux rendus (« Rendered fewer hooks than
+  // expected ») des que le projet courant disparaissait.
+  const activeStory = storyId ?? project?.stories[0]?.id;
 
   const counts = useMemo(() => {
     const on = (sid: string) => !levelOnly || sid === activeStory;
+    if (!project) {
+      return {
+        walls: 0,
+        openings: 0,
+        rooms: 0,
+        slabs: 0,
+        roofs: 0,
+        columns: 0,
+        stairs: 0,
+        furniture: 0,
+      };
+    }
     return {
       walls: project.walls.filter((w) => on(w.storyId)).length,
       openings: project.openings.filter((o) => {
@@ -73,6 +86,7 @@ export function OuvrageExplorer() {
 
   const rows = useMemo(() => {
     const on = (sid: string) => !levelOnly || sid === activeStory;
+    if (!project) return [];
     if (family === "walls") {
       return project.walls.filter((w) => on(w.storyId)).map((w) => ({
         id: w.id,
@@ -162,6 +176,9 @@ export function OuvrageExplorer() {
       meta: `${f.w.toFixed(2)} × ${f.d.toFixed(2)} · ${storyLabel(f.storyId)}`,
     }));
   }, [project, family, levelOnly, activeStory]);
+
+  if (!project) return null;
+  const storyLabel = (id: string) => project.stories.find((s) => s.id === id)?.name ?? "";
 
   const selected = selectedIds[0];
 

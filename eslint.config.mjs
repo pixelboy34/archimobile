@@ -14,6 +14,9 @@ export default tseslint.config(
       ".vercel/**",
       ".nitro/**",
       "node_modules/**",
+      // Ancien fork Vite CAD (depot git distinct, remplace par 886a105), laisse
+      // en place par un script .bat et imbrique ici : il triplait les erreurs.
+      "archimobile/**",
       "src/routeTree.gen.ts",
     ],
   },

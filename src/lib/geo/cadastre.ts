@@ -128,11 +128,10 @@ export async function fetchParcelleByRef(ref: {
   const data = await fetchJson<CadastreCollection>(url);
   const features = data.features ?? [];
   if (features.length === 0) return null;
-  // Prefer exact arr match when several AM0028 exist across Paris arrs
-  let feature = features[0]!;
-  if (!ref.codeArr && features.length > 1) {
-    // keep first; caller should use point lookup when possible
-  }
+  // La meme section/numero existe d'un arrondissement a l'autre (AM0028 a Paris) :
+  // sans code d'arrondissement on garde la premiere, l'appelant devant preferer
+  // la recherche par point des qu'il dispose de coordonnees.
+  const feature = features[0]!;
   return featureToParcelle(feature);
 }
 

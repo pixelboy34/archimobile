@@ -14,3 +14,13 @@ dist/
 .grok/status
 .grok/skills/
 .grok/references/
+
+# Ancien fork Vite CAD laisse imbriqué ici par un script .bat (dépôt git distinct).
+archimobile/
+
+# Journaux et lanceurs locaux Windows
+*.bat
+dev-err.txt
+dev-log.txt
+install-log.txt
+pull-log.txt

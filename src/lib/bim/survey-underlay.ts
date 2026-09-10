@@ -346,7 +346,6 @@ export function extractStrokesFromImageData(
   const maxDim = opts?.maxDim ?? 640;
   const { width: ow, height: oh } = data;
   const factor = Math.min(1, maxDim / Math.max(ow, oh));
-  let gray: Float32Array;
   let w = ow;
   let h = oh;
   let work: ImageData = data;
@@ -372,7 +371,7 @@ export function extractStrokesFromImageData(
     work = new ImageData(dst, w, h);
   }
 
-  gray = boxBlur3(imageDataToGray(work), w, h);
+  const gray = boxBlur3(imageDataToGray(work), w, h);
   const mag = sobelMagnitude(gray, w, h);
   const mask = thresholdEdges(mag, 0.9);
   let edgeCount = 0;
