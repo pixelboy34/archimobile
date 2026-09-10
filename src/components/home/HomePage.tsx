@@ -90,16 +90,25 @@ export function HomePage() {
     <div className="page-grid min-h-dvh text-fg">
       <Toaster theme="dark" position="top-center" toastOptions={{ className: "forma-toast" }} />
       <header className="px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
+        {/* flex-wrap : sur un 375 px le bandeau debordait de 13 px avec la seule
+            horloge, et la pastille « Installé / Hors ligne » n'apparait que sur
+            l'appareil — donc jamais au bureau, ou le defaut se voyait le moins.
+            Le bloc de droite passe a la ligne plutot que de sortir de l'ecran. */}
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
             <p className="hud-label">Atelier</p>
-            <h1 className="mark mt-3 text-[2.4rem] leading-none">FORMA</h1>
+            <h1 className="mark mt-3 text-[clamp(1.75rem,9vw,2.4rem)] leading-none">FORMA</h1>
           </div>
-          <div className="flex flex-col items-end gap-2">
-            <div className="flex items-center gap-2">
+          <div className="ml-auto flex min-w-0 flex-col items-end gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <PwaStatusChip />
               <InstallBanner discreet />
-              <LiveStamp />
+              {/* L'horloge est decorative : elle cede la place aux pastilles
+                  d'etat sur telephone, et cesse de re-rendre l'accueil chaque
+                  seconde la ou la batterie compte. */}
+              <span className="hidden sm:block">
+                <LiveStamp />
+              </span>
             </div>
             <div className="seg text-[11px] tracking-[0.12em]">
               <button

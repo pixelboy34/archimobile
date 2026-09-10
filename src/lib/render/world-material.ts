@@ -80,13 +80,17 @@ export function createStyledMaterial(
 ): THREE.Material {
   const map = mapFor(style.texture, texSize);
   const invScale = { value: 1 / Math.max(style.scale, 0.05) };
+  // La cle `precision` est omise plutot que posee a undefined : Three inspecte
+  // les cles presentes et journalisait « parameter 'precision' has value of
+  // undefined » pour chaque materiau, soit une trentaine de lignes a chaque
+  // reconstruction de scene — assez pour noyer une vraie erreur.
   const common = {
     color: style.color,
     transparent: style.transparent,
     opacity: style.opacity,
     depthWrite: !style.transparent,
     map,
-    precision: lambert ? ("mediump" as const) : undefined,
+    ...(lambert ? { precision: "mediump" as const } : {}),
   };
   const glassLike = style.texture === "glass" || style.texture === "water";
   const mat = lambert

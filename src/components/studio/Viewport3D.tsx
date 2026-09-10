@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
-import { ContactShadows, OrthographicCamera } from "@react-three/drei";
+import { OrthographicCamera } from "@react-three/drei";
 import * as THREE from "three";
 import { BuildingScene, Ground, sunPosition } from "./BuildingScene";
 import { OrbitRig } from "./OrbitRig";
@@ -101,7 +101,11 @@ function StudioEnv({ sky, gain }: { sky: string; gain: number }) {
       const mat = new THREE.MeshBasicMaterial({ color: sky, side: THREE.BackSide });
       env.add(new THREE.Mesh(geo, mat));
       env.add(new THREE.HemisphereLight("#f3f0e8", "#6a5e50", 1));
-      rt = pmrem.fromScene(env, 0.06);
+      // 0.06 rad demandait 30 echantillons de flou alors que Three en plafonne
+      // 20 : le flou etait rogne en silence et l'avertissement revenait a chaque
+      // changement de ciel. 0.04 est la plus forte valeur qui tienne dans la
+      // limite, sur une sphere de couleur unie ou l'ecart est imperceptible.
+      rt = pmrem.fromScene(env, 0.04);
       scene.environment = rt.texture;
       if ("environmentIntensity" in scene) scene.environmentIntensity = gain;
       geo.dispose();
@@ -533,18 +537,11 @@ export function Viewport3D({
         showStructure={showStructure}
       />
       <Ground size={site} shadows={shadows} plot={plotSide} cx={cx} cz={cz} parcelRing={project.meta.parcelle?.ring} />
-      {!quality.weak && !quality.mobile && !walking && (
-        <ContactShadows
-          position={[cx, elev + 0.015, cz]}
-          opacity={night ? 0.22 : 0.38}
-          scale={Math.max(16, span * 1.55)}
-          blur={quality.mobile ? 2.4 : 1.6}
-          far={6}
-          resolution={quality.mobile ? 256 : 512}
-          frames={1}
-          color="#1a1814"
-        />
-      )}
+      {/* Pas de ContactShadows ici : CLAUDE.md §5 l'interdit nommement pour
+          l'artefact « mur gris » deja constate, et le composant est revenu par
+          le commit de sauvegarde automatique ef79c1e. Le plan capteur, cale a
+          far=6 sous un batiment R+8, avale les etages bas. Les ombres portees
+          restent celles de la lumiere directionnelle, en PCF. */}
       <NorthMark cx={cx} cz={cz} elev={elev} north={project.meta.north} span={span} />
       {showGrid && !walking && (
       <gridHelper
