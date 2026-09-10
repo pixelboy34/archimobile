@@ -37,10 +37,24 @@ Issues répétées — les respecter **avant** toute « optimisation » :
 
 ```bash
 npm run dev          # 0.0.0.0:8080 via scripts/with-app-env.mjs — JAMAIS vite direct
+npm run verify       # LA porte : typage + tests BIM + 8 smokes métier (~45 s)
+npm run verify:rapide  # idem sans le typecheck
 npm run typecheck    # tsc --noEmit
+npm run lint         # 0 erreur attendue
 npm run build
-node --experimental-strip-types --test src/lib/bim/bim.test.ts
 ```
+
+**`npm run verify` avant chaque commit.** La CI le lance aussi. Elle ne
+faisait que `tsc` jusqu'ici, et c'est ainsi qu'une réécriture du manifeste
+PWA a tenu quatre jours : le typage restait vert pendant que l'application
+s'installait sous le nom « Grok App » en noir au lieu de FORMA en `#6ed0c3`.
+`scripts/forma-pwa-check.mjs` l'aurait vue — personne ne le lançait.
+
+⚠️ Le dépôt reçoit des commits `chore: sauvegarde auto FORMA` poussés par
+`scripts/backup-github.py` depuis l'espace Grok. Ils **écrasent** le travail
+fait ici : ils ont déjà annulé le patch PWA (`grok-pwa-shared.mjs`) et
+réintroduit `ContactShadows`, pourtant interdit au §5. Après un `git pull`,
+relancer `npm run verify`.
 
 Routes : `/` (`HomePage`) · `/studio/$projectId` (`StudioShell`).
 
@@ -242,9 +256,24 @@ Seeds : **Villa Calanque**, **Tour Horizon**, **Atelier Voltaire**, **Maison Pat
 
 ## 9. Dette / bugs (prioritaires)
 
-1. **`npm test` n’exécute pas `bim.test.ts`.** Brancher + tests massing / copyStory / persist merge.
+1. ~~`npm test` n’exécute pas `bim.test.ts`~~ — **fait**. `npm run verify` enchaîne
+   typage, `bim.test.ts` et les huit smokes ; la CI le lance. Reste à couvrir
+   `copyStory` et le merge du persist.
+   ⚠️ Sous Windows, `npm test` avale toujours en silence les 197 tests de
+   `scripts/` : le glob `'scripts/**/*.test.mjs'` garde ses quotes sous cmd et
+   ne correspond à rien. Lancés à la main, 18 échouent — `.grok/skills/`
+   absent (hors dépôt), `symlink` interdit sans droits admin, `execFile` non
+   échappé sur `C:\Program Files`, et neuf tests de la coque Grok qui
+   supposent une app sans marque là où `site.json` porte FORMA. Ce sont des
+   tests de plateforme, pas de FORMA : d’où une porte séparée.
 2. Sliders float (`2.799999952`) — arrondir à `step` à l’affichage **et** à l’écriture.
-3. `generateMassing` destructif. Confirmation + option projet neuf.
+3. ~~`generateMassing` destructif~~ — **fait**. `MassingLaunch` arme le
+   remplacement en deux temps, annonce le décompte exact (`massingImpact`,
+   miroir testé des filtres) et propose « Projet neuf ». Au passage, un bug
+   plus grave a été corrigé : la fonction supprimait les étages supérieurs
+   sans supprimer leur géométrie, laissant des murs et poteaux rattachés à un
+   `storyId` disparu — le métré d’un R+6 ramené au RDC annonçait 597 610 €
+   au lieu de 83 085, et l’IFC/DXF exportait ces étages fantômes.
 4. `repeatStories` clone tout le plateau. R+40 = explosion draw calls. **Instancing / LOD par étage type**, ou plateau allégé (pas de meubles, murs fusionnés).
 5. Pas d’IFC, pas de DWG. DXF = lignes 2D. Import CAD réel manquant.
 6. Géométrie murs : pas de trim/extend/fillet, pas de murs courbes, pièces surtout rectangulaires (`detectLoops` existe, tracer pièce faible).
@@ -262,6 +291,16 @@ Seeds : **Villa Calanque**, **Tour Horizon**, **Atelier Voltaire**, **Maison Pat
 18. Toiture `hip` cataloguée mais le mesh 3D est surtout gable + plat (`GableRoofMesh`).
 19. Pas d’étage type « lié » : modifier R+1 ne propage pas.
 20. Noyau vertical : chaque étage a son propre `elevator` furniture, pas un volume continu.
+21. **Cinq panneaux compilent sans être montés** (≈ 1 300 lignes) :
+    `InspectorPeek`, `LibraryStrip`, `ManipulationBar` (remplacés par
+    `CommandOrb` + `ResourcesPeek` en `9fdd940`), `MaterialsPanel` et
+    `OuvrageExplorer` (déplacés dans le rail Ressources en `2d1b7c5`).
+    Compiler ne prouve rien sur l’atteignabilité : vérifier par recherche de
+    références. À supprimer ou à recâbler — décision produit, pas technique.
+22. Un ancien fork Vite CAD (`forma` 0.9.1, dépôt git distinct, 2,2 Mo) traîne
+    imbriqué dans `archimobile/`, déposé par un script `.bat`. Ignoré par git
+    et ESLint ; il contient `geom.ts`, `railings.ts`, `roofs.ts`, `stairs.ts`
+    avec leurs tests, absents de FORMA — à trier avant de le jeter.
 
 ---
 
@@ -327,11 +366,16 @@ Invalider le 3D = `touch(project)` (bump `updatedAt`). Le canvas est en `demand`
 
 ## 12. Comment vérifier
 
-1. `npx tsc --noEmit`
+1. `npm run verify` — doit finir sur **FORMA vert**. `npm run lint` : 0 erreur.
 2. Ouvrir **Tour Horizon** : PARAMS → Étages / Vue. Slider HSP / heure → le 3D **bouge en live**, pas de sheet plein écran.
 3. Massing 12 × 18 × 8 étages → RDC–R+7, noyau, compact ViewBar.
-4. Villa Calanque : orbit maquette, drag = le bâtiment suit le doigt (pas l’inverse).
-5. Mode Amateur (`skill=simple`) : pas Coupe/AR, dock réduit.
-6. Viewport téléphone 390×844 + safe-area.
+4. Sur une maquette existante, « Générer » doit d’abord **demander** : le
+   décompte annoncé est celui du projet, et « Projet neuf » laisse la maquette
+   intacte. Sur un projet vierge, un seul appui.
+5. Villa Calanque : orbit maquette, drag = le bâtiment suit le doigt (pas l’inverse).
+6. Mode Amateur (`skill=simple`) : pas Coupe/AR, dock réduit.
+7. Viewport téléphone 390×844 + safe-area. Vérifier aussi **375** et **320** :
+   l’en-tête de l’accueil y débordait. Console 3D attendue **sans**
+   avertissement Three (`precision`, `sigmaRadians`).
 
 Ne pas repartir d’un greenfield.
