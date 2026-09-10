@@ -248,6 +248,93 @@ describe("étage type vivant", () => {
   });
 });
 
+describe("volume — impact avant regeneration", () => {
+  it("annonce exactement ce que generateMassing efface", async () => {
+    const { generateMassing, massingImpact, massingImpactLabel } = await import("../cad/massing.ts");
+    const { emptyProject } = await import("./builder.ts");
+
+    // Un projet vierge n'a rien a perdre : pas de confirmation a demander.
+    const vide = emptyProject("Vierge");
+    assert.equal(massingImpact(vide).destructive, false);
+    assert.equal(massingImpactLabel(massingImpact(vide)), "rien");
+
+    // Une maquette existante, elle, est integralement remplacee.
+    const avant = generateMassing(emptyProject("Tour"), {
+      width: 18,
+      depth: 14,
+      floors: 4,
+      floorHeight: 2.8,
+      groundHeight: 3.2,
+    });
+    const impact = massingImpact(avant);
+    assert.equal(impact.destructive, true);
+    // stories.slice(0, 1) emporte les etages superieurs, pas seulement le RDC.
+    assert.equal(impact.stories, avant.stories.length - 1);
+    assert.ok(impact.stories >= 3, "les niveaux au-dessus du RDC comptent");
+
+    // Le compte annonce est celui du modele entier : tout ce qui tient a un
+    // etage est reconstruit. C'est ce qui autorise l'interface a promettre un
+    // chiffre a l'utilisateur.
+    assert.equal(impact.walls, avant.walls.length);
+    assert.equal(impact.rooms, avant.rooms.length);
+    assert.equal(impact.slabs, avant.slabs.length);
+    assert.equal(impact.columns, avant.columns.length);
+    assert.equal(impact.stairs, avant.stairs.length);
+    assert.equal(impact.furniture, avant.furniture.length);
+    assert.equal(impact.roofs, avant.roofs.length);
+    assert.equal(impact.openings, avant.openings.length);
+
+    const libelle = massingImpactLabel(impact);
+    assert.ok(libelle.length > 0 && libelle !== "rien");
+    assert.doesNotMatch(libelle, /undefined|NaN/);
+  });
+
+  it("ne laisse aucune geometrie orpheline apres regeneration", async () => {
+    const { generateMassing } = await import("../cad/massing.ts");
+    const { computeQuantities } = await import("./quantities.ts");
+    const { emptyProject } = await import("./builder.ts");
+
+    const grand = generateMassing(emptyProject("Tour"), {
+      width: 18,
+      depth: 14,
+      floors: 6,
+      floorHeight: 2.8,
+      groundHeight: 3.2,
+    });
+    const petitOpts = {
+      width: 12,
+      depth: 10,
+      floors: 1,
+      floorHeight: 2.8,
+      groundHeight: 3.2,
+    };
+    const regenere = generateMassing(grand, petitOpts);
+    const neuf = generateMassing(emptyProject("Neuf"), petitOpts);
+
+    // Aucun element ne doit pointer vers un etage supprime : les anciens
+    // filtres gardaient les murs des etages superieurs alors que les etages
+    // eux-memes disparaissaient.
+    const etages = new Set(regenere.stories.map((s) => s.id));
+    const orphelins = (arr: { storyId: string }[]) => arr.filter((x) => !etages.has(x.storyId));
+    assert.equal(orphelins(regenere.walls).length, 0, "murs orphelins");
+    assert.equal(orphelins(regenere.rooms).length, 0, "pieces orphelines");
+    assert.equal(orphelins(regenere.slabs).length, 0, "dalles orphelines");
+    assert.equal(orphelins(regenere.columns).length, 0, "poteaux orphelins");
+    assert.equal(orphelins(regenere.stairs).length, 0, "escaliers orphelins");
+    assert.equal(orphelins(regenere.furniture).length, 0, "objets orphelins");
+
+    const murs = new Set(regenere.walls.map((w) => w.id));
+    assert.equal(regenere.openings.filter((o) => !murs.has(o.wallId)).length, 0, "baies orphelines");
+
+    // Le metre d'un volume regenere doit egaler celui du meme volume genere a
+    // neuf : c'est le seul controle qui aurait attrape 597 610 EUR au lieu de
+    // 83 085 EUR sur un R+6 ramene a un rez-de-chaussee.
+    assert.equal(regenere.walls.length, neuf.walls.length);
+    assert.equal(regenere.stories.length, neuf.stories.length);
+    assert.equal(computeQuantities(regenere).totalHT, computeQuantities(neuf).totalHT);
+  });
+});
+
 describe("agents copilote", () => {
   it("parses French intents and mutates façades offline", async () => {
     const {

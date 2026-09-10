@@ -355,6 +355,103 @@ function buildFloorPlate(
   return next;
 }
 
+/** Ce qu'une regeneration de volume effacerait dans le projet courant. */
+export interface MassingImpact {
+  /** Niveaux supprimes, au-dela du RDC conserve. */
+  stories: number;
+  walls: number;
+  rooms: number;
+  slabs: number;
+  openings: number;
+  furniture: number;
+  columns: number;
+  stairs: number;
+  roofs: number;
+  /** Somme des elements effaces, niveaux exclus. */
+  total: number;
+  /** Vrai des qu'il y a quelque chose a perdre. */
+  destructive: boolean;
+}
+
+/**
+ * Compte ce que `generateMassing` supprimerait, sans rien modifier.
+ *
+ * La documentation du projet decrivait le volume comme « destructif sur le
+ * RDC ». Il l'est bien davantage : `stories.slice(0, 1)` emporte tous les
+ * etages superieurs et `roofs = []` toutes les toitures. Un appui sur
+ * « Generer » remplacait donc la maquette entiere sans un mot. Cette fonction
+ * doit rester le miroir exact des filtres de `generateMassing` ci-dessous —
+ * `bim.test.ts` verifie que les deux comptes coincident.
+ */
+export function massingImpact(project: Project): MassingImpact {
+  const base = project.stories[0];
+  if (!base) {
+    return {
+      stories: 0,
+      walls: 0,
+      rooms: 0,
+      slabs: 0,
+      openings: 0,
+      furniture: 0,
+      columns: 0,
+      stairs: 0,
+      roofs: 0,
+      total: 0,
+      destructive: false,
+    };
+  }
+  // Tout ce qui est rattache a un etage est reconstruit : le compte est donc
+  // celui du modele entier, pas du seul RDC.
+  void base;
+  const counts = {
+    stories: Math.max(0, project.stories.length - 1),
+    walls: project.walls.length,
+    rooms: project.rooms.length,
+    slabs: project.slabs.length,
+    openings: project.openings.length,
+    furniture: project.furniture.length,
+    columns: project.columns.length,
+    stairs: project.stairs.length,
+    roofs: project.roofs.length,
+  };
+  const total =
+    counts.walls +
+    counts.rooms +
+    counts.slabs +
+    counts.openings +
+    counts.furniture +
+    counts.columns +
+    counts.stairs +
+    counts.roofs;
+  return { ...counts, total, destructive: total > 0 || counts.stories > 0 };
+}
+
+/** Resume francais court : « 38 murs, 12 pieces et 1 niveau ». */
+export function massingImpactLabel(impact: MassingImpact): string {
+  const parts: string[] = [];
+  const add = (n: number, un: string, plur = un + "s") => {
+    if (n > 0) parts.push(`${n} ${n > 1 ? plur : un}`);
+  };
+  add(impact.walls, "mur");
+  add(impact.rooms, "pièce");
+  add(impact.openings, "baie");
+  add(impact.slabs, "dalle");
+  add(impact.roofs, "toiture");
+  add(impact.furniture, "objet");
+  add(impact.columns, "poteau", "poteaux");
+  add(impact.stairs, "escalier");
+  add(impact.stories, "niveau", "niveaux");
+  if (parts.length === 0) return "rien";
+  if (parts.length === 1) return parts[0]!;
+  // Au-dela de trois postes le detail devient illisible sur telephone.
+  const gardes = parts.slice(0, 3);
+  const reste = parts.length - gardes.length;
+  const tete = gardes.slice(0, -1).join(", ");
+  const queue = gardes[gardes.length - 1]!;
+  const base = `${tete} et ${queue}`;
+  return reste > 0 ? `${base} (+${reste})` : base;
+}
+
 export function generateMassing(project: Project, opts: MassingOpts): Project {
   const width = Math.min(80, Math.max(8, opts.width));
   const depth = Math.min(60, Math.max(8, opts.depth));
@@ -377,13 +474,24 @@ export function generateMassing(project: Project, opts: MassingOpts): Project {
   const base = p.stories[0];
   if (!base) return p;
 
-  p.walls = p.walls.filter((w) => w.storyId !== base.id);
-  p.rooms = p.rooms.filter((r) => r.storyId !== base.id);
-  p.slabs = p.slabs.filter((s) => s.storyId !== base.id);
-  p.openings = p.openings.filter((o) => p.walls.some((w) => w.id === o.wallId));
-  p.furniture = p.furniture.filter((f) => f.storyId !== base.id);
-  p.columns = p.columns.filter((c) => c.storyId !== base.id);
-  p.stairs = p.stairs.filter((s) => s.storyId !== base.id);
+  // Les filtres ne gardaient que ce qui n'appartenait PAS au RDC, alors que la
+  // ligne suivante supprimait tous les etages superieurs : leurs murs, pieces,
+  // poteaux et escaliers restaient dans le modele, rattaches a un storyId qui
+  // ne designait plus rien. Regenerer un R+6 en R+0 laissait 60 murs et 80
+  // poteaux fantomes, invisibles dans la liste des niveaux mais bien comptes :
+  // le metre annoncait 597 610 EUR au lieu de 83 085, et l'IFC comme le DXF
+  // exportaient ces etages disparus.
+  //
+  // Le volume est reconstruit de zero juste apres — plateau, noyau, etages,
+  // toiture. Tout ce qui est rattache a un etage part donc, et seul ce qui ne
+  // l'est pas survit : meta, materiaux, calques d'esquisse, releve, revisions.
+  p.walls = [];
+  p.rooms = [];
+  p.slabs = [];
+  p.openings = [];
+  p.furniture = [];
+  p.columns = [];
+  p.stairs = [];
   p.roofs = [];
   p.stories = p.stories.slice(0, 1);
   p.stories[0] = {

@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { Building2 } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { massingFootprintHint } from "@/lib/cad/massing";
 import { useStudio } from "@/lib/store/project-store";
+import { MassingLaunch } from "./MassingLaunch";
 
 /** Focused A→Z massing entry — étages, HSP, emprise, façade, toiture, Générer. */
 export function BuildingAssistant({
@@ -15,6 +15,7 @@ export function BuildingAssistant({
 }) {
   const beginEdit = useStudio((s) => s.beginEdit);
   const addMassing = useStudio((s) => s.addMassing);
+  const createBlank = useStudio((s) => s.createBlank);
   const propagateTypical = useStudio((s) => s.propagateTypical);
   const project = useStudio((s) => s.projects.find((p) => p.id === s.currentId) ?? null);
   const multi = (project?.stories.length ?? 0) > 1;
@@ -31,19 +32,30 @@ export function BuildingAssistant({
   const tall =
     floors <= 1 ? groundH : groundH + Math.max(0, floors - 1) * hsp;
 
+  const opts = () => ({
+    width: spanW,
+    depth: spanD,
+    floors,
+    floorHeight: hsp,
+    groundHeight: groundH,
+    windowSpacing: winSpacing,
+    roofKind,
+    columns: floors >= 4,
+    balconyDepth: floors >= 4 ? 1.4 : 0,
+  });
+
   const run = () => {
-    addMassing({
-      width: spanW,
-      depth: spanD,
-      floors,
-      floorHeight: hsp,
-      groundHeight: groundH,
-      windowSpacing: winSpacing,
-      roofKind,
-      columns: floors >= 4,
-      balconyDepth: floors >= 4 ? 1.4 : 0,
-    });
+    addMassing(opts());
     toast.success(`${rLabel} généré · ${tall.toFixed(1)} m`);
+    onDone?.();
+  };
+
+  const runFresh = () => {
+    // createBlank bascule `currentId` de facon synchrone : le addMassing qui
+    // suit s'applique donc bien au projet neuf, pas a la maquette d'origine.
+    createBlank(rLabel);
+    addMassing(opts());
+    toast.success(`${rLabel} généré dans un projet neuf`);
     onDone?.();
   };
 
@@ -140,14 +152,13 @@ export function BuildingAssistant({
         </p>
       </div>
 
-      <Button variant="accent" onClick={run} className="h-12 flex-col gap-0.5 py-2">
-        <span className="text-sm font-semibold">
-          Générer · {rLabel} ({tall.toFixed(1)} m)
-        </span>
-        <span className="text-[10px] font-normal opacity-80">
-          {floors} niveau{floors > 1 ? "x" : ""} · emprise {spanW.toFixed(0)}×{spanD.toFixed(0)} m
-        </span>
-      </Button>
+      <MassingLaunch
+        project={project}
+        label={`Générer · ${rLabel} (${tall.toFixed(1)} m)`}
+        hint={`${floors} niveau${floors > 1 ? "x" : ""} · emprise ${spanW.toFixed(0)}×${spanD.toFixed(0)} m`}
+        onRun={run}
+        onRunFresh={runFresh}
+      />
 
       <button
         type="button"

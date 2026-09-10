@@ -69,6 +69,7 @@ import type { BanHit } from "@/lib/geo/types";
 import { Input } from "@/components/ui/input";
 import { LIGHT_PRESETS, MONTH_LABELS } from "@/lib/render/lighting";
 import { NavOptions } from "./NavOptions";
+import { MassingLaunch } from "./MassingLaunch";
 
 const MATS = Object.keys(MATERIAL_LABELS) as MaterialId[];
 const STRUCT_MATS = MATS.filter((m) => !["water", "vegetation"].includes(m));
@@ -555,6 +556,7 @@ export function StoriesPanel() {
   const setIsolateStory = useStudio((s) => s.setIsolateStory);
   const addBasement = useStudio((s) => s.addBasement);
   const addMassing = useStudio((s) => s.addMassing);
+  const createBlank = useStudio((s) => s.createBlank);
   const propagateTypical = useStudio((s) => s.propagateTypical);
   const detachStory = useStudio((s) => s.detachStory);
   const linkStory = useStudio((s) => s.linkStory);
@@ -582,25 +584,35 @@ export function StoriesPanel() {
   const rLabel = massingFootprintHint({ width: spanW, depth: spanD, floors });
   const tallMass = floors <= 1 ? groundH : groundH + Math.max(0, floors - 1) * hsp;
 
+  const massingOpts = () => ({
+    width: spanW,
+    depth: spanD,
+    floors,
+    floorHeight: hsp,
+    groundHeight: groundH,
+    windowSpacing: winSpacing,
+    windowSill: winSill,
+    windowWidth: winW,
+    windowHeight: winH,
+    columns,
+    columnSpacing: colSpan,
+    roofKind,
+    coreSide,
+    balconyDepth,
+    setback,
+  });
+
   const runMassing = () => {
-    addMassing({
-      width: spanW,
-      depth: spanD,
-      floors,
-      floorHeight: hsp,
-      groundHeight: groundH,
-      windowSpacing: winSpacing,
-      windowSill: winSill,
-      windowWidth: winW,
-      windowHeight: winH,
-      columns,
-      columnSpacing: colSpan,
-      roofKind,
-      coreSide,
-      balconyDepth,
-      setback,
-    });
+    addMassing(massingOpts());
     toast.success(`${rLabel} généré`);
+  };
+
+  const runMassingFresh = () => {
+    // createBlank bascule `currentId` de facon synchrone : le addMassing qui
+    // suit s'applique donc bien au projet neuf, pas a la maquette d'origine.
+    createBlank(rLabel);
+    addMassing(massingOpts());
+    toast.success(`${rLabel} généré dans un projet neuf`);
   };
 
   return (
@@ -675,15 +687,15 @@ export function StoriesPanel() {
           )}
         </More>
         <div className="flex flex-col gap-1">
-          <Button variant="accent" onClick={runMassing} className="h-12 flex-col gap-0.5 py-2">
-            <span className="text-sm font-semibold">
-              Générer · {rLabel} ({tallMass.toFixed(1)} m)
-            </span>
-            <span className="text-[10px] font-normal opacity-80">
-              {floors} × HSP · RDC {groundH.toFixed(2)} m
-              {floors > 1 ? ` · courant ${hsp.toFixed(2)} m` : ""}
-            </span>
-          </Button>
+          <MassingLaunch
+            project={project}
+            label={`Générer · ${rLabel} (${tallMass.toFixed(1)} m)`}
+            hint={`${floors} × HSP · RDC ${groundH.toFixed(2)} m${
+              floors > 1 ? ` · courant ${hsp.toFixed(2)} m` : ""
+            }`}
+            onRun={runMassing}
+            onRunFresh={runMassingFresh}
+          />
         </div>
       </Section>
       </More>
