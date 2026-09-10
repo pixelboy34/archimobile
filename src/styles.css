@@ -203,6 +203,52 @@
   box-shadow: inset 0 1px 0 color-mix(in oklab, white 6%, transparent);
 }
 
+/*
+ * Cible tactile de 44 px sans toucher au dessin.
+ *
+ * Le HUD est volontairement dense : les chips et les segments font 32 px de
+ * haut, la ou la regle du projet et les recommandations iOS en demandent 44.
+ * Les grossir casserait la barre de vues et le bandeau d'etages ; on elargit
+ * donc la seule zone sensible, par un pseudo-element centre qui ne participe
+ * ni au flux ni a la peinture.
+ *
+ * Uniquement en pointeur grossier : a la souris la precision est suffisante et
+ * une zone debordante volerait le survol des voisins.
+ *
+ * Extension verticale seulement. Ces controles vivent dans des rails
+ * horizontaux : elargir en largeur ferait mordre chaque chip sur sa voisine,
+ * et le dernier du DOM gagnerait le clic.
+ */
+@media (pointer: coarse) {
+  .hud-chip,
+  .seg-item {
+    position: relative;
+  }
+
+  .hud-chip::after,
+  .seg-item::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 44px;
+    transform: translateY(-50%);
+  }
+
+  /*
+   * Un rail en `overflow-x: auto` calcule `overflow-y: auto` : il rogne la zone
+   * elargie a sa propre hauteur, 32 px, et le gain est perdu. On lui donne les
+   * 12 px manquants en padding, repris en marge negative pour que rien ne bouge
+   * a l'ecran — les chips restent exactement ou le dessin les place.
+   */
+  .view-bar,
+  .nav-pad {
+    padding-block: 6px;
+    margin-bottom: -6px;
+  }
+}
+
 .led {
   width: 5px;
   height: 5px;
