@@ -36,7 +36,8 @@ for (const f of [
 }
 
 const sw = readFileSync(join(root, "public/sw.js"), "utf8");
-assert.match(sw, /forma-shell-v1/);
+// Le nom du cache est versionne (v1, v2, ...) a chaque invalidation du shell.
+assert.match(sw, /forma-shell-v\d+/);
 assert.match(sw, /\/api\//);
 assert.ok(sw.includes("cache.put") && sw.includes("isLiveApi"));
 assert.ok(sw.includes("if (isLiveApi(url.pathname)) return"));

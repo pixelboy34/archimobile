@@ -3,8 +3,11 @@
  */
 import { createServer } from "vite";
 import assert from "node:assert/strict";
+import { fileURLToPath } from "node:url";
 
-const root = new URL("..", import.meta.url).pathname;
+// fileURLToPath, et non .pathname : sous Windows .pathname vaut "/C:/..." et Vite le
+// prend pour un chemin relatif, d'ou un mkdir "C:\C:\Users\..." qui echoue.
+const root = fileURLToPath(new URL("..", import.meta.url));
 
 const server = await createServer({
   root,
