@@ -29,8 +29,13 @@ jobs:
           cache: npm
       - name: Installer
         run: npm ci
-      - name: Typecheck
-        run: npm run typecheck
+      # `npm run verify` couvre le typage, les tests du domaine BIM et les huit
+      # smokes metier. Le typecheck seul laissait passer la regression du
+      # manifeste PWA de septembre : l'app s'installait sous « Grok App ».
+      - name: Vérifier FORMA
+        run: npm run verify
+      - name: Lint
+        run: npm run lint
 
   archive:
     name: Archive source
