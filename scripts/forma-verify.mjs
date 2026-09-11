@@ -16,11 +16,27 @@
  * rapport machine.
  */
 import { spawn } from "node:child_process";
+import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname, join, posix } from "node:path";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
+
+/** Tous les `*.test.ts` de src, decouverts a chaque execution. */
+function testsDuDomaine(base = "src") {
+  const trouves = [];
+  const parcourir = (rel) => {
+    for (const e of readdirSync(join(ROOT, rel), { withFileTypes: true })) {
+      if (e.name === "node_modules" || e.name.startsWith(".")) continue;
+      const sous = posix.join(rel, e.name);
+      if (e.isDirectory()) parcourir(sous);
+      else if (e.name.endsWith(".test.ts")) trouves.push(sous);
+    }
+  };
+  parcourir(base);
+  return trouves.sort();
+}
 
 /** Ce que FORMA possède et doit garder vert. Ordre : du plus structurant au plus fin. */
 const ETAPES = [
@@ -34,9 +50,15 @@ const ETAPES = [
     lent: true,
   },
   {
-    id: "bim",
-    titre: "Domaine BIM (tests)",
-    cmd: ["node", "node_modules/tsx/dist/cli.mjs", "--test", "src/lib/bim/bim.test.ts"],
+    id: "domaine",
+    titre: "Tests du domaine (src/**/*.test.ts)",
+    // Decouverte, jamais une liste ecrite a la main : la version precedente
+    // codait `src/lib/bim/bim.test.ts` en dur, si bien que les quatre fichiers
+    // de tests ajoutes le 11/09 — decoupe de mur, toitures IFC, coherence du
+    // metre, surete du store — ne tournaient dans AUCUNE porte. Trois
+    // relecteurs l'ont releve separement. Un test qu'aucune porte ne lance ne
+    // protege rien : c'est la lecon du manifeste PWA reste casse quatre jours.
+    cmd: ["node", "node_modules/tsx/dist/cli.mjs", "--test", ...testsDuDomaine()],
   },
   { id: "cad-export", titre: "Export IFC / DXF", cmd: ["node", "scripts/cad-export-check.mjs"] },
   { id: "massa-az", titre: "Massing R+8 de bout en bout", cmd: ["node", "scripts/massa-az-check.mjs"] },
