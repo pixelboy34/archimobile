@@ -266,7 +266,13 @@ Seeds : **Villa Calanque**, **Tour Horizon**, **Atelier Voltaire**, **Maison Pat
    échappé sur `C:\Program Files`, et neuf tests de la coque Grok qui
    supposent une app sans marque là où `site.json` porte FORMA. Ce sont des
    tests de plateforme, pas de FORMA : d’où une porte séparée.
-2. Sliders float (`2.799999952`) — arrondir à `step` à l’affichage **et** à l’écriture.
+2. Sliders float (`2.799999952`) — **source identifiée, pas encore corrigée**. Ce n’est pas
+   le curseur : c’est le champ chiffré de `Param` (`PropertiesPanel.tsx:1258`), qui écrête à
+   chaque frappe. Vérifié dans Chromium : effacer puis retaper une parcelle de 980 → 1200 m²
+   donne **100 000 m²**, et sur les `Param` décimaux le point est mangé (`Number("0.10.")`
+   = NaN), si bien que l’écran affiche `0.10` pendant que `meta.ces` dérive à `0.105`.
+   Correctif su : brouillon de saisie (`draft`) découplé de la valeur, écrêtage **et**
+   arrondi au pas au `blur`/`Enter` seulement.
 3. ~~`generateMassing` destructif~~ — **fait**. `MassingLaunch` arme le
    remplacement en deux temps, annonce le décompte exact (`massingImpact`,
    miroir testé des filtres) et propose « Projet neuf ». Au passage, un bug
@@ -301,6 +307,71 @@ Seeds : **Villa Calanque**, **Tour Horizon**, **Atelier Voltaire**, **Maison Pat
     imbriqué dans `archimobile/`, déposé par un script `.bat`. Ignoré par git
     et ESLint ; il contient `geom.ts`, `railings.ts`, `roofs.ts`, `stairs.ts`
     avec leurs tests, absents de FORMA — à trier avant de le jeter.
+
+### Trouvé par l’audit du 11/09, confirmé, **pas encore corrigé**
+
+Chaque point a été reproduit par un auditeur puis confirmé par un sceptique chargé
+de le réfuter. Chiffres vérifiés, pas des soupçons.
+
+23. **Le profil de rendu téléphone est bridé sous le §0.1 et le §5.** `quality.ts:70`
+    plafonne le DPR à 1,35 sur iPhone 17 Pro là où le §5 autorise 2 : **45,6 % des
+    pixels demandés**, antialias coupé, `texSize` 160 au lieu de 256, `ground` 180
+    au lieu de 220, shadowMap 768 au lieu de 1024, labels éteints. Filiation
+    retrouvée : `4b48503` (« Never degrade: PBR on, shadows on, DPR up to 2 ») défait
+    par le passage perf `44e0db9`. Pire, `tallBoost` pose `simpleProps = true` dès
+    8 étages — donc sur **Tour Horizon**, le seed vitrine, les meubles composés
+    redeviennent des boîtes, contre le §5 qui exige « simpleProps: false toujours ».
+    C’est la régression que l’utilisateur a déjà signalée une fois.
+24. **Un appui sur la maquette annule le panoramique.** `Viewport3D.tsx:567` passe
+    `target={[cx, elev + 1.2, cz]}`, littéral recréé à chaque rendu ; l’effet
+    d’`OrbitRig` (l. 82-88) dépend de l’identité du tableau, pas des trois nombres.
+    Mesuré : pan de 21 m, un tap sur un mur ramène la caméra à 0,08 m du centre.
+    Chaque image d’un curseur en direct refait le reset — cela vide le §0.2 de son
+    sens. Correctif : `useMemo` sur le tableau, ou comparer les valeurs dans l’effet.
+25. **L’emprise cadastrale IGN est en miroir et décalée en 3D.** `BuildingScene.tsx:1494`
+    écrit `arr[i*3+2] = -y`, seul `-y` du fichier, contre la convention de la scène
+    et contre le commentaire de sa propre prop ; l’anneau est en plus placé dans le
+    groupe centré sur le bâti. **45,39 m d’écart** entre la même parcelle en 2D et
+    en 3D, aire signée inversée. Un recul de limite séparative lu en 3D est faux.
+26. **Le calque photo du relevé est peint en miroir vertical.** `Plan2D.tsx:217`
+    applique `ctx.scale(1, -1)` alors qu’`underlayPixelToWorld` ne retourne pas :
+    symétrie exacte autour de `offset.y`, jusqu’à 48 m d’écart selon le format.
+    Le smoke `survey-underlay-check.mjs` ne teste que le centre et l’axe horizontal,
+    d’où le passage inaperçu — ajouter l’assertion sur l’axe vertical avec le correctif.
+27. **Chaque bascule Plan → 3D détruit le contexte WebGL.** `StudioShell.tsx:347`
+    remplace `ViewportGate` par `Plan2D`, donc démonte le Canvas : 22 à 24 shaders
+    recompilés, 17 à 21 textures ré-téléversées, **216 à 649 ms d’écran vide** par
+    aller-retour, sur le geste le plus fréquent du studio. Correctif : garder le
+    Canvas monté et ne piloter que sa visibilité.
+28. **`roofFaces` bbox-ise les toitures non rectangulaires.** `roof-planes.ts:49`
+    part de `boundsOf(roof.polygon)` pour tout ce qui n’est pas plat. Depuis que le
+    métré suit les pans exportés (commit `2242553`), l’erreur devient visible au
+    prix : un toit en L de 120 m² d’emprise compte 216 m² en gable. L’IFC et le DXF
+    exportaient déjà cette bbox. C’est le défaut de fond derrière la toiture `hip`
+    de la dette 18.
+29. **Le relais `/api/rtc` ne libère jamais ses salons.** `signaling.server.ts:83` —
+    `roomOf()` crée un salon sur n’importe quel identifiant inconnu, un simple GET
+    suffit, et `prune()` ne nettoie que l’intérieur d’un salon qu’une requête vient
+    de toucher. 10 000 requêtes anonymes retiennent 327 Mo définitivement. Les TTL
+    annoncés (45 s / 60 s) ne s’appliquent à aucun salon abandonné.
+30. **Une réponse malformée de la BAN affiche du V8 en anglais.** `api-helpers.ts:14`
+    renvoie tel quel tout message d’exception de moins de 180 caractères, et ni
+    `ban.ts` ni `cadastre.ts` ne protègent `res.json()`. Une passerelle qui répond
+    en HTML suffit à afficher « Cannot read properties of undefined » dans une
+    interface française.
+31. **Le bouton « Porteur » rouvre l’écart métré/nomenclature.** `PropertiesPanel.tsx:216`
+    écrit `commitSelected({ loadBearing: v, partition: !v })` sans toucher `w.role`,
+    alors que la clé de groupe de `nomenclature.ts:176` s’appuie sur `role` : 1 100 €
+    d’écart sur Villa Calanque après un seul appui, et des murs jamais touchés
+    reprisés au tarif du premier de leur groupe.
+32. **Trois tests ajoutés le 11/09 sont tautologiques** et passeraient sans leur
+    correctif : `quantities-coherence.test.ts:118` (aucune démo n’a de cloison, donc
+    l’assertion est vraie dans les deux mondes), l’oracle toiture du même fichier
+    (il compare `faceArea3d` à une copie mot pour mot de lui-même), et l’oracle de
+    `ifc-roofs.test.ts:221` (il appelle `roofFaces`, la fonction même qu’`exportIfc`
+    appelle : il prouve la fidélité à `roofFaces`, jamais à la toiture saisie).
+    Un test qui ne peut pas échouer ne protège rien — les réécrire avec un oracle
+    indépendant.
 
 ---
 
