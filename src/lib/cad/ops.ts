@@ -127,33 +127,82 @@ export function addRectWalls(p: Project, storyId: string, a: Vec2, b: Vec2, prot
   return p;
 }
 
-export function splitWallAt(p: Project, storyId: string, point: Vec2): Project {
+export interface WallSplitResult {
+  project: Project;
+  /** false laisse le projet strictement intact. */
+  ok: boolean;
+  reason: "aucun-mur" | "baie-traversee" | null;
+}
+
+/** Tolérance d'un nanomètre : une baie affleurant la coupe ne doit pas la refuser. */
+const SPLIT_EPS = 1e-9;
+
+/**
+ * Coupe un mur en deux au point donné.
+ *
+ * `wallId` désigne le mur visé quand l'appelant le connaît — c'est le cas des
+ * deux seuls appelants réels, le double-tap du plan et « Couper mur ». Sans lui
+ * la cible est redéduite par proximité, et à distance égale c'est l'ordre du
+ * tableau qui tranche : deux murs parallèles espacés de 30 cm suffisaient à
+ * couper le voisin. Passer l'identifiant supprime l'ambiguïté au lieu de la
+ * commenter.
+ */
+export function splitWallAt(
+  p: Project,
+  storyId: string,
+  point: Vec2,
+  wallId?: string,
+): WallSplitResult {
   let best: { wall: Wall; t: number; closest: Vec2 } | null = null;
-  let bestD = 0.45;
-  for (const w of p.walls) {
-    if (w.storyId !== storyId) continue;
-    const hit = distToSegment(point, w.a, w.b);
-    if (hit.dist < bestD && hit.t > 0.08 && hit.t < 0.92) {
-      bestD = hit.dist;
-      best = { wall: w, t: hit.t, closest: hit.closest };
+  if (wallId) {
+    const cible = p.walls.find((w) => w.id === wallId && w.storyId === storyId);
+    if (cible) {
+      const hit = distToSegment(point, cible.a, cible.b);
+      // La bande utile reste la même : trop près d'une extrémité, la coupe ne
+      // produirait qu'un tronçon résiduel.
+      if (hit.t > 0.08 && hit.t < 0.92) best = { wall: cible, t: hit.t, closest: hit.closest };
+    }
+  } else {
+    let bestD = 0.45;
+    for (const w of p.walls) {
+      if (w.storyId !== storyId) continue;
+      const hit = distToSegment(point, w.a, w.b);
+      if (hit.dist < bestD && hit.t > 0.08 && hit.t < 0.92) {
+        bestD = hit.dist;
+        best = { wall: w, t: hit.t, closest: hit.closest };
+      }
     }
   }
-  if (!best) return p;
+  // Le refus pour cause de baie arrive après le choix du candidat : écarter un
+  // mur percé pendant la recherche ferait couper son voisin à sa place.
+  if (!best) return { project: p, ok: false, reason: "aucun-mur" };
   const { wall, closest } = best;
+  const len = dist(wall.a, wall.b) || 1;
+  const lenA = dist(wall.a, closest) || 1;
+  const lenB = dist(closest, wall.b) || 1;
+  // Chaque baie est routée sur son emprise complète, pas sur son seul centre :
+  // router au centre envoyait une baie de 3,60 m dans un tronçon de 4,25 m où
+  // 1,75 m de percement tombait hors du mur, et le trou réellement creusé avec.
+  const routed = new Map<string, { wallSide: "a" | "b"; t: number }>();
+  for (const o of p.openings) {
+    if (o.wallId !== wall.id) continue;
+    const tAbs = o.t * len;
+    const half = o.width / 2;
+    if (tAbs + half <= lenA + SPLIT_EPS) routed.set(o.id, { wallSide: "a", t: tAbs / lenA });
+    else if (tAbs - half >= lenA - SPLIT_EPS) routed.set(o.id, { wallSide: "b", t: (tAbs - lenA) / lenB });
+    // Une baie à cheval sur la coupe ne peut tenir dans aucun des deux tronçons.
+    else return { project: p, ok: false, reason: "baie-traversee" };
+  }
   const idA = uid("w");
   const idB = uid("w");
   p.walls = p.walls.filter((w) => w.id !== wall.id);
   p.walls.push({ ...wall, id: idA, b: closest }, { ...wall, id: idB, a: closest });
-  const len = dist(wall.a, wall.b) || 1;
   p.openings = p.openings.map((o) => {
-    if (o.wallId !== wall.id) return o;
-    const tAbs = o.t * len;
-    const lenA = dist(wall.a, closest) || 1;
-    const lenB = dist(closest, wall.b) || 1;
-    if (tAbs <= lenA) return { ...o, wallId: idA, t: tAbs / lenA };
-    return { ...o, wallId: idB, t: (tAbs - lenA) / lenB };
+    const hit = routed.get(o.id);
+    if (!hit) return o;
+    return { ...o, wallId: hit.wallSide === "a" ? idA : idB, t: hit.t };
   });
-  return p;
+  return { project: p, ok: true, reason: null };
 }
 
 export function restackStories(p: Project): Project {

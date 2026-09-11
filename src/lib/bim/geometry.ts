@@ -168,22 +168,35 @@ export interface WallSegment {
 export function wallSolidSegments(wall: Wall, openings: Opening[]): WallSegment[] {
   const len = wallLength(wall);
   if (len < 0.05) return [];
-  const cuts: number[] = [0, 1];
+  // Rien n'interdit à deux baies de se chevaucher à la pose. Empiler les bornes
+  // puis les apparier deux à deux rouvrait alors un bloc de mur plein sur toute
+  // la hauteur d'étage entre deux menuiseries : les trous sont donc fusionnés.
+  const holes: { t0: number; t1: number }[] = [];
   for (const o of openings) {
     if (o.wallId !== wall.id) continue;
     const half = o.width / 2 / len;
-    cuts.push(Math.max(0, o.t - half), Math.min(1, o.t + half));
+    holes.push({ t0: Math.max(0, o.t - half), t1: Math.min(1, o.t + half) });
   }
-  cuts.sort((a, b) => a - b);
+  holes.sort((a, b) => a.t0 - b.t0);
+  const merged: { t0: number; t1: number }[] = [];
+  for (const h of holes) {
+    const last = merged[merged.length - 1];
+    if (last && h.t0 <= last.t1) last.t1 = Math.max(last.t1, h.t1);
+    else merged.push({ ...h });
+  }
   const segs: WallSegment[] = [];
-  for (let i = 0; i < cuts.length - 1; i += 2) {
-    const t0 = cuts[i]!;
-    const t1 = cuts[i + 1]!;
-    if (t1 - t0 < 0.01) continue;
+  const push = (t0: number, t1: number) => {
+    if (t1 - t0 < 0.01) return;
     const a = lerp(wall.a, wall.b, t0);
     const b = lerp(wall.a, wall.b, t1);
     segs.push({ a, b, length: dist(a, b) });
+  };
+  let cursor = 0;
+  for (const h of merged) {
+    push(cursor, h.t0);
+    cursor = Math.max(cursor, h.t1);
   }
+  push(cursor, 1);
   return segs;
 }
 

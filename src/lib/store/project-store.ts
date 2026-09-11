@@ -9,7 +9,7 @@ import {
   emptyProject,
   touch,
 } from "@/lib/bim/builder";
-import { dist, findWallAt, snapVec, wallAngle, wallLength } from "@/lib/bim/geometry";
+import { dist, findWallAt, snapVec, wallAngle, wallLength, wallSolidSegments } from "@/lib/bim/geometry";
 import { snapToSketch } from "@/lib/bim/snap";
 import { mergeDetectedRooms } from "@/lib/bim/rooms";
 import { seedProjects } from "@/lib/bim/seed";
@@ -219,8 +219,10 @@ interface StudioState {
   addRevision: (note?: string) => void;
   placeAt: (p: Vec2) => void;
   moveSelected: (dx: number, dy: number) => void;
+  /** Pas discret (flèches, pavé de nudge) : annulable, une rafale = un instantané. */
+  moveSelectedStep: (dx: number, dy: number) => void;
   rotateSelected: (delta?: number) => void;
-  splitWallAt: (p: Vec2) => void;
+  splitWallAt: (p: Vec2, wallId?: string) => void;
   splitSelectedWall: () => void;
   analysis: () => ProjectAnalysis | null;
   collabRoom: string | null;
@@ -259,6 +261,18 @@ function patchEntities(p: Project, ids: string[], patch: Record<string, unknown>
   p.slabs = p.slabs.map((s) => (hit(s.id) ? { ...s, ...patch } : s));
   p.roofs = p.roofs.map((r) => (hit(r.id) ? { ...r, ...patch } : r));
   return p;
+}
+
+/** Un pas de nudge rouvre l'historique passé ce délai ; en deçà, la rafale coalesce. */
+const NUDGE_COALESCE_MS = 400;
+let lastNudgeAt = 0;
+/** Projet + sélection du dernier pas : changer de cible rouvre l'historique. */
+let lastNudgeKey = "";
+
+function refusCoupe(reason: string | null): string {
+  return reason === "baie-traversee"
+    ? "Coupe impossible : une baie se trouve à cet endroit."
+    : "Coupe impossible : aucun mur à cet endroit.";
 }
 
 /** When true, commit/patchNow skip live typical sync (used by sync itself). */
@@ -464,9 +478,37 @@ export const useStudio = create<StudioState>()(
       resetExamples: () => {
         const fresh = seedProjects();
         const names = new Set(fresh.map((p) => p.name));
-        set((s) => ({
-          projects: [...fresh, ...s.projects.filter((p) => !names.has(p.name))],
-        }));
+        set((s) => {
+          // Les démos étaient identifiées par leur NOM : ouvrir « Villa Calanque »
+          // et la modifier sans la renommer — le parcours normal — suffisait à la
+          // faire remplacer par un seed neuf au premier clic sur « Rafraîchir les
+          // exemples », sans dialogue et sans annulation possible (le seed porte
+          // un autre id, l'historique ne retrouve plus l'ancien).
+          // Un projet dont updatedAt diffère de createdAt porte du travail : on le
+          // garde tel quel et le seed correspondant n'est pas réinséré.
+          const travaille = (p: Project) => p.updatedAt !== p.createdAt;
+          const gardes = s.projects.filter((p) => travaille(p) || !names.has(p.name));
+          const travailles = new Set(gardes.filter(travaille).map((p) => p.name));
+          const projects = [...fresh.filter((p) => !travailles.has(p.name)), ...gardes];
+          // Le rafraîchissement d'une démo intacte change son id : sans cela
+          // currentId pointait dans le vide et current() rendait null. On suit
+          // la démo par son nom ; l'absence de projet courant, elle, se garde.
+          const currentId =
+            !s.currentId || projects.some((p) => p.id === s.currentId)
+              ? s.currentId
+              : (projects.find((p) => p.name === s.current()?.name)?.id ?? projects[0]?.id ?? null);
+          const courant = projects.find((p) => p.id === currentId) ?? null;
+          return {
+            projects,
+            currentId,
+            storyId: courant?.stories.some((st) => st.id === s.storyId)
+              ? s.storyId
+              : (courant?.stories[0]?.id ?? null),
+            selectedIds: s.currentId === currentId ? s.selectedIds : [],
+            history: s.currentId === currentId ? s.history : [],
+            future: s.currentId === currentId ? s.future : [],
+          };
+        });
       },
       duplicateProjectById: (id) => {
         const src = get().projects.find((p) => p.id === id);
@@ -987,6 +1029,8 @@ export const useStudio = create<StudioState>()(
         const s = get();
         const cur = s.current();
         if (!cur || cur.stories.length <= 1) return;
+        const couvertureAvant = cur.roofs.length;
+        const couvertureApres = cur.roofs.filter((rf) => rf.storyId !== id).length;
         s.commit((p) => {
           p.stories = p.stories.filter((st) => st.id !== id);
           p.walls = p.walls.filter((w) => w.storyId !== id);
@@ -998,10 +1042,17 @@ export const useStudio = create<StudioState>()(
           p.roofs = p.roofs.filter((rf) => rf.storyId !== id);
           const keep = new Set(p.walls.map((w) => w.id));
           p.openings = p.openings.filter((o) => keep.has(o.wallId));
-          return p;
+          // Seul chemin de modification de la pile qui oubliait de la recaler :
+          // supprimer un niveau intermédiaire laissait les étages du dessus à
+          // leur ancienne altitude — un trou de la hauteur du niveau supprimé,
+          // un hors-tout faux, et des noms qui sautaient un cran (R+3 puis R+5).
+          return nameStories(restackStories(p));
         });
         const next = get().current();
         set({ storyId: next?.stories[0]?.id ?? null, selectedIds: [] });
+        if (couvertureAvant > 0 && couvertureApres === 0) {
+          toast.message("Niveau supprimé : le projet n'a plus de toiture.");
+        }
       },
       updateMeta: (patch) => {
         get().commit((p) => {
@@ -1270,6 +1321,21 @@ export const useStudio = create<StudioState>()(
         if (!ids.length) return;
         get().patchNow((p) => translateSelection(p, ids, dx, dy));
       },
+      moveSelectedStep: (dx, dy) => {
+        const ids = get().selectedIds;
+        if (!ids.length) return;
+        // Le glisser du plan et le gizmo 3D appellent beginEdit eux-mêmes ; les
+        // flèches du clavier et les pavés de nudge passaient par moveSelected,
+        // donc par patchNow, qui n'empile rien : après vingt pas, Ctrl+Z ne
+        // ramenait pas l'objet. Une rafale ne vaut qu'un instantané, sinon elle
+        // remplirait l'historique à elle seule.
+        const now = Date.now();
+        const key = `${get().currentId ?? ""}#${ids.join("|")}`;
+        if (key !== lastNudgeKey || now - lastNudgeAt > NUDGE_COALESCE_MS) get().beginEdit();
+        lastNudgeAt = now;
+        lastNudgeKey = key;
+        get().patchNow((p) => translateSelection(p, ids, dx, dy));
+      },
       rotateSelected: (delta = Math.PI / 2) => {
         const ids = get().selectedIds;
         if (!ids.length) return;
@@ -1286,10 +1352,20 @@ export const useStudio = create<StudioState>()(
           return p;
         });
       },
-      splitWallAt: (point) => {
+      splitWallAt: (point, wallId) => {
         const storyId = get().storyId;
-        if (!storyId) return;
-        get().commit((p) => splitWallOp(p, storyId, point));
+        const cur = get().current();
+        if (!storyId || !cur) return;
+        // La coupe est jouée sur une copie : un refus ne doit ni modifier le
+        // projet ni empiler une entrée d'historique qui n'annulerait rien.
+        // C'est le seul essai à blanc de la chaîne — l'appelant ne rejoue pas
+        // le sien, sinon la maquette serait clonée deux fois par double-tap.
+        const essai = splitWallOp(cloneProject(cur), storyId, point, wallId);
+        if (!essai.ok) {
+          toast.message(refusCoupe(essai.reason));
+          return;
+        }
+        get().commit(() => essai.project);
       },
       splitSelectedWall: () => {
         const cur = get().current();
@@ -1300,7 +1376,27 @@ export const useStudio = create<StudioState>()(
           toast.message("Sélectionnez un mur");
           return;
         }
-        get().commit((p) => splitWallOp(p, w.storyId, { x: (w.a.x + w.b.x) / 2, y: (w.a.y + w.b.y) / 2 }));
+        // Couper au milieu géométrique tombait sur une baie dans 53 des 61 murs
+        // percés des projets de démonstration : la commande répondait « coupe
+        // impossible » sur presque toute façade alors qu'un point valide
+        // existait à côté. On vise le milieu du plus long trumeau, c'est-à-dire
+        // l'endroit que l'utilisateur aurait choisi lui-même.
+        const pleins = wallSolidSegments(w, cur.openings);
+        const plusLong = pleins.reduce(
+          (meilleur, s) => (s.length > meilleur.length ? s : meilleur),
+          pleins[0] ?? { a: w.a, b: w.b, length: wallLength(w) },
+        );
+        const essai = splitWallOp(
+          cloneProject(cur),
+          w.storyId,
+          { x: (plusLong.a.x + plusLong.b.x) / 2, y: (plusLong.a.y + plusLong.b.y) / 2 },
+          w.id,
+        );
+        if (!essai.ok) {
+          toast.message(refusCoupe(essai.reason));
+          return;
+        }
+        get().commit(() => essai.project);
         toast.success("Mur coupé");
       },
       applyRemoteProject: (remote, epoch = 0) => {
@@ -1381,21 +1477,13 @@ export const useStudio = create<StudioState>()(
                 collabReceivedEpoch: Math.max(s.collabReceivedEpoch, ep),
               };
             });
-          } else if (current) {
-            set((s) => {
-              const history = [...s.history, cloneProject(current)].slice(-HISTORY_LIMIT);
-              const rest = s.projects.filter((p) => p.id !== current.id && p.id !== applied.id);
-              return {
-                projects: [applied, ...rest],
-                currentId: applied.id,
-                history,
-                future: [],
-                storyId: applied.stories[0]?.id ?? null,
-                selectedIds: [],
-                collabReceivedEpoch: Math.max(s.collabReceivedEpoch, ep),
-              };
-            });
           } else {
+            // Un id distant différent du projet courant n'est pas une synchro de
+            // la maquette ouverte : c'est une AUTRE maquette qui arrive. L'ancien
+            // chemin retirait le projet local courant de la liste, si bien que la
+            // première synchro d'un salon effaçait le travail local — Ctrl+Z ne
+            // retrouvait plus son id et le persist écrivait aussitôt la liste
+            // amputée. addProject ne retire que l'homonyme entrant.
             get().addProject(applied);
             set((s) => ({
               collabReceivedEpoch: Math.max(s.collabReceivedEpoch, ep),
@@ -1447,23 +1535,14 @@ export const useStudio = create<StudioState>()(
               collabLocalEpoch: Math.max(s.collabLocalEpoch, ep),
             };
           });
-        } else if (current) {
-          set((s) => {
-            const history = [...s.history, cloneProject(current)].slice(-HISTORY_LIMIT);
-            const rest = s.projects.filter((p) => p.id !== current.id && p.id !== applied.id);
-            return {
-              projects: [applied, ...rest],
-              currentId: applied.id,
-              history,
-              future: [],
-              storyId: applied.stories[0]?.id ?? null,
-              selectedIds: [],
-              collabReceivedEpoch: Math.max(s.collabReceivedEpoch, ep),
-              collabLocalEpoch: Math.max(s.collabLocalEpoch, ep),
-            };
-          });
         } else {
+          // Même correctif que dans applyRemoteProject : « Prendre le distant »
+          // porte sur la maquette entrante, jamais sur celle restée en local.
           get().addProject(applied);
+          set((s) => ({
+            collabReceivedEpoch: Math.max(s.collabReceivedEpoch, ep),
+            collabLocalEpoch: Math.max(s.collabLocalEpoch, ep),
+          }));
         }
         lastRemoteFingerprint = JSON.stringify({
           id: applied.id,

@@ -1,4 +1,6 @@
 import { useEffect, useRef } from "react";
+import { toast } from "sonner";
+import { cloneProject } from "@/lib/bim/builder";
 import { MATERIAL_COLORS, ROOM_HATCH, resolveMaterial } from "@/lib/bim/materials";
 import { OBJECT_MESH } from "@/lib/bim/catalog";
 import {
@@ -17,7 +19,7 @@ import {
 import { isBearingWall } from "@/lib/bim/structure";
 import type { Project, Tool, Vec2 } from "@/lib/bim/types";
 import { snapDetail } from "@/lib/bim/snap";
-import { orthoPoint } from "@/lib/cad/ops";
+import { orthoPoint, splitWallAt } from "@/lib/cad/ops";
 import { useStudio } from "@/lib/store/project-store";
 
 interface Cam {
@@ -682,8 +684,13 @@ export function Plan2D({
           const now = performance.now();
           if (id && currentTool === "select" && now - lastTap.current < 320) {
             const isWall = model.current.project.walls.some((w) => w.id === id);
-            if (isWall) splitWall(p);
-            else rotateSelected(Math.PI / 2);
+            if (isWall) {
+              // L'identifiant du mur touché est transmis : sans lui la coupe
+              // redéduit sa cible par proximité et peut prendre un mur voisin.
+              // C'est le store qui joue l'essai à blanc et annonce un refus ;
+              // le rejouer ici clonait la maquette une seconde fois par appui.
+              splitWall(p, id);
+            } else rotateSelected(Math.PI / 2);
             lastTap.current = 0;
             return;
           }
