@@ -1,5 +1,6 @@
 import { polygonArea, wallLength } from "./geometry";
 import { analyzeProject } from "./analysis";
+import { roofFaces } from "../cad/roof-planes";
 import type { Project } from "./types";
 
 export interface QtyLine {
@@ -14,7 +15,12 @@ export interface QtyLine {
 export interface BillOfQuantities {
   lines: QtyLine[];
   totalHT: number;
+  /** Elevation totale, cloisons comprises — le cumul affiche en KPI. */
   wallM2: number;
+  /** Part facturee au prix de l'elevation (165). */
+  wallElevationM2: number;
+  /** Part facturee au prix des cloisons (85). */
+  partitionM2: number;
   slabM2: number;
   roofM2: number;
   glassM2: number;
@@ -26,14 +32,39 @@ function line(key: string, label: string, qty: number, unit: string, unitPrice: 
   return { key, label, qty: q, unit, unitPrice, total: Math.round(q * unitPrice) };
 }
 
+/** Aire d'un pan de toiture, formule de Newell (les quatre coins ne sont pas coplanaires par construction). */
+function faceArea3d(corners: { x: number; y: number; z: number }[]): number {
+  if (corners.length < 3) return 0;
+  let nx = 0;
+  let ny = 0;
+  let nz = 0;
+  for (let i = 0; i < corners.length; i++) {
+    const p = corners[i]!;
+    const q = corners[(i + 1) % corners.length]!;
+    nx += (p.y - q.y) * (p.z + q.z);
+    ny += (p.z - q.z) * (p.x + q.x);
+    nz += (p.x - q.x) * (p.y + q.y);
+  }
+  return Math.hypot(nx, ny, nz) / 2;
+}
+
 export function computeQuantities(project: Project): BillOfQuantities {
-  let wallM2 = 0;
+  // Le poste Murs facturait tout a 165 EUR/m2 alors que la nomenclature Murs,
+  // imprimee sur la meme page du dossier, applique 85 EUR/m2 des que
+  // `w.partition` est vrai. Meme quantite, deux prix, 24 % d'ecart des qu'un
+  // volume genere produisait des cloisons — et le Total HT retenait le chiffre
+  // haut. Un seul test, celui de la nomenclature, decide desormais du prix.
+  let wallElevationM2 = 0;
+  let partitionM2 = 0;
   for (const w of project.walls) {
     const openings = project.openings
       .filter((o) => o.wallId === w.id)
       .reduce((s, o) => s + o.width * o.height, 0);
-    wallM2 += Math.max(0, wallLength(w) * w.height - openings);
+    const net = Math.max(0, wallLength(w) * w.height - openings);
+    if (w.partition) partitionM2 += net;
+    else wallElevationM2 += net;
   }
+  const wallM2 = wallElevationM2 + partitionM2;
   let slabM2 = 0;
   let slabM3 = 0;
   for (const s of project.slabs) {
@@ -41,8 +72,18 @@ export function computeQuantities(project: Project): BillOfQuantities {
     slabM2 += a;
     slabM3 += a * s.thickness;
   }
+  // La toiture valait l'emprise multipliee par un forfait fige (1,18 ou 1,08)
+  // qui ignorait la pente saisie comme le debord : deux sheds a 25 et 40 deg
+  // sortaient au metre identique, et l'ecart avec les pans reellement livres
+  // allait de -25 % a +11 %. On somme donc les memes faces que l'IFC, le DXF
+  // et la 3D consomment, le metre ne pouvant plus diverger de la geometrie.
   let roofM2 = 0;
-  for (const r of project.roofs) roofM2 += polygonArea(r.polygon) * (r.kind === "gable" || r.kind === "multi" || r.kind === "hip" ? 1.18 : r.kind === "shed" ? 1.08 : 1);
+  for (const r of project.roofs) {
+    if (r.polygon.length < 3) continue;
+    const story = project.stories.find((s) => s.id === r.storyId);
+    const z0 = (story?.elevation ?? 0) + (story?.height ?? 2.8);
+    for (const f of roofFaces(r, z0)) roofM2 += faceArea3d(f.corners);
+  }
   let glassM2 = 0;
   let doors = 0;
   for (const o of project.openings) {
@@ -54,7 +95,8 @@ export function computeQuantities(project: Project): BillOfQuantities {
   const colMl = project.columns.reduce((s, c) => s + c.height, 0);
 
   const lines = [
-    line("walls", "Murs (élévation)", wallM2, "m²", 165),
+    line("walls", "Murs (élévation)", wallElevationM2, "m²", 165),
+    line("partition", "Cloisons", partitionM2, "m²", 85),
     line("slab", "Dalles béton", slabM2, "m²", 95),
     line("conc", "Béton coffré", slabM3 + colMl * 0.09, "m³", 220),
     line("col", "Poteaux", columns, "u", 420),
@@ -69,6 +111,8 @@ export function computeQuantities(project: Project): BillOfQuantities {
     lines,
     totalHT,
     wallM2,
+    wallElevationM2,
+    partitionM2,
     slabM2,
     roofM2,
     glassM2,

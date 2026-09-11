@@ -138,15 +138,57 @@ export function exportIfc(project: Project): string {
     for (const f of faces) {
       const footprint = faceFootprint(f);
       if (footprint.length < 3) continue;
-      const thick =
-        r.kind === "flat"
-          ? r.thickness
-          : Math.max(r.thickness, r.thickness / Math.max(0.35, Math.cos((f.pitch * Math.PI) / 180)));
-      const solid = extrudedPolygon(push, bodyCtx, footprint, thick);
-      const base = faceBaseZ(f) - thick * 0.15;
-      const origin = push(`IFCCARTESIANPOINT((0.,0.,${num(Math.max(z0, base))}))`);
-      const axis = push(`IFCAXIS2PLACEMENT3D(${origin},$,$)`);
-      const place = push(`IFCLOCALPLACEMENT(${worldPlacement},${axis})`);
+      const thick = r.thickness;
+      let solid: string;
+      let place: string;
+      // Cote du plan du pan à un point du plan XY, et enfoncement nécessaire
+      // pour qu'une trémie verticale traverse la dalle inclinée.
+      let planeZAt: (p: Vec2) => number;
+      let pierce: number;
+
+      if (r.kind === "flat") {
+        solid = extrudedPolygon(push, bodyCtx, footprint, thick);
+        const base = Math.max(z0, faceBaseZ(f) - thick * 0.15);
+        const origin = push(`IFCCARTESIANPOINT((0.,0.,${num(base)}))`);
+        const axis = push(`IFCAXIS2PLACEMENT3D(${origin},$,$)`);
+        place = push(`IFCLOCALPLACEMENT(${worldPlacement},${axis})`);
+        planeZAt = () => base;
+        pierce = 0;
+      } else {
+        // Projeter le pan sur XY et le reposer à sa cote moyenne sortait toutes
+        // les pentes à plat : les deux versants d'une bicorne se superposaient
+        // au même Z, faîtage et égout perdus. Le solide est donc bâti dans le
+        // plan du pan, extrudé le long de sa normale.
+        const n = faceNormal(f.corners);
+        const xDir = eaveDirection(n, f.corners);
+        const yDir = cross3(n, xDir);
+        const low = lowestCorner(f.corners);
+        // Origine sous le pan : le plan du modèle reste la face supérieure, donc
+        // le faîtage exporté est exactement celui du modèle.
+        const o = {
+          x: low.x - n.x * thick,
+          y: low.y - n.y * thick,
+          z: low.z - n.z * thick,
+        };
+        const profile: Vec2[] = f.corners.map((c) => {
+          const d = { x: c.x - low.x, y: c.y - low.y, z: c.z - low.z };
+          return { x: dot3(d, xDir), y: dot3(d, yDir) };
+        });
+        // La longueur de rampant du profil est l'hypoténuse, pas sa projection.
+        solid = extrudedPolygon(push, bodyCtx, profile, thick);
+        const origin = push(
+          `IFCCARTESIANPOINT((${num(o.x)},${num(o.y)},${num(o.z)}))`,
+        );
+        const axisDir = push(`IFCDIRECTION((${num(n.x)},${num(n.y)},${num(n.z)}))`);
+        const refDir = push(
+          `IFCDIRECTION((${num(xDir.x)},${num(xDir.y)},${num(xDir.z)}))`,
+        );
+        const axis = push(`IFCAXIS2PLACEMENT3D(${origin},${axisDir},${refDir})`);
+        place = push(`IFCLOCALPLACEMENT(${worldPlacement},${axis})`);
+        planeZAt = (p) => low.z - (n.x * (p.x - low.x) + n.y * (p.y - low.y)) / n.z;
+        pierce = thick / Math.max(0.2, n.z) + 0.1;
+      }
+
       const roof = push(
         `IFCROOF('${guid(f.id)}',${owner},'Roof ${esc(r.kind)}',$,$,${place},${solid},$,.${f.ifcType}.)`,
       );
@@ -159,9 +201,10 @@ export function exportIfc(project: Project): string {
         if (!pointInPolygon(furn.position, footprint)) continue;
         const ow = Math.max(0.4, furn.w);
         const od = Math.max(0.4, furn.d);
-        const oSolid = extrudedBox(push, bodyCtx, ow, od, thick + 0.05);
+        const top = planeZAt(furn.position);
+        const oSolid = extrudedBox(push, bodyCtx, ow, od, pierce > 0 ? pierce * 2 : thick + 0.05);
         const oOrigin = push(
-          `IFCCARTESIANPOINT((${num(furn.position.x)},${num(furn.position.y)},${num(Math.max(z0, base))}))`,
+          `IFCCARTESIANPOINT((${num(furn.position.x)},${num(furn.position.y)},${num(top - pierce)}))`,
         );
         const oAxis = push(`IFCAXIS2PLACEMENT3D(${oOrigin},$,$)`);
         const oPlace = push(`IFCLOCALPLACEMENT(${worldPlacement},${oAxis})`);
@@ -271,6 +314,79 @@ function guid(seed?: string): string {
     b = Math.imul(b ^ mix, 22695477) + 1;
   }
   return s;
+}
+
+type Vec3 = { x: number; y: number; z: number };
+
+const dot3 = (a: Vec3, b: Vec3): number => a.x * b.x + a.y * b.y + a.z * b.z;
+
+const cross3 = (a: Vec3, b: Vec3): Vec3 => ({
+  x: a.y * b.z - a.z * b.y,
+  y: a.z * b.x - a.x * b.z,
+  z: a.x * b.y - a.y * b.x,
+});
+
+function unit3(v: Vec3): Vec3 | null {
+  const l = Math.hypot(v.x, v.y, v.z);
+  if (!Number.isFinite(l) || l < 1e-9) return null;
+  return { x: v.x / l, y: v.y / l, z: v.z / l };
+}
+
+/** Normale du polygone 3D (Newell), toujours orientée vers le haut. */
+function faceNormal(corners: Vec3[]): Vec3 {
+  let nx = 0;
+  let ny = 0;
+  let nz = 0;
+  for (let i = 0; i < corners.length; i++) {
+    const a = corners[i]!;
+    const b = corners[(i + 1) % corners.length]!;
+    nx += (a.y - b.y) * (a.z + b.z);
+    ny += (a.z - b.z) * (a.x + b.x);
+    nz += (a.x - b.x) * (a.y + b.y);
+  }
+  const n = unit3({ x: nx, y: ny, z: nz });
+  if (!n) return { x: 0, y: 0, z: 1 };
+  return n.z < 0 ? { x: -n.x, y: -n.y, z: -n.z } : n;
+}
+
+/**
+ * Axe X local du pan : l'horizontale de son plan, c'est-à-dire la ligne
+ * d'égout. IFCAXIS2PLACEMENT3D exige un RefDirection non colinéaire à l'axe,
+ * d'où le Gram-Schmidt final — et un repli sur une arête pour un pan plat.
+ */
+function eaveDirection(n: Vec3, corners: Vec3[]): Vec3 {
+  let ref = unit3(cross3({ x: 0, y: 0, z: 1 }, n));
+  if (!ref) {
+    for (let i = 0; i < corners.length && !ref; i++) {
+      const a = corners[i]!;
+      const b = corners[(i + 1) % corners.length]!;
+      ref = unit3({ x: b.x - a.x, y: b.y - a.y, z: b.z - a.z });
+    }
+  }
+  if (!ref) ref = { x: 1, y: 0, z: 0 };
+  const d = dot3(ref, n);
+  return (
+    unit3({ x: ref.x - n.x * d, y: ref.y - n.y * d, z: ref.z - n.z * d }) ?? {
+      x: 1,
+      y: 0,
+      z: 0,
+    }
+  );
+}
+
+/** Coin bas du pan — origine du repère local, déterministe en cas d'égalité. */
+function lowestCorner(corners: Vec3[]): Vec3 {
+  let best = corners[0] ?? { x: 0, y: 0, z: 0 };
+  for (const c of corners) {
+    if (
+      c.z < best.z - 1e-9 ||
+      (Math.abs(c.z - best.z) <= 1e-9 &&
+        (c.x < best.x - 1e-9 || (Math.abs(c.x - best.x) <= 1e-9 && c.y < best.y - 1e-9)))
+    ) {
+      best = c;
+    }
+  }
+  return best;
 }
 
 function extrudedBox(
