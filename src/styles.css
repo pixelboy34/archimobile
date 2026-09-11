@@ -12,7 +12,14 @@
   --color-elevated: #171c21;
   --color-fg: #ece8e1;
   --color-muted: #9aa39c;
-  --color-subtle: #6e7772;
+  /*
+   * #6e7772 tombait a 4,00:1 sur surface, 3,71 sur elevated et 4,32 sur bg,
+   * alors qu'il n'est jamais rendu au-dela de 18,66 px (hud-label a 10 px,
+   * 28 usages de text-subtle dont un a 9 px) : le seuil applicable est 4,5.
+   * #828d87 mesure 5,80 / 5,38 / 4,99 sur bg / surface / elevated et reste
+   * nettement sous --color-muted, la hierarchie sombre est conservee.
+   */
+  --color-subtle: #828d87;
   --color-border: #242a2e;
   --color-primary: #e8e4dc;
   --color-primary-fg: #101418;
@@ -158,6 +165,15 @@
   border-radius: var(--radius-xl);
 }
 
+/*
+ * Les boutons du rail restent sous 44 px, et c'est delibere : le rail empile
+ * trois lignes a 4 et 4,8 px d'intervalle dans 150 px de haut, et le bandeau est
+ * fige a 162 px par les decalages en dur de ViewBar et NavPad. Deux zones
+ * tactiles voisines de 44 px s'y recouvrent forcement, et celle du bas
+ * mordrait sur les pixels peints de la ligne du dessus en lui volant l'appui.
+ * Mieux vaut 36 px honnetes qu'une cible de 44 px qui deplace le clic : le
+ * rattrapage demande d'aerer le rail, donc de toucher CommandOrb.
+ */
 .cmd-rail {
   display: flex;
   max-width: 100%;
@@ -183,7 +199,13 @@
   font-weight: 500;
   letter-spacing: 0.04em;
   color: color-mix(in oklab, var(--color-fg) 82%, var(--color-muted));
-  background: color-mix(in oklab, var(--color-surface) 78%, transparent);
+  /*
+   * 78 % laissait passer la maquette. A 92 % le pire fond concevable, un blanc
+   * pur, donne encore 5,5:1 ; mesure sur les pixels rendus, le libelle d'une
+   * puce inactive passe de 8,67 a 11,83:1 a 375 px. Le flou d'arriere-plan
+   * reste visible.
+   */
+  background: color-mix(in oklab, var(--color-surface) 92%, transparent);
   border: 1px solid color-mix(in oklab, var(--color-border) 70%, transparent);
   box-shadow: inset 0 1px 0 color-mix(in oklab, white 5%, transparent);
   backdrop-filter: blur(12px);
@@ -196,21 +218,42 @@
     box-shadow 0.18s,
     transform 0.15s cubic-bezier(0.22, 1, 0.36, 1);
 }
+/*
+ * L'etat actif REMPLACAIT le fond de la puce par un voile de fg a 8 % : au-dessus
+ * de la maquette la vue selectionnee tombait a 1,77:1 quand sa voisine inactive
+ * tenait 9,74 — l'etat actif payait sa mise en avant en lisibilite. Le voile est
+ * desormais compose SUR le fond de base, laisse plus opaque que l'inactif, et
+ * l'etat se lit au lisere accent. Mesure apres a 320 px : actif 10,45:1,
+ * inactif 12,22:1.
+ */
 .hud-chip-on {
   color: var(--color-fg);
-  background: color-mix(in oklab, var(--color-fg) 8%, transparent);
-  border-color: color-mix(in oklab, var(--color-fg) 22%, transparent);
-  box-shadow: inset 0 1px 0 color-mix(in oklab, white 6%, transparent);
+  background-color: color-mix(in oklab, var(--color-surface) 96%, transparent);
+  background-image: linear-gradient(
+    color-mix(in oklab, var(--color-fg) 12%, transparent),
+    color-mix(in oklab, var(--color-fg) 12%, transparent)
+  );
+  border-color: color-mix(in oklab, var(--color-accent) 45%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in oklab, white 8%, transparent);
 }
 
 /*
  * Cible tactile de 44 px sans toucher au dessin.
  *
- * Le HUD est volontairement dense : les chips et les segments font 32 px de
- * haut, la ou la regle du projet et les recommandations iOS en demandent 44.
- * Les grossir casserait la barre de vues et le bandeau d'etages ; on elargit
- * donc la seule zone sensible, par un pseudo-element centre qui ne participe
- * ni au flux ni a la peinture.
+ * Le HUD est volontairement dense : chips, segments et boutons d'icone font 32
+ * ou 36 px de haut, la ou la regle du projet et les recommandations iOS en
+ * demandent 44. Les grossir casserait la barre de vues et le bandeau d'etages ;
+ * on elargit donc la seule zone sensible, par un pseudo-element centre qui ne
+ * participe ni au flux ni a la peinture.
+ *
+ * ::before et non ::after : .ico-btn::after sert deja d'etiquette au survol et
+ * a l'etat presse, et la premiere version de ce rattrapage ne visait que
+ * .hud-chip / .seg-item — mesure faite, elle n'elargissait aucun des 30
+ * controles du studio.
+ *
+ * Hauteur max(45px, 100% + 12px) : 44 px stricts laissent le point de controle
+ * pile sur l'arete, et un bouton de 36 px doit rester atteignable a 5 px de sa
+ * boite peinte (soit 46).
  *
  * Uniquement en pointeur grossier : a la souris la precision est suffisante et
  * une zone debordante volerait le survol des voisins.
@@ -221,31 +264,45 @@
  */
 @media (pointer: coarse) {
   .hud-chip,
-  .seg-item {
+  .seg-item,
+  .ico-btn,
+  .hud-chip-press {
     position: relative;
   }
 
-  .hud-chip::after,
-  .seg-item::after {
+  .hud-chip::before,
+  .seg-item::before,
+  .ico-btn::before,
+  .hud-chip-press::before {
     content: "";
     position: absolute;
     top: 50%;
     left: 0;
     right: 0;
-    height: 44px;
+    height: max(45px, calc(100% + 12px));
     transform: translateY(-50%);
   }
 
   /*
    * Un rail en `overflow-x: auto` calcule `overflow-y: auto` : il rogne la zone
    * elargie a sa propre hauteur, 32 px, et le gain est perdu. On lui donne les
-   * 12 px manquants en padding, repris en marge negative pour que rien ne bouge
+   * 14 px manquants en padding, repris en marge negative pour que rien ne bouge
    * a l'ecran — les chips restent exactement ou le dessin les place.
    */
   .view-bar,
   .nav-pad {
-    padding-block: 6px;
-    margin-bottom: -6px;
+    padding-block: 7px;
+    margin-bottom: -7px;
+  }
+
+  /*
+   * Meme rognage sur les onglets de l'inspecteur : leur .seg porte
+   * overflow-x:auto, donc overflow-y:auto, qui ramenait la zone a 36 px. Le
+   * padding est impossible ici — la bordure du segment est visible — mais ses
+   * items sont en flex-1 min-w-0 et ne debordent jamais.
+   */
+  .seg {
+    overflow: visible;
   }
 }
 
@@ -385,18 +442,27 @@
   transition: max-height 0.25s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/*
+ * z-index 21 et non 10 : la barre de vues s'arrete pile sur le bord haut du
+ * bandeau bas, qui est pointer-events-auto sur toute sa largeur et monte a
+ * z-20. La zone tactile elargie existait donc mais ce voisin la recouvrait —
+ * hauteur utile mesuree 38 px sur 44. Les deux blocs ne se croisent que sur ces
+ * 6 px de rembourrage, ou le bandeau ne porte aucun controle.
+ * A declarer ici : une regle de meme poids plus bas dans la feuille l'emporte
+ * sur celle du bloc (pointer: coarse), une media query n'ajoutant pas de poids.
+ */
 .view-bar {
   position: absolute;
   left: 0.5rem;
   bottom: calc(env(safe-area-inset-bottom, 0px) + 8.4rem);
-  z-index: 10;
+  z-index: 21;
 }
 .nav-pad {
   position: absolute;
   right: 0.5rem;
   bottom: calc(env(safe-area-inset-bottom, 0px) + 8.4rem);
   top: auto;
-  z-index: 10;
+  z-index: 21;
 }
 
 @media (min-width: 1024px) {
@@ -423,17 +489,28 @@
   min-height: 2rem;
 }
 
+/*
+ * Deux colonnes forcees ne laissaient pas la place aux boutons pas-a-pas, d'ou
+ * la regle qui les masquait dans le dock : a 375 px une colonne fait 170 px,
+ * soit 44 + 44 + 80 px de curseur. auto-fit rend une colonne pleine largeur sur
+ * telephone et en redonne deux ou trois des 508 px disponibles.
+ */
 .param-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
   gap: 0.25rem 0.5rem;
 }
-.inspector-dock .param-step {
-  display: none;
-}
-.inspector-dock input[type="range"] {
-  min-height: 22px;
-  height: 22px;
+/*
+ * Les pas-a-pas etaient masques dans le dock — donc partout, PropertiesPanel
+ * n'etant monte que la. C'etaient les seules cibles de 44 px de l'inspecteur, et
+ * sans eux il ne restait que le curseur : 281,5 m2 de parcelle par pixel,
+ * 4,3 mm d'epaisseur de mur par pixel et non monotone sous 3 px, 4,49 px par
+ * niveau. Le curseur reprend par ailleurs les 44 px de la regle de base : 22 px
+ * de piste, c'est la moitie de la cible pour un doigt.
+ */
+.inspector-dock button:not(.seg-item),
+.inspector-dock input:not([type="range"]):not([type="checkbox"]):not([type="color"]) {
+  min-height: 44px;
 }
 
 .seg {
@@ -673,7 +750,10 @@ button:active > .ico-live,
 
 .seg-item {
   font-size: 12px;
-  color: var(--color-muted);
+  /* --color-muted a 12 px sur le segment translucide : 2,63:1 au-dessus de la
+     maquette. Le libelle inactif reste plus discret que l'actif, sans passer
+     sous le seuil. */
+  color: color-mix(in oklab, var(--color-fg) 72%, var(--color-muted));
   transition: background-color 0.15s, color 0.15s, transform 0.15s;
 }
 .seg-item-on {
@@ -720,12 +800,23 @@ button:active > .ico-live,
   background: color-mix(in oklab, var(--color-fg) 8%, var(--color-elevated));
 }
 
+/*
+ * Meme mecanique que .hud-chip-on : un fond a 55 % au-dessus de la maquette et
+ * un voile de fg a 10 % en remplacement donnaient Expert actif 2,09:1 contre
+ * Amateur inactif 2,63. Le fond du segment devient assez opaque pour porter du
+ * texte de 12 px et le voile de l'actif se compose sur le fond de base au lieu
+ * de l'effacer : mesure apres, 10,28 et 12,08:1.
+ */
 .seg {
   border-color: color-mix(in oklab, var(--color-accent) 16%, var(--color-border));
-  background: color-mix(in oklab, var(--color-bg) 55%, transparent);
+  background: color-mix(in oklab, var(--color-bg) 92%, transparent);
 }
 .seg-item-on {
-  background: color-mix(in oklab, var(--color-fg) 10%, transparent);
+  background-color: color-mix(in oklab, var(--color-elevated) 96%, transparent);
+  background-image: linear-gradient(
+    color-mix(in oklab, var(--color-fg) 12%, transparent),
+    color-mix(in oklab, var(--color-fg) 12%, transparent)
+  );
   color: var(--color-fg);
   box-shadow: none;
 }

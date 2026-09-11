@@ -6,7 +6,7 @@
  * - Coupe clipY → slider StudioShell (vue coupe) + Param Vue
  * - Ossature → StructurePanel ; Physique → HUD Visite + un toggle Vue
  */
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ALIGN_LABELS,
   CLIMATE_LABELS,
@@ -362,8 +362,10 @@ export function PropertiesPanel({
           {column && (
             <Section title="Poteau">
               <ParamGrid>
-              <Param label="Section X" value={column.width} min={0.1} max={1.2} step={0.02} onBegin={beginEdit} onChange={(v) => patchSelected({ width: v })} />
-              <Param label="Section Y" value={column.depth} min={0.1} max={1.2} step={0.02} onBegin={beginEdit} onChange={(v) => patchSelected({ depth: v })} />
+              {/* « Section X / Y » nommait les axes du repere, pas l'ouvrage :
+                  une section de poteau s'annonce largeur × profondeur. */}
+              <Param label="Largeur" value={column.width} min={0.1} max={1.2} step={0.02} onBegin={beginEdit} onChange={(v) => patchSelected({ width: v })} />
+              <Param label="Profondeur" value={column.depth} min={0.1} max={1.2} step={0.02} onBegin={beginEdit} onChange={(v) => patchSelected({ depth: v })} />
               </ParamGrid>
               <Param label="Hauteur" value={column.height} min={1} max={12} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ height: v })} />
               <More label="Matériau">
@@ -375,7 +377,10 @@ export function PropertiesPanel({
             <Section title="Escalier">
               <ParamGrid>
               <Param label="Largeur" value={stair.width} min={0.7} max={2.4} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ width: v })} />
-              <Param label="Giron total" value={stair.run} min={1.5} max={12} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ run: v })} />
+              {/* `run` est la projection au sol de la volee entiere (BuildingScene
+                  en tire le giron : run / nombre de marches). L'appeler « giron »
+                  disait donc l'inverse de ce que la valeur porte. */}
+              <Param label="Reculement" value={stair.run} min={1.5} max={12} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ run: v })} />
               </ParamGrid>
               <Param label="Hauteur" value={stair.rise} min={2} max={6} step={0.05} onBegin={beginEdit} onChange={(v) => patchSelected({ rise: v })} />
               <More label="Type">
@@ -510,7 +515,7 @@ export function PropertiesPanel({
             <More label="Réglages">
             <Param label="Heure solaire" value={lighting.sunHour} min={5} max={22} step={0.25} unit="h" digits={1} onBegin={beginEdit} onChange={(v) => setLighting({ sunHour: v })} />
             <ToggleRow label="Physique (visite)" on={physics} onChange={setPhysics} />
-            <Param label="Coupe (clip Y)" value={clipY} min={0.15} max={1} step={0.02} unit="" digits={2} onBegin={beginEdit} onChange={setClipY} />
+            <Param label="Plan de coupe" value={clipY} min={0.15} max={1} step={0.02} unit="" digits={2} onBegin={beginEdit} onChange={setClipY} />
             <Param
               label={`Saison · ${MONTH_LABELS[Math.min(11, Math.max(0, Math.round(lighting.month) - 1))]}`}
               value={lighting.month}
@@ -527,7 +532,7 @@ export function PropertiesPanel({
             <Param label="Douceur ombres" value={lighting.shadowSoftness} min={0} max={1} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ shadowSoftness: v })} />
             <Param label="Ciel" value={lighting.hemi} min={0} max={1.5} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ hemi: v })} />
             <Param label="Ambiance" value={lighting.ambient} min={0} max={1.2} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ ambient: v })} />
-            <Param label="Fill" value={lighting.fill} min={0} max={1.2} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ fill: v })} />
+            <Param label="Remplissage" value={lighting.fill} min={0} max={1.2} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ fill: v })} />
             <Param label="Exposition" value={lighting.exposure} min={0.4} max={2} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ exposure: v })} />
             <Param label="Gain intérieur" value={lighting.interiorGain} min={0.2} max={2} step={0.05} unit="" digits={2} onBegin={beginEdit} onChange={(v) => setLighting({ interiorGain: v })} />
             <Chips label="Intérieur" value={lighting.interior} options={["off", "auto", "on"]} labels={{ off: "Éteint", auto: "Auto", on: "Allumé" }} onChange={(v) => setLighting({ interior: v as "off" | "auto" | "on" })} />
@@ -627,7 +632,7 @@ export function StoriesPanel() {
         </p>
         <p className="font-mono text-[11px] text-muted tabular">{tall.toFixed(1)} m</p>
       </div>
-      <More label="Massing">
+      <More label="Volume">
       <Section title="Nouvel immeuble">
         <p className="text-xs text-muted">Volume A→Z — façades, poteaux, toiture, noyau. Jusqu’à R+80.</p>
         <Param label="Largeur" value={spanW} min={8} max={60} step={0.5} onBegin={beginEdit} onChange={setSpanW} />
@@ -1253,25 +1258,78 @@ function Param({
   const n = Number.isFinite(value) ? value : min;
   const clamped = Math.min(max, Math.max(min, n));
   const pct = max > min ? ((clamped - min) / (max - min)) * 100 : 0;
+  // La frappe vit a part de la valeur du modele. Le champ etait controle par
+  // `n.toFixed(digits)` pendant que l'ecretage tombait des le premier
+  // caractere : « 0.32 » dans Epaisseur (min 0,06) donnait 0,06 | 0,06 | 0,06
+  // | 0,06, et « 1200 » dans Parcelle (min 80) donnait 80 | 802 | 8020 |
+  // 80 200 m², soit 66 fois la valeur voulue. 35 des 52 Param etaient dans ce cas.
+  const [draft, setDraft] = useState<string | null>(null);
+  // Ce que ce champ vient d'ecrire lui-meme, pour distinguer son propre echo
+  // d'une valeur venue d'ailleurs (autre selection, preset, curseur).
+  const echo = useRef<number | null>(null);
+  useEffect(() => {
+    if (echo.current !== null && Math.abs(echo.current - value) <= 1e-6 * Math.max(1, Math.abs(value))) return;
+    echo.current = null;
+    setDraft(null);
+  }, [value]);
+
+  // Arrondi au pas, puis ecretage. Sans cet arrondi les boutons − / +
+  // propageaient des valeurs hors-pas : c'est la source du « 2.799999952 »
+  // que la dette imputait au curseur. La grille est calee sur zero et non sur
+  // `min` : sur Parcelle (min 80, pas 50) un cadrage sur `min` renvoyait 1 180
+  // pour 1 200 tape, soit la meme trahison de la frappe en plus discret.
+  const snap = (raw: number) => {
+    const stepped = step > 0 ? Math.round(raw / step) * step : raw;
+    return Math.min(max, Math.max(min, Number(stepped.toFixed(4))));
+  };
   const apply = (raw: number) => {
     if (!Number.isFinite(raw)) return;
-    onChange(Math.min(max, Math.max(min, Number(raw.toFixed(4)))));
+    echo.current = null;
+    setDraft(null);
+    onChange(snap(raw));
+  };
+  // Le pave numerique francais ne propose que la virgule.
+  const parse = (s: string) => Number(s.replace(",", "."));
+  const typeDraft = (text: string) => {
+    const clean = text.replace(/[^\d.,-]/g, "");
+    setDraft(clean);
+    const v = parse(clean);
+    if (clean.trim() === "" || !Number.isFinite(v)) return;
+    // Ni ecretage ni arrondi ici : le modele suit la frappe pour rester
+    // visible, les bornes attendent le blur ou Entree.
+    echo.current = v;
+    onChange(v);
+  };
+  const settleDraft = () => {
+    if (draft === null) return;
+    const v = parse(draft);
+    echo.current = null;
+    setDraft(null);
+    if (draft.trim() !== "" && Number.isFinite(v)) onChange(snap(v));
   };
   return (
     <label className="flex flex-col gap-0.5" onPointerDown={(e) => e.stopPropagation()}>
       <span className="flex items-baseline justify-between gap-3">
         <span className="text-[11px] font-medium tracking-wide text-muted uppercase">{label}</span>
         <span className="flex items-center gap-1">
+          {/* `type="number"` vidait le champ des qu'il contenait « 0. » : la
+              spec HTML n'y voit pas un nombre valide et l'assainit en chaine
+              vide, React restaurait alors la valeur controlee — le point
+              mange. En texte + pave decimal, la frappe survit jusqu'au blur. */}
           <input
-            type="number"
+            type="text"
             inputMode="decimal"
-            min={min}
-            max={max}
-            step={step}
-            value={n.toFixed(digits)}
+            autoComplete="off"
+            value={draft ?? n.toFixed(digits)}
             aria-label={label}
             onFocus={onBegin}
-            onChange={(e) => apply(Number(e.target.value))}
+            onChange={(e) => typeDraft(e.target.value)}
+            onBlur={settleDraft}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              e.preventDefault();
+              settleDraft();
+            }}
             className="h-7 w-[4.25rem] rounded-md border border-border bg-elevated px-1.5 text-right font-mono text-xs tabular focus:border-accent/50 focus:outline-none"
           />
           {unit ? (
@@ -1381,7 +1439,7 @@ function ToggleRow({ label, on, onChange }: { label: string; on: boolean; onChan
           on ? "bg-accent/20 text-accent" : "bg-border/40 text-muted"
         }`}
       >
-        {on ? "ON" : "OFF"}
+        {on ? "Oui" : "Non"}
       </span>
     </button>
   );
