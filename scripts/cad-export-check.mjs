@@ -117,7 +117,13 @@ try {
 
   // --- tallBoost thresholds ---
   const q8 = tallBoost(detectQuality(), 8);
-  assert.equal(q8.simpleProps, true);
+  // Cette assertion figeait « simpleProps = true des 8 etages », c'est-a-dire la
+  // regression elle-meme : sur Tour Horizon, le seed vitrine, les meubles
+  // composes redevenaient des boites, contre le §5 qui exige « simpleProps:
+  // false toujours ». La mesure a tranche — un R+40 coute 296 appels de dessin
+  // par image, exactement comme un R+8, parce que la fenetre d'etages borne
+  // deja le cout : rien ne justifiait de degrader les meubles.
+  assert.equal(q8.simpleProps, false, "les meubles composes restent composes (§5)");
   assert.ok(q8.shadowMap <= 1024);
   const villa = tallBoost(detectQuality(), 2);
   assert.equal(villa.simpleProps, false, "villas must keep full quality");

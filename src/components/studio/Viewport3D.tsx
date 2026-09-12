@@ -414,6 +414,15 @@ export function Viewport3D({
     () => ({ ...quality, shadows }),
     [quality, shadows],
   );
+  // Tableau memorise : `OrbitRig` recale sa cible dans un effet qui depend de
+  // l'identite du tableau, pas des trois nombres. Un litteral recree a chaque
+  // rendu rejouait donc ce recalage a chaque re-rendu — un panoramique de
+  // 10,08 m etait annule des le premier appui (retour a 0,00 m de la cible
+  // d'origine), et chaque image d'un curseur en direct refaisait le reset.
+  const orbitTarget = useMemo<[number, number, number]>(
+    () => [cx, elev + 1.2, cz],
+    [cx, elev, cz],
+  );
   const ambient = lighting.ambient;
   const lens = fov || (quality.mobile ? 52 : 46);
   const camFar = Math.max(180, horiz * 8, tall * 14);
@@ -564,7 +573,7 @@ export function Viewport3D({
         <Placement
           elev={elev}
           enabled={drawing}
-          target={[cx, elev + 1.2, cz]}
+          target={orbitTarget}
           north={project.meta.north}
           span={span}
         />

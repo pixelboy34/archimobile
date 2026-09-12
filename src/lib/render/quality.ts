@@ -40,7 +40,7 @@ export function detectQuality(): RenderQuality {
       shadowMap: 2048,
       lambert: false,
       gridDiv: 48,
-      ground: 280,
+      ground: 360,
       precision: "highp",
       texSize: 256,
       labels: true,
@@ -67,19 +67,27 @@ export function detectQuality(): RenderQuality {
   const dpr = window.devicePixelRatio || 1;
   const weak = cores <= 2 || saveData || slowNet || mem <= 2;
   const mobile = coarse || narrow;
+  // Pas de branche « mobile » sur la qualite d'image : elle plafonnait le DPR a
+  // 1,35 sur un telephone qui en demande 3, soit 45,6 % des pixels, avec
+  // antialias coupe, texSize 160, ground 180, shadowMap 768 et etiquettes
+  // eteintes. Le passage perf 44e0db9 l'avait introduite contre le profil de
+  // 4b48503 (« Never degrade: PBR on, shadows on, DPR up to 2 »), et c'est la
+  // regression de rendu deja signalee. Seul `weak` (2 coeurs, 2 Go, saveData,
+  // 2G/3G) garde un profil reduit ; le cout des immeubles est borne par la
+  // fenetre d'etages de tallBoost, pas en degradant l'image.
   return {
     mobile,
     weak,
-    dpr: [1, Math.min(dpr, mobile ? 1.35 : 2)],
-    antialias: !weak && !mobile,
+    dpr: [1, Math.min(dpr, 2)],
+    antialias: !weak,
     shadows: true,
-    shadowMap: weak ? 512 : mobile ? 768 : 1536,
+    shadowMap: weak ? 512 : mobile ? 1024 : 2048,
     lambert: weak,
     gridDiv: mobile ? 24 : 48,
-    ground: mobile ? 180 : 320,
+    ground: mobile ? 220 : 360,
     precision: mobile || weak ? "mediump" : "highp",
-    texSize: weak ? 96 : mobile ? 160 : 256,
-    labels: !mobile,
+    texSize: weak ? 128 : 256,
+    labels: true,
     fog: true,
     interiorLights: weak ? 3 : mobile ? 6 : 10,
     simpleProps: weak,
@@ -99,17 +107,21 @@ export function detectQuality(): RenderQuality {
  *
  * Thresholds (isolateStory always restores full detail on the active floor):
  *   <8   — no change (villa / small collective)
- *   ≥8   — simpleProps, fewer lights, shadowMap≤1024, storyWindow≤mobile1/desktop2
+ *   ≥8   — fewer lights, shadowMap≤1024, storyWindow≤mobile1/desktop2
  *   ≥16  — storyWindow=1, lights≤2/4, shadowMap≤512, interiorLightRadius=0
  *   ≥24  — tighter window (mobile 0), shellBand=1, mergeFarWalls, instanceFarColumns
  *   ≥40  — storyWindow=0 (active only full), shellBand=0 (else massing), labels off,
  *          interiorLights≤1, shadowMap≤256 mobile — R+40 phone stays interactive
+ *
+ * Ne touche jamais a simpleProps : le §5 exige des meubles composes en
+ * permanence, et la fenetre d'etages borne deja le cout — mesure sur telephone,
+ * un R+40 coute exactement ce que coute Tour Horizon (R+8) : 296 appels de
+ * dessin par image en median, 330 au pic, temps d'image identique.
  */
 export function tallBoost(base: RenderQuality, storyCount: number): RenderQuality {
   if (storyCount < 8) return base;
   const q: RenderQuality = { ...base };
   q.interiorLights = Math.min(q.interiorLights, base.mobile ? 3 : 5);
-  q.simpleProps = true;
   q.shadowMap = Math.min(q.shadowMap, 1024);
   q.storyWindow = Math.min(q.storyWindow, base.mobile ? 1 : 2);
   q.interiorLightRadius = 1;
@@ -139,7 +151,6 @@ export function tallBoost(base: RenderQuality, storyCount: number): RenderQualit
     q.instanceFarColumns = true;
     q.labels = false;
     q.shadowMap = Math.min(q.shadowMap, base.mobile ? 256 : 512);
-    q.simpleProps = true;
   }
   return q;
 }
