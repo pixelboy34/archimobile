@@ -59,6 +59,22 @@ assert(Math.abs(center.y - u.offset.y) < 0.01, `center y ${center.y}`);
 const right = underlayPixelToWorld(u, 100, 25);
 assert(right.x > center.x, "right pixel → +x");
 
+// Le sens vertical n'était pas couvert : un calque peint en miroir (ctx.scale(1,-1))
+// passait le smoke alors qu'il décalait les traits de 9 à 48 m selon le format.
+const topEdge = underlayPixelToWorld(u, u.naturalWidth / 2, 0);
+const bottomEdge = underlayPixelToWorld(u, u.naturalWidth / 2, u.naturalHeight);
+assert(topEdge.y > bottomEdge.y, `top pixel → +y (haut ${topEdge.y} / bas ${bottomEdge.y})`);
+
+// Oracle fermé du coin haut-gauche : c'est là que drawImage pose le pixel (0,0)
+// sans flip. Si la peinture et l'extraction divergent, l'une des deux bouge ici.
+const aspect0 = u.naturalHeight / u.naturalWidth;
+const corner = underlayPixelToWorld(u, 0, 0);
+assert(Math.abs(corner.x - (u.offset.x - u.scale / 2)) < 1e-9, `coin x ${corner.x}`);
+assert(
+  Math.abs(corner.y - (u.offset.y + (u.scale * aspect0) / 2)) < 1e-9,
+  `coin y ${corner.y}`,
+);
+
 const simp = simplifyPolyline(
   [
     { x: 0, y: 0 },

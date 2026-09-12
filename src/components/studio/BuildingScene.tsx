@@ -1491,13 +1491,16 @@ export function Ground({
       const [x, y] = parcelRing[i]!;
       arr[i * 3] = x;
       arr[i * 3 + 1] = 0.06;
-      arr[i * 3 + 2] = -y;
+      // z = +y comme partout ailleurs dans la scène : le -y retournait la parcelle
+      // nord/sud (aire signée inversée) et, cumulé au recentrage sur le bâti,
+      // décalait de 45,39 m le même sommet entre le plan et la 3D.
+      arr[i * 3 + 2] = y;
     }
     const [x0, y0] = parcelRing[0]!;
     const last = parcelRing.length * 3;
     arr[last] = x0;
     arr[last + 1] = 0.06;
-    arr[last + 2] = -y0;
+    arr[last + 2] = y0;
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(arr, 3));
     const mat = new THREE.LineBasicMaterial({
@@ -1519,6 +1522,7 @@ export function Ground({
     [parcelOutline],
   );
   return (
+    <>
     <group position={[cx, 0, cz]}>
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
@@ -1551,8 +1555,11 @@ export function Ground({
           <meshStandardMaterial color="#6e7a76" roughness={0.88} metalness={0.02} />
         </mesh>
       ))}
-      {parcelOutline && <primitive object={parcelOutline} />}
     </group>
+    {/* Hors du groupe recentré sur le bâti : le cadastre est en coordonnées plan
+        absolues, comme dans Plan2D. Gazon, terre et bordures, eux, restent centrés. */}
+    {parcelOutline && <primitive object={parcelOutline} />}
+    </>
   );
 }
 

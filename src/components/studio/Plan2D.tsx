@@ -216,7 +216,10 @@ export function Plan2D({
           ctx.save();
           ctx.translate(c.x, c.y);
           ctx.rotate(-underlay.rotation);
-          ctx.scale(1, -1);
+          // Pas de scale(1,-1) : underlayPixelToWorld ne retourne pas l'image, et le
+          // flip peignait le calque en symétrie autour de y = offset.y — jusqu'à 48 m
+          // d'écart en portrait 1:4, donc des traits extraits en haut du scan collés en
+          // bas de la maquette. toS() porte déjà l'inversion écran.
           ctx.globalAlpha = Math.max(0.05, Math.min(1, underlay.opacity));
           const wPx = underlay.scale * sc;
           const hPx = underlay.scale * aspect * sc;
