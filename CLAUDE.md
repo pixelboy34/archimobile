@@ -266,13 +266,14 @@ Seeds : **Villa Calanque**, **Tour Horizon**, **Atelier Voltaire**, **Maison Pat
    échappé sur `C:\Program Files`, et neuf tests de la coque Grok qui
    supposent une app sans marque là où `site.json` porte FORMA. Ce sont des
    tests de plateforme, pas de FORMA : d’où une porte séparée.
-2. Sliders float (`2.799999952`) — **source identifiée, pas encore corrigée**. Ce n’est pas
-   le curseur : c’est le champ chiffré de `Param` (`PropertiesPanel.tsx:1258`), qui écrête à
-   chaque frappe. Vérifié dans Chromium : effacer puis retaper une parcelle de 980 → 1200 m²
-   donne **100 000 m²**, et sur les `Param` décimaux le point est mangé (`Number("0.10.")`
-   = NaN), si bien que l’écran affiche `0.10` pendant que `meta.ces` dérive à `0.105`.
-   Correctif su : brouillon de saisie (`draft`) découplé de la valeur, écrêtage **et**
-   arrondi au pas au `blur`/`Enter` seulement.
+2. ~~Sliders float (`2.799999952`)~~ — **fait** (`0ee0a36`). Ce n’était pas le curseur mais le
+   champ chiffré de `Param`, qui écrêtait à `min` **à chaque frappe** : taper « 0.32 » dans
+   Épaisseur donnait `0,06 | 0,06 | 0,06 | 0,06`, la frappe n’entrait jamais ; « 1200 » dans
+   Parcelle donnait 80 200 m². 35 des 52 `Param` étaient dans ce cas. Le point était mangé
+   par surcroît : `type="number"` assainit « 0. » en chaîne vide. La frappe vit désormais à
+   part de la valeur, l’écrêtage **et** l’arrondi au pas attendent le `blur`/`Enter`.
+   Vérifié à la sonde : « 1.10 » dans Exposition donne `1 | 1. | 1.1 | 1.10`, puis
+   `exposure = 1,1` dans le modèle.
 3. ~~`generateMassing` destructif~~ — **fait**. `MassingLaunch` arme le
    remplacement en deux temps, annonce le décompte exact (`massingImpact`,
    miroir testé des filtres) et propose « Projet neuf ». Au passage, un bug
@@ -313,36 +314,23 @@ Seeds : **Villa Calanque**, **Tour Horizon**, **Atelier Voltaire**, **Maison Pat
 Chaque point a été reproduit par un auditeur puis confirmé par un sceptique chargé
 de le réfuter. Chiffres vérifiés, pas des soupçons.
 
-23. **Le profil de rendu téléphone est bridé sous le §0.1 et le §5.** `quality.ts:70`
-    plafonne le DPR à 1,35 sur iPhone 17 Pro là où le §5 autorise 2 : **45,6 % des
-    pixels demandés**, antialias coupé, `texSize` 160 au lieu de 256, `ground` 180
-    au lieu de 220, shadowMap 768 au lieu de 1024, labels éteints. Filiation
-    retrouvée : `4b48503` (« Never degrade: PBR on, shadows on, DPR up to 2 ») défait
-    par le passage perf `44e0db9`. Pire, `tallBoost` pose `simpleProps = true` dès
-    8 étages — donc sur **Tour Horizon**, le seed vitrine, les meubles composés
-    redeviennent des boîtes, contre le §5 qui exige « simpleProps: false toujours ».
-    C’est la régression que l’utilisateur a déjà signalée une fois.
-24. **Un appui sur la maquette annule le panoramique.** `Viewport3D.tsx:567` passe
-    `target={[cx, elev + 1.2, cz]}`, littéral recréé à chaque rendu ; l’effet
-    d’`OrbitRig` (l. 82-88) dépend de l’identité du tableau, pas des trois nombres.
-    Mesuré : pan de 21 m, un tap sur un mur ramène la caméra à 0,08 m du centre.
-    Chaque image d’un curseur en direct refait le reset — cela vide le §0.2 de son
-    sens. Correctif : `useMemo` sur le tableau, ou comparer les valeurs dans l’effet.
-25. **L’emprise cadastrale IGN est en miroir et décalée en 3D.** `BuildingScene.tsx:1494`
-    écrit `arr[i*3+2] = -y`, seul `-y` du fichier, contre la convention de la scène
-    et contre le commentaire de sa propre prop ; l’anneau est en plus placé dans le
-    groupe centré sur le bâti. **45,39 m d’écart** entre la même parcelle en 2D et
-    en 3D, aire signée inversée. Un recul de limite séparative lu en 3D est faux.
-26. **Le calque photo du relevé est peint en miroir vertical.** `Plan2D.tsx:217`
-    applique `ctx.scale(1, -1)` alors qu’`underlayPixelToWorld` ne retourne pas :
-    symétrie exacte autour de `offset.y`, jusqu’à 48 m d’écart selon le format.
-    Le smoke `survey-underlay-check.mjs` ne teste que le centre et l’axe horizontal,
-    d’où le passage inaperçu — ajouter l’assertion sur l’axe vertical avec le correctif.
-27. **Chaque bascule Plan → 3D détruit le contexte WebGL.** `StudioShell.tsx:347`
-    remplace `ViewportGate` par `Plan2D`, donc démonte le Canvas : 22 à 24 shaders
-    recompilés, 17 à 21 textures ré-téléversées, **216 à 649 ms d’écran vide** par
-    aller-retour, sur le geste le plus fréquent du studio. Correctif : garder le
-    Canvas monté et ne piloter que sa visibilité.
+23. ~~Profil de rendu téléphone bridé~~ — **fait** (`b86ef4e`). DPR 1,35 → 2, antialias
+    rendu, texSize 256, ground 220, shadowMap 1024, étiquettes actives. Sur l’application
+    réelle, iPhone 17 Pro : tampon 530×1150 → **786×1704, ×2,20 de pixels rendus**.
+    `simpleProps` n’est plus forcé à 8 étages — mesuré : un R+40 coûte 296 appels de dessin
+    par image, exactement comme un R+8, la fenêtre d’étages borne déjà le coût.
+    L’assertion `q8.simpleProps === true` de `cad-export-check` figeait la régression ;
+    elle est inversée, avec le chiffre qui la justifie.
+24. ~~Un appui annule le panoramique~~ — **fait** (`b86ef4e`). Dérive 10,08 m → **0,00 m**
+    aux appuis 1, 2 et 3. On peut enfin cadrer un angle puis sélectionner un mur.
+25. ~~Emprise cadastrale en miroir en 3D~~ — **fait** (`7531d0f`). Écart du sommet nord
+    45,488 m → **0,000 m**, aire signée de même sens qu’en 2D.
+26. ~~Calque de relevé en miroir vertical~~ — **fait** (`7531d0f`). Écart 8,000 m → 0,000 m ;
+    sur 24 rotations × 63 pixels, écart max 2,51e-15 m. Deux assertions ajoutées au smoke sur
+    l’axe vertical et sur un coin : rejouées contre la convention retournée, **elles échouent**
+    — elles ne sont donc pas tautologiques.
+27. ~~Bascule Plan → 3D qui tue le contexte WebGL~~ — **fait** (`b424666`). 8 allers-retours :
+    8 contextes perdus et 176 programmes recompilés → **0 et 0**, qualité inchangée.
 28. **`roofFaces` bbox-ise les toitures non rectangulaires.** `roof-planes.ts:49`
     part de `boundsOf(roof.polygon)` pour tout ce qui n’est pas plat. Depuis que le
     métré suit les pans exportés (commit `2242553`), l’erreur devient visible au
@@ -450,3 +438,39 @@ Invalider le 3D = `touch(project)` (bump `updatedAt`). Le canvas est en `demand`
    avertissement Three (`precision`, `sigmaRadians`).
 
 Ne pas repartir d’un greenfield.
+
+### Revue d’interface du 12/09 — reste ouvert
+
+Cinq zones mesurées dans un vrai Chromium à 320/375/393/430/768 px. Diagnostic :
+la densité extrême (90 % du texte ≤ 12 px) devait acheter de l’écran pour la maquette,
+et n’achetait rien — le chrome mangeait 25,8 % à 375 px au repos, 49,1 % avec le rail
+Ressources ouvert. Le gros est corrigé ; voici ce qui tient encore.
+
+33. **Treize commandes du rail restent sous 44 px.** Le rail empile trois lignes à 4 px
+    d’intervalle dans 150 px, et le bandeau bas est figé à 162 px par quatre ancrages en
+    dur (`ViewBar`, `NavPad`, `RadialMenu`, `ResourcesPeek`). Deux zones de 44 px
+    voisines s’y recouvrent, et celle du bas vole l’appui de celle du haut. Aérer le rail
+    demande de toucher `CommandOrb.tsx` et ces quatre décalages ensemble.
+34. **L’accent n’est pas unique — décision de design à trancher.** `--color-accent` vaut
+    `#7aa89c`, mais 13 occurrences codent `#6ed0c3` en dur (BuildingScene, Plan2D,
+    SelectionGizmo, Viewport3D, `__root.tsx`) et 12 codent `#7a9e96`. Le §0.7 en exige un
+    seul. Les occurrences 3D sont des couleurs Three, elles ne lisent pas les variables CSS.
+35. **Les huit panneaux sont modaux** : `sheet.tsx` pose un overlay `fixed inset-0` sur
+    100 % du viewport, et cinq d’entre eux pilotent pourtant la maquette qu’ils cachent.
+    `InspectorDock` (162 px, sans overlay, canvas atteignable) prouve que le motif non
+    modal fonctionne. La poignée `.sheet-handle` est un `div` sans gestionnaire : ni le
+    tap, ni le glissé, ni le tap sur l’overlay ne ferment — seule la croix.
+36. **L’anneau de focus est sous 3:1 partout** (`ring-fg/30` = 2,32 à 2,44:1 ;
+    `ring-fg/25` = 1,94 à 2,08:1), seuil WCAG SC 1.4.11. Deux langages de focus
+    cohabitent : les primitives suppriment l’outline UA, les autres contrôles la gardent.
+37. **`Onboarding.tsx` n’est jamais monté** (108 lignes, `shouldOnboard` / `markOnboarded`
+    exportés, 0 référence). Aucune prise en main n’existe à l’exécution, et
+    `forma-onboarded` reste `null` après la première visite.
+38. **L’accueil propose de « Continuer » une démo jamais ouverte.** `last = projects[0]`
+    quand `currentId` est nul : le seul bouton plein de l’écran (16 080 px² à 375) invite à
+    reprendre Villa Calanque, semée 200 ms plus tôt. Rien ne distingue une démo du travail
+    de l’utilisateur — le prédicat existe pourtant déjà (`updatedAt !== createdAt`,
+    `project-store.ts`, utilisé par `resetExamples`).
+39. **Les trois boutons d’une carte d’archive font 40 px et ne sont pas élargis**, posés
+    sur la vignette : 8,9 % des points de la vignette ouvrent une action au lieu du projet,
+    et « Supprimer » est le plus proche du bord (9 px), donc le plus atteignable au pouce.
