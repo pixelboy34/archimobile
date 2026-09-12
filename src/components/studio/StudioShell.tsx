@@ -143,7 +143,17 @@ export function StudioShell({ projectId }: { projectId: string }) {
     s.setHydrated(true);
     const hit = s.projects.find((p) => p.id === projectId);
     if (hit) {
+      // `currentId` est persisté, `storyId` ne l'est pas. Rouvrir directement une
+      // URL /studio/<id> déjà courante sautait donc `openProject`, seul endroit
+      // qui pose le niveau : `storyId` restait nul et `placeAt` sortait sur sa
+      // garde. Mesuré : outil Mur actif, deux appuis sur le plan, 38 murs avant
+      // et 38 après — aucun tracé possible tant qu'on n'avait pas changé de
+      // niveau une fois. Le garde couvre aussi un niveau supprimé entre-temps.
       if (s.currentId !== projectId) s.openProject(projectId);
+      else if (!hit.stories.some((st) => st.id === s.storyId)) {
+        const premier = hit.stories[0]?.id;
+        if (premier) s.setStory(premier);
+      }
       return;
     }
     const fallback = s.current() ?? s.projects[0];
