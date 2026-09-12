@@ -3,12 +3,52 @@ import { assessFeasibility, VERDICT_LABELS } from "@/lib/bim/feasibility";
 import { ROOM_LABELS } from "@/lib/bim/types";
 import { formatArea, formatMeters } from "@/lib/utils";
 import { useStudio } from "@/lib/store/project-store";
+import { Button } from "@/components/ui/button";
+import { SheetClose } from "@/components/ui/sheet";
 
 /** KPIs & faisabilité only — lumière / soleil / ombres / coupe vivent dans l’onglet Vue. */
 export function AnalysisPanel({ onOpenVue }: { onOpenVue?: () => void }) {
   const project = useStudio((s) => s.projects.find((p) => p.id === s.currentId) ?? null);
   const lighting = useStudio((s) => s.lighting);
+  const setTool = useStudio((s) => s.setTool);
+  const setView = useStudio((s) => s.setView);
   if (!project) return <p className="text-sm text-muted">Aucun projet ouvert.</p>;
+
+  // Sur un modèle sans rien de bâti, toutes les entrées du calcul valent zéro :
+  // le panneau affichait quand même « À surveiller · 79 » avec CES 0 % et des
+  // scores de 35 et 33 issus des seules valeurs par défaut. Un verdict sans
+  // matière est un verdict inventé.
+  if (project.walls.length === 0 && project.rooms.length === 0 && project.slabs.length === 0) {
+    return (
+      <div className="flex flex-col gap-4">
+        <section className="panel-card flex flex-col gap-2 p-3.5">
+          <p className="text-[10px] font-medium tracking-[0.18em] text-muted uppercase">
+            Rien à chiffrer
+          </p>
+          <p className="text-sm text-muted">
+            Ce modèle ne contient ni mur, ni pièce, ni dalle. Sans emprise ni surface, le CES,
+            le COS et les scores n’auraient aucune matière — ils ne sont pas affichés.
+          </p>
+        </section>
+        <SheetClose asChild>
+          <Button
+            variant="accent"
+            onClick={() => {
+              setTool("wall");
+              setView("plan");
+            }}
+          >
+            Tracer un premier mur
+          </Button>
+        </SheetClose>
+        <p className="text-xs text-subtle">
+          La parcelle et les plafonds CES / COS se saisissent dans PARAMS → Site ; ils
+          conditionnent la faisabilité.
+        </p>
+      </div>
+    );
+  }
+
   const a = analyzeProject(project);
   const feas = assessFeasibility(project, lighting, a);
 
@@ -33,7 +73,7 @@ export function AnalysisPanel({ onOpenVue }: { onOpenVue?: () => void }) {
           <button
             type="button"
             onClick={onOpenVue}
-            className="mt-1 flex h-10 items-center justify-center rounded-xl border border-accent/40 bg-accent/10 text-xs font-medium tracking-wide text-accent uppercase"
+            className="mt-1 flex h-11 items-center justify-center rounded-xl border border-accent/40 bg-accent/10 text-xs font-medium tracking-wide text-accent uppercase"
           >
             Ouvrir Vue (lumière)
           </button>
@@ -54,20 +94,32 @@ export function AnalysisPanel({ onOpenVue }: { onOpenVue?: () => void }) {
       </div>
 
       <div>
-        <p className="mb-2 text-[10px] font-medium tracking-[0.18em] text-muted uppercase">Pièces</p>
-        <ul className="divide-y divide-border">
-          {a.rooms.map((r) => (
-            <li key={r.id} className="flex items-center justify-between py-2 text-sm">
-              <span>
-                {r.name}
-                <span className="ml-2 text-xs text-subtle">
-                  {ROOM_LABELS[r.function]} · {r.story}
+        <p className="mb-2 text-[10px] font-medium tracking-[0.18em] text-muted uppercase">
+          Pièces
+          {a.rooms.length > 0 && (
+            <span className="ml-2 font-mono text-[11px] normal-case tabular">{a.rooms.length}</span>
+          )}
+        </p>
+        {a.rooms.length === 0 ? (
+          <p className="text-sm text-muted">
+            Aucune pièce : les surfaces restent à zéro tant que les murs ne délimitent pas de
+            local. Lancez « Détecter pièces » depuis Structure.
+          </p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {a.rooms.map((r) => (
+              <li key={r.id} className="flex items-center justify-between py-2 text-sm">
+                <span>
+                  {r.name}
+                  <span className="ml-2 text-xs text-subtle">
+                    {ROOM_LABELS[r.function]} · {r.story}
+                  </span>
                 </span>
-              </span>
-              <span className="font-mono text-xs tabular">{formatArea(r.area)}</span>
-            </li>
-          ))}
-        </ul>
+                <span className="font-mono text-xs tabular">{formatArea(r.area)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <ul className="flex flex-col gap-2">
