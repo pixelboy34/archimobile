@@ -3,7 +3,7 @@ import {
   ChevronLeft,
   Building2,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { toast, Toaster } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -91,6 +91,27 @@ export function StudioShell({ projectId }: { projectId: string }) {
   const [radial, setRadial] = useState(false);
   const [resources, setResources] = useState<null | "materials" | "objects" | "both">(null);
   const shiftRef = useRef(false);
+
+  /*
+   * Basculer vers le plan REMPLACAIT le Canvas dans le JSX : R3F le demonte, donc
+   * appelle forceContextLoss(). Mesure sur Tour Horizon, 8 allers-retours
+   * Plan/3D : 9 contextes crees, 8 perdus, 24 programmes et 21 textures rebatis
+   * a chaque retour, 285 a 649 ms d'ecran vide a 1280x800 et 216 a 369 ms a
+   * 390x844 — sur le geste le plus frequent du studio. Le Canvas reste donc
+   * monte et on ne pilote que sa visibilite.
+   */
+  const plan2d = view === "plan" || workspace === "esquisse" || workspace === "releve";
+  const show3d = view !== "ar" && !plan2d;
+  const [seen3d, setSeen3d] = useState(false);
+  useEffect(() => {
+    if (show3d) setSeen3d(true);
+  }, [show3d]);
+  /*
+   * Tant que le plan est devant, on redonne a React le MEME element : il saute
+   * le rendu du sous-arbre, aucune invalidation n'atteint la scene et le canvas
+   * masque ne coute rien. Au retour, un element neuf porte l'etat courant.
+   */
+  const viewport3d = useRef<ReactNode>(null);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -237,7 +258,27 @@ export function StudioShell({ projectId }: { projectId: string }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target;
-      if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) return;
+      if (
+        t instanceof HTMLInputElement ||
+        t instanceof HTMLTextAreaElement ||
+        t instanceof HTMLSelectElement ||
+        (t instanceof HTMLElement && t.isContentEditable)
+      ) {
+        return;
+      }
+      /*
+       * Tab et Espace appartiennent au navigateur, pas au studio. Les capter
+       * rendait le chrome injouable au clavier : 16 Tab a 393x852 atteignaient
+       * 0 des 31 controles interactifs, tous a tabIndex=0, et un bouton
+       * focalise n'emettait plus aucun clic a la barre d'espace. Le cycle
+       * d'etages passe sur PageUp/PageDown et les crochets, sans role standard.
+       *
+       * Espace conserve la bascule d'outil, mais seulement quand le focus est
+       * sur le fond : sur un controle, il l'active.
+       */
+      const onControl =
+        t instanceof HTMLElement &&
+        Boolean(t.closest('button, a[href], summary, [role="button"], [tabindex]:not([tabindex="-1"])'));
       if (e.key === "Escape") {
         setDraft(null);
         setMeasure(null);
@@ -264,10 +305,13 @@ export function StudioShell({ projectId }: { projectId: string }) {
       } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "d") {
         e.preventDefault();
         duplicateSelected();
-      } else if (e.key === "Tab") {
+      } else if (e.key === "PageUp" || e.key === "]") {
         e.preventDefault();
-        useStudio.getState().cycleStory(e.shiftKey ? -1 : 1);
-      } else if (e.code === "Space") {
+        useStudio.getState().cycleStory(1);
+      } else if (e.key === "PageDown" || e.key === "[") {
+        e.preventDefault();
+        useStudio.getState().cycleStory(-1);
+      } else if (e.code === "Space" && !onControl) {
         e.preventDefault();
         const st = useStudio.getState();
         if (st.tool === "select") st.setTool(st.lastDrawTool || "wall");
@@ -330,6 +374,19 @@ export function StudioShell({ projectId }: { projectId: string }) {
 
   const activeStory = storyId ?? current.stories[0]!.id;
 
+  if (show3d) {
+    viewport3d.current = (
+      <ViewportGate
+        project={current}
+        selectedIds={selectedIds}
+        onSelect={(id) => pick(id ? [id] : [])}
+        view={view}
+        sunHour={sunHour}
+        clipY={clipY}
+      />
+    );
+  }
+
   /*
    * Layout zones (mobile-first):
    * TOP — project header (back, name, Esq/Modèle/Rel, Amateur/Expert, Studio)
@@ -344,39 +401,43 @@ export function StudioShell({ projectId }: { projectId: string }) {
       <div className={`absolute inset-0 studio-canvas bg-elevated ${inspector || radial || resources ? "has-inspector" : ""}`}>
         {view === "ar" ? (
           <ArGate project={current} />
-        ) : view === "plan" || workspace === "esquisse" || workspace === "releve" ? (
-          <Plan2D
-            project={current}
-            storyId={activeStory}
-            tool={tool}
-            snap={snap}
-            grid={grid}
-            selectedIds={selectedIds}
-            onSelect={pick}
-            onWall={addWall}
-            onOpening={addOpeningAt}
-            onFurniture={addFurniture}
-            onColumn={addColumnAt}
-            onStair={addStairAt}
-            onSlab={addSlabAt}
-            onRoof={addRoofAt}
-            onDeletePoint={(p) => {
-              const hit = findWallAt(current, activeStory, p, 0.5);
-              if (hit) {
-                select([hit.wall.id]);
-                deleteSelected();
-              }
-            }}
-          />
         ) : (
-          <ViewportGate
-            project={current}
-            selectedIds={selectedIds}
-            onSelect={(id) => pick(id ? [id] : [])}
-            view={view}
-            sunHour={sunHour}
-            clipY={clipY}
-          />
+          <>
+            {seen3d && (
+              <div
+                className="absolute inset-0"
+                style={{ visibility: show3d ? "visible" : "hidden", pointerEvents: show3d ? undefined : "none" }}
+                aria-hidden={!show3d}
+              >
+                {viewport3d.current}
+              </div>
+            )}
+            {plan2d && (
+              <Plan2D
+                project={current}
+                storyId={activeStory}
+                tool={tool}
+                snap={snap}
+                grid={grid}
+                selectedIds={selectedIds}
+                onSelect={pick}
+                onWall={addWall}
+                onOpening={addOpeningAt}
+                onFurniture={addFurniture}
+                onColumn={addColumnAt}
+                onStair={addStairAt}
+                onSlab={addSlabAt}
+                onRoof={addRoofAt}
+                onDeletePoint={(p) => {
+                  const hit = findWallAt(current, activeStory, p, 0.5);
+                  if (hit) {
+                    select([hit.wall.id]);
+                    deleteSelected();
+                  }
+                }}
+              />
+            )}
+          </>
         )}
 
         {view !== "ar" && <Viewfinder />}
@@ -389,13 +450,7 @@ export function StudioShell({ projectId }: { projectId: string }) {
             massingCta={current.walls.length === 0 && tool === "select"}
           />
         )}
-        {view !== "ar" && (
-          <ViewBar
-            project={current}
-            onStories={() => setInspector("niveaux")}
-            onSite={() => setInspector("projet")}
-          />
-        )}
+        {view !== "ar" && <ViewBar project={current} onStories={() => setInspector("niveaux")} />}
         <StudioHud />
 
         {current.walls.length === 0 && tool === "select" && panel === null && !inspector && !radial && !resources && (
