@@ -9,7 +9,14 @@ import {
   emptyProject,
   touch,
 } from "@/lib/bim/builder";
-import { dist, findWallAt, snapVec, wallAngle, wallLength, wallSolidSegments } from "@/lib/bim/geometry";
+import { dist, findWallAt, projectBounds, snapVec, wallAngle, wallLength, wallSolidSegments } from "@/lib/bim/geometry";
+import {
+  anchorOfEntity,
+  lotLabel,
+  lotNumber,
+  nextKeynoteCode,
+  renumberKeynotes as renumberKeynoteCodes,
+} from "@/lib/bim/keynotes";
 import { snapToSketch } from "@/lib/bim/snap";
 import { mergeDetectedRooms } from "@/lib/bim/rooms";
 import { seedProjects } from "@/lib/bim/seed";
@@ -19,6 +26,7 @@ import type {
   FireRating,
   FurnitureKind,
   Glazing,
+  Keynote,
   MaterialId,
   MaterialStyle,
   OpeningVariant,
@@ -217,6 +225,14 @@ interface StudioState {
   toggleLayer: (id: string, patch: Partial<SketchLayer>) => void;
   addLayer: () => void;
   addRevision: (note?: string) => void;
+  addKeynote: (patch?: Partial<Keynote>) => string | null;
+  updateKeynote: (id: string, patch: Partial<Keynote>) => void;
+  removeKeynote: (id: string) => void;
+  renumberKeynoteBase: () => void;
+  /** Pose un appel sur la sélection si elle en offre une ancre, sinon au centre du niveau. */
+  callKeynote: (keynoteId: string) => string | null;
+  moveKeynoteRef: (id: string, patch: { at?: Vec2; offset?: Vec2 }) => void;
+  removeKeynoteRef: (id: string) => void;
   placeAt: (p: Vec2) => void;
   moveSelected: (dx: number, dy: number) => void;
   /** Pas discret (flèches, pavé de nudge) : annulable, une rafale = un instantané. */
@@ -1248,6 +1264,110 @@ export const useStudio = create<StudioState>()(
             { id: uid("rev"), at: new Date().toISOString(), note: note ?? `Jalon ${(n.revisions?.length ?? 0) + 1}` },
           ];
           return n;
+        });
+      },
+      addKeynote: (patch) => {
+        const cur = get().current();
+        if (!cur) return null;
+        const id = uid("kn");
+        const lot = lotLabel(patch?.lot);
+        get().commit((p) => {
+          const base = p.keynotes ?? [];
+          p.keynotes = [
+            ...base,
+            {
+              id,
+              // Le code est attribué à la création : un repère sans code ne peut
+              // pas être appelé, et la base n'a pas à être renumérotée pour ça.
+              code: patch?.code ?? nextKeynoteCode(base, lot),
+              lot,
+              texte: patch?.texte ?? "Nouveau repère",
+              ...(patch?.detail ? { detail: patch.detail } : {}),
+            },
+          ];
+          return p;
+        });
+        return id;
+      },
+      updateKeynote: (id, patch) => {
+        get().commit((p) => {
+          const base = p.keynotes ?? [];
+          p.keynotes = base.map((k) => {
+            if (k.id !== id) return k;
+            if (patch.lot === undefined) return { ...k, ...patch };
+            const lot = lotLabel(patch.lot);
+            // La tête du code est le numéro de lot : « 2.01 » ne veut plus rien
+            // dire sous Couverture. Le repère reprend un rang dans son nouveau lot.
+            const code =
+              patch.code ??
+              (lotNumber(lot) === lotNumber(k.lot)
+                ? k.code
+                : nextKeynoteCode(base.filter((x) => x.id !== id), lot));
+            return { ...k, ...patch, lot, code };
+          });
+          return p;
+        });
+      },
+      removeKeynote: (id) => {
+        const cur = get().current();
+        if (!cur) return;
+        const calls = (cur.keynoteRefs ?? []).filter((r) => r.keynoteId === id).length;
+        get().commit((p) => {
+          p.keynotes = (p.keynotes ?? []).filter((k) => k.id !== id);
+          // Les appels partent avec le repère : un dossier ne doit pas sortir
+          // avec un code qui ne renvoie plus à aucune note.
+          p.keynoteRefs = (p.keynoteRefs ?? []).filter((r) => r.keynoteId !== id);
+          return p;
+        });
+        toast.success(calls ? `Repère supprimé · ${calls} appel${calls > 1 ? "s" : ""} retiré${calls > 1 ? "s" : ""}` : "Repère supprimé");
+      },
+      renumberKeynoteBase: () => {
+        get().commit((p) => {
+          p.keynotes = renumberKeynoteCodes(p.keynotes ?? []);
+          return p;
+        });
+      },
+      callKeynote: (keynoteId) => {
+        const s = get();
+        const cur = s.current();
+        if (!cur) return null;
+        if (!(cur.keynotes ?? []).some((k) => k.id === keynoteId)) return null;
+        const storyId = s.storyId ?? cur.stories[0]?.id;
+        if (!storyId) return null;
+        // Attaché à la sélection quand elle est sur ce niveau, posé libre sinon.
+        const target = s.selectedIds
+          .map((eid) => ({ eid, a: anchorOfEntity(cur, eid) }))
+          .find((x) => x.a && x.a.storyId === storyId);
+        const b = projectBounds(cur, storyId);
+        const at = target?.a ? target.a.at : { x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2 };
+        const id = uid("knr");
+        s.commit((p) => {
+          p.keynoteRefs = [
+            ...(p.keynoteRefs ?? []),
+            {
+              id,
+              keynoteId,
+              storyId,
+              at,
+              // L'étiquette d'un appel attaché se déporte, sinon elle couvre
+              // l'ouvrage qu'elle désigne.
+              ...(target ? { offset: { x: 1.2, y: 1.2 }, targetId: target.eid } : {}),
+            },
+          ];
+          return p;
+        });
+        return id;
+      },
+      moveKeynoteRef: (id, patch) => {
+        get().commit((p) => {
+          p.keynoteRefs = (p.keynoteRefs ?? []).map((r) => (r.id === id ? { ...r, ...patch } : r));
+          return p;
+        });
+      },
+      removeKeynoteRef: (id) => {
+        get().commit((p) => {
+          p.keynoteRefs = (p.keynoteRefs ?? []).filter((r) => r.id !== id);
+          return p;
         });
       },
       placeAt: (p) => {

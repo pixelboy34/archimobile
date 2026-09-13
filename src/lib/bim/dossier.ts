@@ -17,6 +17,7 @@ import {
   formatEuro,
 } from "./quantities";
 import { buildNomenclature, type NomKind } from "./nomenclature";
+import { buildKeynoteLegend } from "./keynotes";
 import { exportDxf } from "../cad/dxf";
 import { exportIfc } from "../cad/ifc";
 import { TYPOLOGY_LABELS, type Project, type Typology } from "./types";
@@ -112,6 +113,36 @@ export function buildDossierHtml(project: Project): DossierResult {
       return `<li><strong>${esc(role)}</strong> — ${esc(st.name || role)} · +${st.elevation.toFixed(2)} m · HSP ${st.height.toFixed(2)} m</li>`;
     })
     .join("");
+
+  // Les plans ne portent que le code ; la spécification longue n'est imprimée
+  // qu'ici, une seule fois, sinon deux pages finiraient par se contredire.
+  const keyLegend = buildKeynoteLegend(project, null);
+  const keynoteSection = keyLegend.groups.length
+    ? `<section class="page">
+  <h2>Repères de nomenclature</h2>
+  <p class="meta">${keyLegend.noteCount} repère${keyLegend.noteCount > 1 ? "s" : ""} · ${keyLegend.callCount} appel${keyLegend.callCount > 1 ? "s" : ""} portés aux plans</p>
+  ${keyLegend.groups
+    .map(
+      // Un lot hors catalogue porte déjà son numéro dans son libellé : le
+      // préfixer une seconde fois donnerait « Lot 17 · 17 Photovoltaïque ».
+      (g) => `<h3 style="margin-top:20px;font-size:10pt;letter-spacing:0.12em;text-transform:uppercase;color:#5c5a54">${esc(g.lotNum > 0 && !/^\d/.test(g.lot) ? `Lot ${String(g.lotNum).padStart(2, "0")} · ${g.lot}` : g.lot)}</h3>
+  <table>
+    <thead><tr><th style="width:12%">Code</th><th style="width:32%">Désignation</th><th>Spécification</th><th class="num" style="width:10%">Appels</th></tr></thead>
+    <tbody>${g.entries
+      .map(
+        (e) =>
+          `<tr><td class="num" style="text-align:left;font-weight:700">${esc(e.code)}</td><td>${esc(e.keynote.texte)}</td><td>${esc(e.keynote.detail || "—")}</td><td class="num">${e.count}</td></tr>`,
+      )
+      .join("")}</tbody>
+  </table>`,
+    )
+    .join("")}
+  <footer class="site">
+    <span><span class="mark">FORMA</span> · légende commune à tous les plans</span>
+    <span>${esc(project.name)}</span>
+  </footer>
+</section>`
+    : "";
 
   const planSections = planSvgs
     .map(
@@ -259,6 +290,8 @@ export function buildDossierHtml(project: Project): DossierResult {
 </section>
 
 ${planSections}
+
+${keynoteSection}
 
 <section class="page">
   <h2>Coupe schématique</h2>

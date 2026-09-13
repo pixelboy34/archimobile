@@ -7,6 +7,7 @@ import {
   wallLength,
   wallSolidSegments,
 } from "./geometry";
+import { buildKeynoteLegend, resolveKeynoteRefs, type ResolvedKeynoteRef } from "./keynotes";
 import type { Opening, Project, Story, Vec2, Wall } from "./types";
 
 const ACCENT = "#6ed0c3";
@@ -135,7 +136,99 @@ function wallStroke(wall: Wall, openings: Opening[], map: (p: Vec2) => Vec2, sca
   return parts.join("");
 }
 
-export function buildPlanSvg(project: Project, story: Story, opts?: { width?: number; height?: number }): string {
+/** Largeur de la pastille : elle épouse le code, « 12.03 » tenant mal dans un rond. */
+function tagWidth(code: string): number {
+  return Math.max(20, code.length * 5.4 + 9);
+}
+
+/**
+ * Un appel de repère : pastille portant le code, amorce vers l'ancre quand
+ * l'étiquette est déportée. L'amorce est tracée avant la pastille pour que
+ * celle-ci en masque l'extrémité.
+ */
+function keynoteTag(r: ResolvedKeynoteRef, map: (p: Vec2) => Vec2): string {
+  const a = map(r.anchor);
+  const l = map(r.label);
+  const w = tagWidth(r.code);
+  const h = 14;
+  const parts: string[] = [];
+  if (r.leader) {
+    parts.push(
+      `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${l.x.toFixed(1)}" y2="${l.y.toFixed(1)}" stroke="${MUTED}" stroke-width="0.7"/>`,
+      `<circle cx="${a.x.toFixed(1)}" cy="${a.y.toFixed(1)}" r="1.8" fill="${ACCENT}"/>`,
+    );
+  }
+  parts.push(
+    `<rect x="${(l.x - w / 2).toFixed(1)}" y="${(l.y - h / 2).toFixed(1)}" width="${w.toFixed(1)}" height="${h}" rx="7" fill="#fff" stroke="${INK}" stroke-width="0.9"/>`,
+    `<text x="${l.x.toFixed(1)}" y="${(l.y + 3.2).toFixed(1)}" text-anchor="middle" font-size="8" font-weight="700" fill="${INK}" font-family="system-ui,sans-serif" font-variant-numeric="tabular-nums">${esc(r.code)}</text>`,
+  );
+  return parts.join("");
+}
+
+/** Découpe un texte en lignes tenant dans la colonne de légende. */
+function wrapWords(text: string, maxChars: number): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let cur = "";
+  for (const word of words) {
+    if (!cur) cur = word;
+    else if (cur.length + 1 + word.length <= maxChars) cur = `${cur} ${word}`;
+    else {
+      lines.push(cur);
+      cur = word;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+/** Légende du plan : uniquement les repères appelés sur cet étage. */
+function keynoteLegendBlock(project: Project, storyId: string, x: number, width: number, H: number): string {
+  const legend = buildKeynoteLegend(project, storyId);
+  if (!legend.groups.length) return "";
+  const parts: string[] = [
+    `<line x1="${x.toFixed(1)}" y1="48" x2="${x.toFixed(1)}" y2="${H - 24}" stroke="#ddd8cc" stroke-width="1"/>`,
+    `<text x="${(x + 12).toFixed(1)}" y="62" font-size="8" font-weight="700" fill="${MUTED}" font-family="system-ui,sans-serif" letter-spacing="0.14em">LÉGENDE</text>`,
+  ];
+  const textX = x + 12 + 26;
+  const maxChars = Math.max(12, Math.floor((width - 50) / 4.1));
+  let y = 80;
+  for (const g of legend.groups) {
+    if (y > H - 40) break;
+    parts.push(
+      `<text x="${(x + 12).toFixed(1)}" y="${y.toFixed(1)}" font-size="7.5" font-weight="700" fill="${ACCENT}" font-family="system-ui,sans-serif" letter-spacing="0.08em">${esc(g.lot.toUpperCase())}</text>`,
+    );
+    y += 12;
+    for (const e of g.entries) {
+      if (y > H - 34) break;
+      parts.push(
+        `<text x="${(x + 12).toFixed(1)}" y="${y.toFixed(1)}" font-size="8" font-weight="700" fill="${INK}" font-family="system-ui,sans-serif" font-variant-numeric="tabular-nums">${esc(e.code)}</text>`,
+      );
+      const lines = wrapWords(e.keynote.texte, maxChars);
+      for (const line of lines) {
+        parts.push(
+          `<text x="${textX.toFixed(1)}" y="${y.toFixed(1)}" font-size="8" fill="${INK}" font-family="system-ui,sans-serif">${esc(line)}</text>`,
+        );
+        y += 9.5;
+      }
+      if (e.count > 1) {
+        parts.push(
+          `<text x="${textX.toFixed(1)}" y="${y.toFixed(1)}" font-size="7" fill="${MUTED}" font-family="system-ui,sans-serif" font-variant-numeric="tabular-nums">${e.count} appels</text>`,
+        );
+        y += 9.5;
+      }
+      y += 3;
+    }
+    y += 5;
+  }
+  return parts.join("");
+}
+
+export function buildPlanSvg(
+  project: Project,
+  story: Story,
+  opts?: { width?: number; height?: number; keynotes?: boolean },
+): string {
   const W = opts?.width ?? 700;
   const H = opts?.height ?? 520;
   const pad = 48;
@@ -143,7 +236,12 @@ export function buildPlanSvg(project: Project, story: Story, opts?: { width?: nu
   const margin = 0.6;
   const min = { x: b.min.x - margin, y: b.min.y - margin };
   const max = { x: b.max.x + margin, y: b.max.y + margin };
-  const { map, scale } = makeMapper(min, max, pad, W, H);
+  // La colonne de légende n'est réservée que si l'étage porte vraiment des
+  // appels : un plan sans repère garde exactement le cadrage d'avant.
+  const refs = opts?.keynotes === false ? [] : resolveKeynoteRefs(project, story.id);
+  const legendW = refs.length ? Math.round(Math.min(220, Math.max(150, W * 0.28))) : 0;
+  const drawW = W - legendW;
+  const { map, scale } = makeMapper(min, max, pad, drawW, H);
   const walls = project.walls.filter((w) => w.storyId === story.id);
   const rooms = project.rooms.filter((r) => r.storyId === story.id);
   const idx = project.stories.findIndex((s) => s.id === story.id);
@@ -174,7 +272,9 @@ export function buildPlanSvg(project: Project, story: Story, opts?: { width?: nu
     `<line x1="24" y1="36" x2="${W - 24}" y2="36" stroke="${ACCENT}" stroke-width="2"/>`,
     roomShapes,
     wallShapes,
-    northArrow(W - 48, 72, project.meta.north ?? 0),
+    refs.map((r) => keynoteTag(r, map)).join(""),
+    legendW ? keynoteLegendBlock(project, story.id, drawW, legendW, H) : "",
+    northArrow(drawW - 48, 72, project.meta.north ?? 0),
     scaleBar(24, H - 28, scale),
     `</svg>`,
   ].join("");
