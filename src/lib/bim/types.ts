@@ -437,6 +437,38 @@ export interface SurveyUnderlay {
   ephemeral?: boolean;
 }
 
+/**
+ * Repère de nomenclature — une note normalisée du projet, appelée par son code.
+ *
+ * C'est le principe des Keynotes : le texte n'est écrit qu'une fois, dans la
+ * base du projet, et les plans n'en portent que le code. Corriger la note la
+ * corrige partout, et la légende ne peut plus diverger des plans.
+ */
+export interface Keynote {
+  id: string;
+  /** Code porté sur le plan, p. ex. « 3.02 ». Unique dans le projet. */
+  code: string;
+  /** Lot au sens du CCTP : gros œuvre, menuiserie, couverture… */
+  lot: string;
+  /** Le texte de la légende, court. */
+  texte: string;
+  /** Spécification longue : imprimée au dossier, jamais sur le plan. */
+  detail?: string;
+}
+
+/** Appel de repère posé sur un plan d'étage. */
+export interface KeynoteRef {
+  id: string;
+  keynoteId: string;
+  storyId: string;
+  /** Ancre, en mètres, repère du plan. */
+  at: Vec2;
+  /** Décalage de l'étiquette par rapport à l'ancre, en mètres. */
+  offset?: Vec2;
+  /** Ouvrage désigné, quand le repère est attaché plutôt que posé libre. */
+  targetId?: string;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -459,6 +491,10 @@ export interface Project {
   /** Calque image relevé (photo / plan) — non exporté IFC/DXF. */
   surveyUnderlay?: SurveyUnderlay;
   revisions?: Revision[];
+  /** Base des repères de nomenclature du projet. */
+  keynotes?: Keynote[];
+  /** Appels de repères posés sur les plans. */
+  keynoteRefs?: KeynoteRef[];
 }
 
 export const MATERIAL_LABELS: Record<MaterialId, string> = {
