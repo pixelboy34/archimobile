@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { cloneProject } from "@/lib/bim/builder";
 import { MATERIAL_COLORS, ROOM_HATCH, resolveMaterial } from "@/lib/bim/materials";
@@ -16,11 +16,21 @@ import {
   wallAngle,
   wallNormalOffset,
 } from "@/lib/bim/geometry";
+import { mergeDetectedRooms } from "@/lib/bim/rooms";
 import { isBearingWall } from "@/lib/bim/structure";
 import type { Project, Tool, Vec2 } from "@/lib/bim/types";
 import { snapDetail } from "@/lib/bim/snap";
-import { orthoPoint, splitWallAt } from "@/lib/cad/ops";
+import { healWallEnds, orthoPoint, splitWallAt } from "@/lib/cad/ops";
+import type { GuideResolution } from "@/lib/cad/guides";
+import {
+  angleEntre,
+  coteToPoint,
+  parseAngleDeg,
+  parseCote,
+  resolveGuidedPoint,
+} from "@/lib/cad/guides";
 import { useStudio } from "@/lib/store/project-store";
+import { formatMeters, uid } from "@/lib/utils";
 
 interface Cam {
   x: number;
@@ -56,6 +66,53 @@ function worldFromEvent(
   };
 }
 
+
+interface TraceModel {
+  project: Project;
+  storyId: string;
+  draft: Vec2 | null;
+  ortho: boolean;
+  snap: boolean;
+  snapStep: number;
+}
+
+/**
+ * Point retenu pour le tracé, guides compris.
+ *
+ * La tolérance est dérivée de l'échelle et non fixée en mètres : à 8 px/m un
+ * accrochage de 12 cm est inatteignable au doigt, à 90 px/m il happe tout le
+ * plan. Douze pixels correspondent au flou d'un appui, quelle que soit la vue.
+ */
+function resoudreTrace(
+  brut: Vec2,
+  m: TraceModel,
+  scale: number,
+  repriseLongueur: number,
+): GuideResolution {
+  const tolerance = Math.min(0.6, Math.max(0.04, 12 / Math.max(1, scale)));
+  const dr = m.draft;
+  const apresOrtho = dr && m.ortho ? orthoPoint(dr, brut) : brut;
+  // orthoPoint rend l'objet reçu tel quel quand le verrou ne mord pas :
+  // l'identité dit donc si le rayon est imposé, sans re-mesurer l'angle.
+  let contrainte: { origin: Vec2; dir: Vec2 } | null = null;
+  if (dr && apresOrtho !== brut) {
+    const len = dist(dr, apresOrtho);
+    if (len > 1e-9) {
+      contrainte = {
+        origin: dr,
+        dir: { x: (apresOrtho.x - dr.x) / len, y: (apresOrtho.y - dr.y) / len },
+      };
+    }
+  }
+  return resolveGuidedPoint(apresOrtho, m.project, m.storyId, {
+    tolerance,
+    draft: dr,
+    previousLength: repriseLongueur,
+    useGrid: m.snap,
+    snapStep: m.snapStep,
+    contrainte,
+  });
+}
 
 function roleTintHex(hex: string, role?: string): string {
   if (!role || role === "interior") return hex;
@@ -130,8 +187,91 @@ export function Plan2D({
   const moveDrag = useRef<{ last: Vec2 } | null>(null);
   const lastTap = useRef(0);
   const snapStep = useStudio((s) => s.snapStep);
+  const setDraft = useStudio((s) => s.setDraft);
+  const commit = useStudio((s) => s.commit);
+  const wallDraft = useStudio((s) => s.wallDraft);
   const model = useRef({ project, storyId, tool, snap, grid, selectedIds, draft, measure, ortho, snapStep });
   model.current = { project, storyId, tool, snap, grid, selectedIds, draft, measure, ortho, snapStep };
+
+  /** Dernière résolution guidée, pour le dessin et pour préremplir la cote. */
+  const guide = useRef<GuideResolution | null>(null);
+  /** Longueur du segment précédent de la polyligne : la cote qu'on veut reprendre. */
+  const repriseLongueur = useRef(0);
+  const draftPrecedent = useRef<Vec2 | null>(null);
+  const [cote, setCote] = useState<{ longueur: string; angle: string } | null>(null);
+
+  useEffect(() => {
+    const avant = draftPrecedent.current;
+    if (!draft) repriseLongueur.current = 0;
+    else if (avant && dist(avant, draft) > 0.3) repriseLongueur.current = dist(avant, draft);
+    draftPrecedent.current = draft;
+  }, [draft]);
+
+  /**
+   * Pose un mur aux coordonnées exactes.
+   *
+   * placeAt et addWall repassent leurs deux points au magnétisme de trame :
+   * un alignement à 6,13 m y redevient 6,25 m et une cote saisie n'est plus la
+   * cote saisie. Le tracé guidé pose donc lui-même, avec le même gabarit de mur
+   * et les mêmes finitions — détection de pièces puis reprise des jonctions.
+   */
+  const poserMurExact = (a: Vec2, b: Vec2) => {
+    const m = model.current;
+    if (dist(a, b) < 0.3) return;
+    const story = m.project.stories.find((st) => st.id === m.storyId);
+    const materialId =
+      wallDraft.materialId === "water" || wallDraft.materialId === "vegetation"
+        ? "plaster"
+        : wallDraft.materialId;
+    commit((p) => {
+      p.walls.push({
+        id: uid("w"),
+        storyId: m.storyId,
+        a,
+        b,
+        thickness: wallDraft.thickness,
+        height: wallDraft.height || story?.height || 2.8,
+        materialId,
+        loadBearing: wallDraft.loadBearing,
+        partition: wallDraft.partition,
+        insulationMm: wallDraft.insulationMm,
+        uValue: 0.36,
+        fireRating: wallDraft.fireRating,
+        alignment: wallDraft.alignment,
+        role: wallDraft.role,
+        acousticRw: 50,
+      });
+      p.rooms = mergeDetectedRooms(p, m.storyId);
+      return healWallEnds(p, m.storyId);
+    });
+  };
+
+  const ouvrirCote = () => {
+    const dr = model.current.draft;
+    if (!dr) return;
+    const cible = guide.current?.point ?? hover.current ?? dr;
+    const L = dist(dr, cible);
+    setCote({
+      longueur: L > 0.05 ? L.toFixed(2).replace(".", ",") : "",
+      angle: L > 0.05 ? ((angleEntre(dr, cible) * 180) / Math.PI).toFixed(1).replace(".", ",") : "0",
+    });
+  };
+
+  const poserCote = () => {
+    const dr = model.current.draft;
+    if (!dr || !cote) return;
+    const longueur = parseCote(cote.longueur);
+    if (longueur === null) {
+      toast.error("Longueur illisible — par exemple 3,20");
+      return;
+    }
+    const cible = guide.current?.point ?? hover.current ?? { x: dr.x + 1, y: dr.y };
+    const angle = parseAngleDeg(cote.angle) ?? angleEntre(dr, cible);
+    const arrivee = coteToPoint(dr, longueur, angle);
+    poserMurExact(dr, arrivee);
+    setDraft(arrivee);
+    setCote(null);
+  };
 
   useEffect(() => {
     const b = projectBounds(project, storyId);
@@ -411,8 +551,47 @@ export function Plan2D({
         ctx.restore();
       }
 
+      // Guides de tracé : une résolution par image, réutilisée pour le dessin,
+      // pour la cote affichée et pour préremplir la saisie.
+      const guidage =
+        model.current.tool === "wall" && hover.current
+          ? resoudreTrace(hover.current, model.current, cam.current.scale, repriseLongueur.current)
+          : null;
+      guide.current = guidage;
+      if (guidage) {
+        const portee = Math.hypot(w, h);
+        for (const g of guidage.retenus) {
+          const ecran = { x: g.dir.x, y: -g.dir.y };
+          if (g.form === "ligne") {
+            const o = toS(g.origin);
+            ctx.beginPath();
+            ctx.moveTo(o.x - ecran.x * portee, o.y - ecran.y * portee);
+            ctx.lineTo(o.x + ecran.x * portee, o.y + ecran.y * portee);
+            ctx.strokeStyle = "rgba(110, 208, 195, 0.5)";
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 6]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          } else {
+            // La cote reprise se marque en travers du segment : un trait de plus
+            // en travers du plan n'apprendrait rien de plus.
+            const s = toS(g.point);
+            ctx.beginPath();
+            ctx.moveTo(s.x + ecran.y * 7, s.y - ecran.x * 7);
+            ctx.lineTo(s.x - ecran.y * 7, s.y + ecran.x * 7);
+            ctx.strokeStyle = "rgba(110, 208, 195, 0.8)";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+          }
+        }
+      }
+
       if (dr && hover.current) {
-        const hoverPt = model.current.ortho ? orthoPoint(dr, hover.current) : hover.current;
+        const hoverPt = guidage
+          ? guidage.point
+          : model.current.ortho
+            ? orthoPoint(dr, hover.current)
+            : hover.current;
         const a = toS(dr);
         const b = toS(hoverPt);
         ctx.beginPath();
@@ -425,7 +604,13 @@ export function Plan2D({
         ctx.setLineDash([]);
         ctx.fillStyle = "#f3f1ec";
         ctx.font = "500 11px IBM Plex Mono, monospace";
-        ctx.fillText(`${dist(dr, hoverPt).toFixed(2)} m`, (a.x + b.x) / 2, (a.y + b.y) / 2 - 8);
+        ctx.textAlign = "center";
+        const cap = ((angleEntre(dr, hoverPt) * 180) / Math.PI).toFixed(1).replace(".", ",");
+        ctx.fillText(
+          `${formatMeters(dist(dr, hoverPt))} · ${cap}°`,
+          (a.x + b.x) / 2,
+          (a.y + b.y) / 2 - 8,
+        );
       }
       if (dr && hover.current && model.current.tool === "rect") {
         const a = toS(dr);
@@ -441,17 +626,27 @@ export function Plan2D({
         ctx.fillText(`${w.toFixed(2)} × ${d.toFixed(2)} m`, (a.x + b.x) / 2, (a.y + b.y) / 2);
       }
       if (hover.current && (model.current.tool === "wall" || model.current.tool === "rect" || model.current.tool === "measure")) {
-        const snap = snapDetail(hover.current, proj, sid, model.current.snap, 0.35, model.current.snapStep);
-        const spt = toS(snap.point);
+        const snap = guidage
+          ? guidage.snap
+          : snapDetail(hover.current, proj, sid, model.current.snap, 0.35, model.current.snapStep);
+        const retenu = guidage ? guidage.point : snap.point;
+        const guide2d = guidage ? guidage.retenus.length > 0 : false;
+        const spt = toS(retenu);
         ctx.beginPath();
-        if (snap.kind === "end") {
+        if (!guide2d && snap.kind === "end") {
           ctx.rect(spt.x - 5, spt.y - 5, 10, 10);
         } else {
           ctx.arc(spt.x, spt.y, 5, 0, Math.PI * 2);
         }
-        ctx.strokeStyle = snap.kind === "none" ? "#5c5a54" : "#7a9e96";
-        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = guide2d ? "#6ed0c3" : snap.kind === "none" ? "#5c5a54" : "#7a9e96";
+        ctx.lineWidth = guide2d ? 2 : 1.5;
         ctx.stroke();
+        if (guide2d) {
+          ctx.fillStyle = "#6ed0c3";
+          ctx.font = "500 10px IBM Plex Mono, monospace";
+          ctx.textAlign = "left";
+          ctx.fillText(guidage!.raison, spt.x + 10, spt.y - 9);
+        }
       }
       if (hover.current && (model.current.tool === "window" || model.current.tool === "door")) {
         const hit = findWallAt(proj, sid, hover.current, 0.6);
@@ -651,6 +846,7 @@ export function Plan2D({
   };
 
   return (
+    <>
     <canvas
       ref={ref}
       className="studio-canvas h-full w-full touch-none"
@@ -676,6 +872,7 @@ export function Plan2D({
           return;
         }
         const p = worldFromEvent(e, canvas, cam.current);
+        hover.current = p;
         const wp = model.current.snap ? snapVec(p, model.current.snapStep) : p;
         const currentTool = model.current.tool;
         if (currentTool === "pen") {
@@ -706,6 +903,24 @@ export function Plan2D({
           drag.current = { x: e.clientX, y: e.clientY, camX: cam.current.x, camY: cam.current.y };
           if (id && currentTool === "select") onSelect([id]);
           else if (currentTool === "select") onSelect([]);
+          return;
+        }
+        if (currentTool === "wall") {
+          // Le tracé au mur passe par les guides, pas par placeAt : le point
+          // retenu doit arriver intact jusqu'à la maquette.
+          const res = resoudreTrace(p, model.current, cam.current.scale, repriseLongueur.current);
+          guide.current = res;
+          const depart = model.current.draft;
+          if (!depart) {
+            setDraft(res.point);
+            return;
+          }
+          if (dist(depart, res.point) < 0.35) {
+            setDraft(null);
+            return;
+          }
+          poserMurExact(depart, res.point);
+          setDraft(res.point);
           return;
         }
         placeAt(wp);
@@ -754,5 +969,75 @@ export function Plan2D({
         moveDrag.current = null;
       }}
     />
+    {/*
+      Saisie de cote — coin haut droit, sous l'en-tête.
+      Le §0.2 vaut aussi au plan : pas de feuille pleine page, le tracé reste
+      visible pendant qu'on tape, et le pavé numérique du téléphone occupe le
+      bas de l'écran sans recouvrir le champ.
+    */}
+    {tool === "wall" && draft && (
+      <div
+        className="pointer-events-none absolute right-2 z-10 flex max-w-[calc(100vw-1rem)] flex-col items-end gap-1.5"
+        style={{ top: "max(3.4rem, calc(env(safe-area-inset-top) + 2.9rem))" }}
+      >
+        {cote === null ? (
+          <button
+            type="button"
+            onClick={ouvrirCote}
+            className="hud-chip hud-chip-press pointer-events-auto"
+          >
+            Cote
+          </button>
+        ) : (
+          <div className="hud-panel pointer-events-auto flex items-end gap-1.5 p-2">
+            <label className="flex flex-col gap-0.5">
+              <span className="hud-label">Long. m</span>
+              <input
+                autoFocus
+                inputMode="decimal"
+                enterKeyHint="done"
+                value={cote.longueur}
+                onChange={(ev) => setCote({ ...cote, longueur: ev.target.value })}
+                onKeyDown={(ev) => {
+                  if (ev.key === "Enter") poserCote();
+                  if (ev.key === "Escape") setCote(null);
+                }}
+                className="h-11 w-20 rounded-lg bg-elevated px-2 text-center font-mono text-sm text-fg outline-none focus:ring-1 focus:ring-accent/60"
+              />
+            </label>
+            <label className="flex flex-col gap-0.5">
+              <span className="hud-label">Angle °</span>
+              <input
+                inputMode="decimal"
+                enterKeyHint="done"
+                value={cote.angle}
+                onChange={(ev) => setCote({ ...cote, angle: ev.target.value })}
+                onKeyDown={(ev) => {
+                  if (ev.key === "Enter") poserCote();
+                  if (ev.key === "Escape") setCote(null);
+                }}
+                className="h-11 w-16 rounded-lg bg-elevated px-2 text-center font-mono text-sm text-fg outline-none focus:ring-1 focus:ring-accent/60"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={poserCote}
+              className="h-11 rounded-lg bg-accent/15 px-3 text-xs font-medium text-accent ring-1 ring-accent/40"
+            >
+              Poser
+            </button>
+            <button
+              type="button"
+              onClick={() => setCote(null)}
+              aria-label="Fermer la saisie de cote"
+              className="h-11 rounded-lg px-2 text-xs text-muted"
+            >
+              Fermer
+            </button>
+          </div>
+        )}
+      </div>
+    )}
+    </>
   );
 }
