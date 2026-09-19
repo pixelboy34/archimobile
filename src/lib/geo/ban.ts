@@ -1,3 +1,4 @@
+import { readJsonOrThrow } from "./api-helpers";
 import type { BanHit } from "./types";
 
 const BAN = "https://api-adresse.data.gouv.fr/search/";
@@ -33,19 +34,30 @@ export async function searchBanAddress(q: string, limit = 5): Promise<BanHit[]> 
   try {
     const res = await fetch(url, { signal: ctrl.signal, headers: { Accept: "application/json" } });
     if (!res.ok) throw new Error(`BAN HTTP ${res.status}`);
-    const data = (await res.json()) as BanCollection;
-    return (data.features ?? []).map((f) => ({
-      label: f.properties.label,
-      score: f.properties.score,
-      housenumber: f.properties.housenumber,
-      street: f.properties.street,
-      postcode: f.properties.postcode,
-      city: f.properties.city,
-      citycode: f.properties.citycode,
-      context: f.properties.context,
-      lon: f.geometry.coordinates[0],
-      lat: f.geometry.coordinates[1],
-    }));
+    const data = await readJsonOrThrow<BanCollection>(res, "adresse");
+    // Chaque entrée est lue défensivement : la BAN renvoie parfois un résultat
+    // sans géométrie, et `f.geometry.coordinates[0]` levait alors un TypeError
+    // dont le message V8 remontait en anglais jusqu'au bandeau. Une entrée
+    // inexploitable est écartée, elle ne fait pas échouer la recherche entière.
+    return (Array.isArray(data?.features) ? data.features : []).flatMap((f) => {
+      const p = f?.properties;
+      const c = f?.geometry?.coordinates;
+      if (!p || !Array.isArray(c) || typeof c[0] !== "number" || typeof c[1] !== "number") return [];
+      return [
+        {
+          label: p.label,
+          score: p.score,
+          housenumber: p.housenumber,
+          street: p.street,
+          postcode: p.postcode,
+          city: p.city,
+          citycode: p.citycode,
+          context: p.context,
+          lon: c[0],
+          lat: c[1],
+        },
+      ];
+    });
   } finally {
     clearTimeout(t);
   }

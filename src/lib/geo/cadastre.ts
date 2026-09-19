@@ -1,3 +1,4 @@
+import { readJsonOrThrow } from "./api-helpers";
 import { openRing, wgs84RingToLocal } from "./geometry";
 import type { ParcelleLookup, ParcelleRef } from "./types";
 import { CITY_PRESETS, type CityPreset } from "@/lib/bim/feasibility";
@@ -91,7 +92,7 @@ async function fetchJson<T>(url: string): Promise<T> {
       const body = await res.text().catch(() => "");
       throw new Error(`Cadastre HTTP ${res.status}${body ? `: ${body.slice(0, 160)}` : ""}`);
     }
-    return (await res.json()) as T;
+    return await readJsonOrThrow<T>(res, "cadastre");
   } finally {
     clearTimeout(t);
   }
