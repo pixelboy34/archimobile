@@ -282,7 +282,14 @@ Seeds : **Villa Calanque**, **Tour Horizon**, **Atelier Voltaire**, **Maison Pat
    `storyId` disparu — le métré d’un R+6 ramené au RDC annonçait 597 610 €
    au lieu de 83 085, et l’IFC/DXF exportait ces étages fantômes.
 4. `repeatStories` clone tout le plateau. R+40 = explosion draw calls. **Instancing / LOD par étage type**, ou plateau allégé (pas de meubles, murs fusionnés).
-5. Pas d’IFC, pas de DWG. DXF = lignes 2D. Import CAD réel manquant.
+5. ~~Import CAD réel manquant~~ — **fait** (`32e7b71`). `dxf-import.ts` lit LINE,
+   LWPOLYLINE, POLYLINE/VERTEX, ARC et CIRCLE, rend des polylignes en mètres avec leur
+   calque, et entre en calques d’esquisse — c’est un fond de plan, la chaîne Relevé prend
+   le relais. `` est lu, une en-tête invraisemblable est **signalée sans être
+   contournée**, une unité absente est **déduite et annoncée comme telle**. Le dessin est
+   recentré : un plan en Lambert 93 place le bâtiment à 650 km de l’origine. 19 tests,
+   oracle = fixture écrite à la main. Reste ouvert : l’export IFC existe (`ifc.ts`),
+   l’**import** IFC et le DWG, non.
 6. Géométrie murs : pas de trim/extend/fillet, pas de murs courbes, pièces surtout rectangulaires (`detectLoops` existe, tracer pièce faible).
 7. Meubles procéduraux, pas glTF.
 8. Chunk `Viewport3D` ~900 kB (drei). Code-split partiel (`ViewportGate` / `ArGate`).
