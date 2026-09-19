@@ -338,7 +338,7 @@ de le réfuter. Chiffres vérifiés, pas des soupçons.
     — elles ne sont donc pas tautologiques.
 27. ~~Bascule Plan → 3D qui tue le contexte WebGL~~ — **fait** (`b424666`). 8 allers-retours :
     8 contextes perdus et 176 programmes recompilés → **0 et 0**, qualité inchangée.
-40. ** ne tient pas son écart sur certaines géométries.** Trouvé par le
+40. **`punchFacadeGrid` ne tient pas son écart sur certaines géométries.** Trouvé par le
     contrôle de cohérence lui-même : sur un R+40 généré en 20 × 16 m, deux baies se
     chevauchent de 8 cm sur le même mur — le trumeau entre elles n’existe pas. Les cinq
     démos et un R+8 sortent propres, c’est donc lié à la trame à cette largeur.
