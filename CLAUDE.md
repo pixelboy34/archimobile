@@ -367,16 +367,23 @@ de le réfuter. Chiffres vérifiés, pas des soupçons.
     suffit, et `prune()` ne nettoie que l’intérieur d’un salon qu’une requête vient
     de toucher. 10 000 requêtes anonymes retiennent 327 Mo définitivement. Les TTL
     annoncés (45 s / 60 s) ne s’appliquent à aucun salon abandonné.
-30. **Une réponse malformée de la BAN affiche du V8 en anglais.** `api-helpers.ts:14`
-    renvoie tel quel tout message d’exception de moins de 180 caractères, et ni
-    `ban.ts` ni `cadastre.ts` ne protègent `res.json()`. Une passerelle qui répond
-    en HTML suffit à afficher « Cannot read properties of undefined » dans une
-    interface française.
-31. **Le bouton « Porteur » rouvre l’écart métré/nomenclature.** `PropertiesPanel.tsx:216`
-    écrit `commitSelected({ loadBearing: v, partition: !v })` sans toucher `w.role`,
-    alors que la clé de groupe de `nomenclature.ts:176` s’appuie sur `role` : 1 100 €
-    d’écart sur Villa Calanque après un seul appui, et des murs jamais touchés
-    reprisés au tarif du premier de leur groupe.
+30. ~~Réponse malformée de la BAN affichée en anglais~~ — **fait** (`e5103e4`).
+    `frenchGeoError` réémet désormais uniquement les messages que nous produisons,
+    marqués par un préfixe retiré avant affichage ; tout le reste retombe sur une phrase
+    générique. Une liste blanche ne peut pas fuir, une liste noire finit toujours par
+    laisser passer. `res.json()` et la lecture des entrées BAN sont blindées à la source,
+    pour que la correction ne dépende pas du seul filtre d’affichage. Test : huit erreurs
+    natives, aucun mot technique ne ressort ; rétablir l’ancienne liste noire fait tomber
+    4 tests sur 7.
+31. ~~Le bouton « Porteur » rouvre l’écart métré/nomenclature~~ — **fait** (`f8a1b55`), et
+    une **seconde occurrence** a été trouvée en cherchant la première : murs et dalles
+    étaient groupés sur le seul `materialId` alors qu’ils valent 42 et 38 €/m², donc une
+    dalle béton passait au tarif du mur béton — le cas est la norme, pas l’exception.
+    `groupRows` garde le prix du premier article d’un groupe : tout attribut tarifaire
+    absent de la clé fausse le total en silence. Les clés disent maintenant ce qu’elles
+    facturent, **et** le prix entre dans la clé d’agrégation. Les deux protections sont
+    redondantes à dessein : retirer l’une ou l’autre laisse les tests verts, retirer les
+    deux en fait tomber 2 sur 4.
 32. **Trois tests ajoutés le 11/09 sont tautologiques** et passeraient sans leur
     correctif : `quantities-coherence.test.ts:118` (aucune démo n’a de cloison, donc
     l’assertion est vraie dans les deux mondes), l’oracle toiture du même fichier
