@@ -101,15 +101,30 @@ function groupRows(
 ): NomRow[] {
   const map = new Map<string, NomRow>();
   for (const it of items) {
-    const g = map.get(it.key);
+    // Le prix entre dans la clé d'agrégation, et non seulement les attributs
+    // que l'appelant a pensé à y mettre.
+    //
+    // Sans cela, deux articles de prix différents mais de clé identique se
+    // fondaient en une ligne qui gardait le prix du PREMIER rencontré, et toute
+    // la quantité cumulée passait à ce tarif. Deux occurrences existaient :
+    // les murs, groupés sur rôle/épaisseur/matériau alors que le prix lit
+    // `partition` — un seul appui sur « Porteur » repriçait des murs jamais
+    // touchés ; et les matières, où un mur et une dalle de même matériau
+    // partageaient la clé alors qu'ils valent 42 et 38 EUR/m².
+    //
+    // Mettre le prix dans la clé rend la faute impossible à réintroduire : un
+    // futur attribut tarifaire oublié dans la clé scindera la ligne au lieu de
+    // fausser le total en silence.
+    const cle = `${it.key}#${it.unitPrice}`;
+    const g = map.get(cle);
     if (g) {
       g.qty = round2(g.qty + it.qty);
       g.total = Math.round(g.qty * g.unitPrice);
       g.entityIds.push(it.entityId);
       if (g.story !== it.story) g.story = "Plusieurs";
     } else {
-      map.set(it.key, {
-        id: it.key,
+      map.set(cle, {
+        id: cle,
         mark: "",
         label: it.label,
         story: it.story,
@@ -173,8 +188,10 @@ export function buildNomenclature(project: Project, kind: NomKind, storyId?: str
       const mat = MATERIAL_LABELS[w.materialId] ?? w.materialId;
       const ep = Math.round(w.thickness * 100);
       return {
-        key: `${w.role ?? "int"}-${ep}-${w.materialId}`,
-        label: `${role} ${ep} cm · ${mat}`,
+        // La cloison entre dans la clé ET dans le libellé : elle change le prix,
+        // et deux lignes de même intitulé à deux tarifs seraient illisibles.
+        key: `${w.partition ? "cloison" : "mur"}-${w.role ?? "int"}-${ep}-${w.materialId}`,
+        label: w.partition ? `Cloison ${ep} cm · ${mat}` : `${role} ${ep} cm · ${mat}`,
         story: storyOfWall(project, w),
         spec: `L ${wallLength(w).toFixed(2).replace(".", ",")} m`,
         qty: round2(wallAreaNet(project, w)),
@@ -263,8 +280,10 @@ export function buildNomenclature(project: Project, kind: NomKind, storyId?: str
   const matItems: { key: string; label: string; story: string; spec: string; qty: number; unit: string; unitPrice: number; entityId: string }[] = [];
   for (const w of project.walls.filter((w) => onStory(w.storyId))) {
     matItems.push({
-      key: w.materialId,
-      label: MATERIAL_LABELS[w.materialId] ?? w.materialId,
+      // Mur et dalle de même matière ne valent pas le même prix : la nature
+      // entre dans la clé, sinon la dalle passait au tarif du mur.
+      key: `elevation-${w.materialId}`,
+      label: `${MATERIAL_LABELS[w.materialId] ?? w.materialId} · élévation`,
       story: storyOfWall(project, w),
       spec: "Élévation",
       qty: wallAreaNet(project, w),
@@ -275,8 +294,8 @@ export function buildNomenclature(project: Project, kind: NomKind, storyId?: str
   }
   for (const s of project.slabs.filter((s) => onStory(s.storyId))) {
     matItems.push({
-      key: s.materialId,
-      label: MATERIAL_LABELS[s.materialId] ?? s.materialId,
+      key: `dalle-${s.materialId}`,
+      label: `${MATERIAL_LABELS[s.materialId] ?? s.materialId} · dalle`,
       story: storyName(project, s.storyId),
       spec: "Dalle",
       qty: polygonArea(s.polygon),
