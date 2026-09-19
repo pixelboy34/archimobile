@@ -74,6 +74,56 @@ describe("cohérence — silence sur les modèles sains", () => {
   });
 });
 
+describe("volume généré — percements sains sur toute la plage d'emprise", () => {
+  // Deux défauts trouvés par le contrôle de cohérence lui-même, tous deux sur
+  // la porte d'entrée et tous deux invisibles sur les emprises courantes :
+  //   20 × 16 — la fenêtre voisine survivait au filtre et recouvrait la porte
+  //             de 7,5 cm, le seuil valant la largeur de la porte au lieu de la
+  //             demi-somme des deux largeurs ;
+  //   8  × n  — la butée relative t ∈ [0,15 ; 0,85] posait le bord de la porte
+  //             8 cm hors d'un tronçon de façade de 3,10 m.
+  const emprises: [number, number][] = [
+    [8, 8], [8, 20], [10, 10], [12, 12], [16, 12],
+    [18, 14], [20, 16], [24, 18], [30, 20], [40, 30],
+  ];
+
+  for (const [w, d] of emprises) {
+    it(`${w} × ${d} m : aucun percement incohérent`, () => {
+      const p = generateMassing(emptyProject("Volume"), {
+        width: w,
+        depth: d,
+        floors: 2,
+        floorHeight: 2.8,
+        groundHeight: 3.4,
+      });
+      const fautes = checkCoherence(p).defauts.filter(
+        (x) => x.nature === "baie-chevauchement" || x.nature === "baie-debordante",
+      );
+      assert.equal(fautes.length, 0, fautes.map((f) => f.message).join(" | "));
+    });
+  }
+
+  it("garde une porte d'entrée sur chaque emprise", () => {
+    for (const [w, d] of emprises) {
+      const p = generateMassing(emptyProject("Volume"), {
+        width: w,
+        depth: d,
+        floors: 2,
+        floorHeight: 2.8,
+        groundHeight: 3.4,
+      });
+      const portes = p.openings.filter((o) => o.kind === "door");
+      assert.ok(portes.length > 0, `${w} × ${d} m devrait avoir une entrée`);
+      // Le correctif écarte des fenêtres autour de la porte : vérifier qu'il
+      // n'a pas vidé la façade au passage.
+      const rdc = p.stories[0]!.id;
+      const mursRdc = new Set(p.walls.filter((x) => x.storyId === rdc).map((x) => x.id));
+      const baies = p.openings.filter((o) => mursRdc.has(o.wallId));
+      assert.ok(baies.length >= 6, `${w} × ${d} m : seulement ${baies.length} baies au RDC`);
+    }
+  });
+});
+
 describe("cohérence — chaque règle mord sur un défaut réel", () => {
   it("voit un ouvrage rattaché à un niveau disparu", () => {
     const p = carre();

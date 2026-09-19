@@ -338,10 +338,23 @@ de le réfuter. Chiffres vérifiés, pas des soupçons.
     — elles ne sont donc pas tautologiques.
 27. ~~Bascule Plan → 3D qui tue le contexte WebGL~~ — **fait** (`b424666`). 8 allers-retours :
     8 contextes perdus et 176 programmes recompilés → **0 et 0**, qualité inchangée.
-40. **`punchFacadeGrid` ne tient pas son écart sur certaines géométries.** Trouvé par le
-    contrôle de cohérence lui-même : sur un R+40 généré en 20 × 16 m, deux baies se
-    chevauchent de 8 cm sur le même mur — le trumeau entre elles n’existe pas. Les cinq
-    démos et un R+8 sortent propres, c’est donc lié à la trame à cette largeur.
+40. ~~Percements incoherents sur un volume genere~~ — **fait**. Deux defauts, tous deux sur
+    la porte d entree, tous deux invisibles sur les emprises courantes, et tous deux trouves
+    par le controle de coherence des sa mise en service :
+    (a) le filtre qui degage les fenetres autour de la porte comparait a 1,10 m — la largeur
+    de la porte — au lieu de la demi-somme des deux largeurs : une fenetre de 1,40 m dont le
+    centre tombait a 1,175 m survivait et la recouvrait de 7,5 cm. Sur une emprise 20 x 16,
+    chaque rez-de-chaussee genere sortait avec ce defaut, R+1 comme R+40. La largeur est
+    desormais nommee une fois : c est en la portant a deux endroits que le filtre et le
+    percement avaient cesse de s accorder.
+    (b) la butee de position etait relative — t borne a [0,15 ; 0,85] — alors que la place
+    necessaire est absolue : sur une emprise de 8 m, le plus long troncon de facade fait
+    3,10 m et t = 0,85 posait le bord de la porte a 3,185 m, 8 cm hors du mur. La marge se
+    deduit maintenant de la demi-largeur et du trumeau, et une facade trop courte pour porter
+    la porte et ses deux trumeaux n est plus retenue.
+    Balaye sur 204 emprises de 8 x 8 a 40 x 30 : zero chevauchement, zero debordement, une
+    porte et au moins 8 baies partout. Non-regression figee dans coherence.test.ts — remettre
+    l ancienne butee fait tomber 2 tests.
 
 28. **`roofFaces` bbox-ise les toitures non rectangulaires.** `roof-planes.ts:49`
     part de `boundsOf(roof.polygon)` pour tout ce qui n’est pas plat. Depuis que le

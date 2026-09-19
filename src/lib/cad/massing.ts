@@ -198,6 +198,11 @@ function markExteriorWalls(p: Project, storyId: string, width: number, depth: nu
   return p;
 }
 
+/** Largeur de la porte d'entrée générée. Le filtre de dégagement en dépend. */
+const DOOR_WIDTH = 1.1;
+/** Trumeau minimal entre deux percements voisins : un mur a besoin d'appui. */
+const MIN_TRUMEAU = 0.15;
+
 function punchFacadeGrid(
   p: Project,
   storyId: string,
@@ -239,24 +244,40 @@ function punchFacadeGrid(
   }
   if (opts.entrance) {
     // Porte d'entrée façade rue (Y min)
+    // Le mur de façade doit pouvoir porter la porte ET ses deux trumeaux :
+    // sur une emprise de 8 m le plus long tronçon de rue ne fait que 3,10 m,
+    // et une façade encore plus courte n'a rien à accueillir.
+    const largeurMini = DOOR_WIDTH + 2 * MIN_TRUMEAU;
     const front = walls
-      .filter((w) => Math.abs(wallMid(w).y - oy) < 0.4)
+      .filter((w) => Math.abs(wallMid(w).y - oy) < 0.4 && wallLength(w) >= largeurMini)
       .sort((a, b) => wallLength(b) - wallLength(a))[0];
     if (front) {
       const mid = wallMid(front);
       // Prefer center of building width
       const targetX = ox + opts.width / 2;
       const len = wallLength(front);
-      const t =
+      // La butée était relative — t borné à [0,15 ; 0,85] — alors que la place
+      // nécessaire, elle, est absolue : sur un tronçon de 3,10 m, t = 0,85
+      // posait le bord de la porte à 3,185 m, soit 8 cm hors du mur. La marge
+      // se déduit donc de la demi-largeur de la porte et du trumeau.
+      const marge = (DOOR_WIDTH / 2 + MIN_TRUMEAU) / len;
+      const brut =
         Math.abs(front.b.x - front.a.x) > 0.2
-          ? Math.min(0.85, Math.max(0.15, (targetX - front.a.x) / (front.b.x - front.a.x)))
+          ? (targetX - front.a.x) / (front.b.x - front.a.x)
           : 0.5;
-      // Remove window near door
+      const t = Math.min(1 - marge, Math.max(marge, brut));
+      // Le seuil valait 1,1 m — la largeur de la porte — là où il faut la
+      // demi-somme des deux largeurs, plus un trumeau. Une fenêtre de 1,40 m
+      // dont le centre tombait à 1,175 m de celui de la porte survivait donc au
+      // filtre et la recouvrait de 7,5 cm : sur une emprise 20 × 16, chaque
+      // rez-de-chaussée généré sortait avec ce défaut, R+1 comme R+40.
+      // La largeur est nommée une fois : c'est en la portant à deux endroits
+      // que le filtre et le percement avaient cessé de s'accorder.
       next.openings = next.openings.filter((o) => {
         if (o.wallId !== front.id) return true;
-        return Math.abs(o.t - t) * len > 1.1;
+        return Math.abs(o.t - t) * len >= (o.width + DOOR_WIDTH) / 2 + MIN_TRUMEAU;
       });
-      next = addOpeningOnWall(next, front, "door", t, 1.1, 2.2, 0);
+      next = addOpeningOnWall(next, front, "door", t, DOOR_WIDTH, 2.2, 0);
       void mid;
     }
   }
