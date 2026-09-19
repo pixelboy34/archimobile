@@ -13,6 +13,7 @@ import { OfflineMaquettesPanel } from "@/components/pwa/OfflineMaquettesPanel";
 import { analyzeProject } from "@/lib/bim/analysis";
 import { emptyProject } from "@/lib/bim/builder";
 import { downloadText, exportBimJson, parseImportedProject } from "@/lib/bim/quantities";
+import { describeDxfImport, dxfToSketch, importDxf } from "@/lib/cad/dxf-import";
 import { formatArea } from "@/lib/utils";
 import type { Project } from "@/lib/bim/types";
 import { normalizeRoomCode } from "@/lib/multiplayer/collab";
@@ -72,8 +73,38 @@ export function HomePage() {
     navigate({ to: "/studio/$projectId", params: { projectId: p.id } });
   };
 
+  /**
+   * Le DXF du géomètre entre en calques d'esquisse, pas en murs : c'est un
+   * fond de plan, l'architecte trace par-dessus. La chaîne Relevé existante
+   * prend le relais.
+   */
+  const importerDxf = (raw: string, fileName: string) => {
+    const lu = importDxf(raw);
+    if (lu.polylines.length === 0) {
+      toast.error(lu.warnings[0] ?? "Aucune géométrie lisible dans ce DXF");
+      return;
+    }
+    const nom = fileName.replace(/\.dxf$/i, "") || "Plan importé";
+    const p = emptyProject(nom);
+    const croquis = dxfToSketch(lu, p.stories[0]?.id ?? "", p.id);
+    addProject({ ...p, layers: croquis.layers, strokes: croquis.strokes });
+    toast.success(describeDxfImport(lu));
+    // Une unité devinée peut mettre le plan à l'échelle 1000 : ça se dit, et
+    // séparément du résumé, pour que ça ne passe pas inaperçu.
+    for (const w of lu.warnings) toast.message(w);
+    navigate({ to: "/studio/$projectId", params: { projectId: p.id } });
+  };
+
   const onImport = (file: File) => {
     void file.text().then((raw) => {
+      if (/\.dxf$/i.test(file.name) || /^\s*0\s*[\r\n]+\s*SECTION/i.test(raw.slice(0, 200))) {
+        try {
+          importerDxf(raw, file.name);
+        } catch {
+          toast.error("Ce fichier DXF n'a pas pu être lu");
+        }
+        return;
+      }
       try {
         const parsed = parseImportedProject(raw) as Project;
         if (!parsed?.id || !parsed.walls || !parsed.stories) throw new Error("invalid");
@@ -172,7 +203,7 @@ export function HomePage() {
         <input
           ref={fileRef}
           type="file"
-          accept=".json,application/json"
+          accept=".json,.dxf,application/json"
           className="hidden"
           aria-hidden
           onChange={(e) => {
