@@ -8,7 +8,7 @@ import {
   addStair,
   emptyProject,
 } from "./builder";
-import { copyStory, repeatStories, restackStories } from "../cad/ops";
+import { copyStory, repeatStories, restackStories, syncStoryGeometry } from "../cad/ops";
 import { dist, findWallAt, rectPolygon } from "./geometry";
 import type { Project, Wall } from "./types";
 
@@ -368,7 +368,7 @@ export function tourHorizon(): Project {
   const r1 = p.stories[1]!;
   r1.name = "R+1 type";
   r1.height = 2.8;
-  p.walls = p.walls.map((w) => (w.storyId === r1.id ? { ...w, height: 2.8 } : w));
+  p = syncStoryGeometry(p, r1.id);
   p = addFurnitureAt(p, r1.id, "elevator", { x: 9, y: 2.2 }, 0);
   p = addFurnitureAt(p, r1.id, "sofa", { x: 3.2, y: 3.4 }, 0);
   p = addFurnitureAt(p, r1.id, "bed", { x: 14.4, y: 3.2 }, 0);

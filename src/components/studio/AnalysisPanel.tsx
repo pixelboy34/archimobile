@@ -1,3 +1,4 @@
+import { checkCoherence, resumeCoherence } from "@/lib/bim/coherence";
 import { analyzeProject } from "@/lib/bim/analysis";
 import { assessFeasibility, VERDICT_LABELS } from "@/lib/bim/feasibility";
 import { ROOM_LABELS } from "@/lib/bim/types";
@@ -12,6 +13,8 @@ export function AnalysisPanel({ onOpenVue }: { onOpenVue?: () => void }) {
   const lighting = useStudio((s) => s.lighting);
   const setTool = useStudio((s) => s.setTool);
   const setView = useStudio((s) => s.setView);
+  const select = useStudio((s) => s.select);
+  const setStory = useStudio((s) => s.setStory);
   if (!project) return <p className="text-sm text-muted">Aucun projet ouvert.</p>;
 
   // Sur un modèle sans rien de bâti, toutes les entrées du calcul valent zéro :
@@ -51,9 +54,62 @@ export function AnalysisPanel({ onOpenVue }: { onOpenVue?: () => void }) {
 
   const a = analyzeProject(project);
   const feas = assessFeasibility(project, lighting, a);
+  const coherence = checkCoherence(project);
 
   return (
     <div className="flex flex-col gap-5">
+      {/* La cohérence passe avant la faisabilité : un CES juste sur un modèle
+          faux ne vaut rien. Groupé par nature, sinon un R+40 afficherait
+          quarante lignes pour un seul défaut de génération. */}
+      <section className="panel-card flex flex-col gap-2 p-3.5">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[10px] font-medium tracking-[0.18em] text-muted uppercase">Cohérence</p>
+          <span
+            className={`text-[11px] font-semibold ${
+              coherence.critiques > 0 ? "text-danger" : coherence.sain ? "text-ok" : "text-warn"
+            }`}
+          >
+            {resumeCoherence(coherence)}
+          </span>
+        </div>
+        {coherence.sain ? (
+          <p className="text-[11px] text-subtle">
+            Aucun ouvrage orphelin, aucune baie hors de son mur, aucun escalier qui manque son
+            niveau.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {coherence.parNature.map((g) => (
+              <div key={g.nature} className="flex flex-col gap-1">
+                <p className="text-[11px] font-medium">
+                  {g.titre}
+                  <span className="ml-1.5 text-subtle">{g.defauts.length}</span>
+                </p>
+                {g.defauts.slice(0, 4).map((d) => (
+                  <button
+                    key={d.id}
+                    type="button"
+                    onClick={() => {
+                      if (d.storyId) setStory(d.storyId);
+                      select(d.cibles);
+                    }}
+                    className="min-h-11 rounded-lg bg-elevated/70 px-2.5 py-2 text-left text-[11px] leading-snug text-fg/85"
+                  >
+                    {d.message}
+                  </button>
+                ))}
+                {g.defauts.length > 4 && (
+                  <p className="text-[11px] text-subtle">
+                    et {g.defauts.length - 4} autre{g.defauts.length - 4 > 1 ? "s" : ""} du même
+                    type
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       <section className="panel-card flex flex-col gap-2 p-3.5">
         <div className="flex items-center justify-between gap-2">
           <p className="text-[10px] font-medium tracking-[0.18em] text-muted uppercase">Faisabilité</p>

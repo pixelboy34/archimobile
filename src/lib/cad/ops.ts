@@ -1,4 +1,5 @@
 import { uid } from "../utils";
+import { nombreDeMarches } from "../bim/builder";
 import { dist, distToSegment } from "../bim/geometry";
 import { mergeDetectedRooms } from "../bim/rooms";
 import type { Project, Vec2, Wall } from "../bim/types";
@@ -224,7 +225,12 @@ export function syncStoryGeometry(p: Project, id: string): Project {
   if (!st) return p;
   p.walls = p.walls.map((w) => (w.storyId === id ? { ...w, height: st.height } : w));
   p.columns = p.columns.map((c) => (c.storyId === id ? { ...c, height: st.height } : c));
-  p.stairs = p.stairs.map((s) => (s.storyId === id ? { ...s, rise: st.height } : s));
+  // La montée suivait déjà la hauteur d'étage, mais pas le nombre de marches :
+  // un escalier recopié sur un niveau plus bas gardait ses contremarches et son
+  // giron d'origine. Les deux vont ensemble.
+  p.stairs = p.stairs.map((s) =>
+    s.storyId === id ? { ...s, rise: st.height, steps: nombreDeMarches(st.height, s.run) } : s,
+  );
   return restackStories(p);
 }
 

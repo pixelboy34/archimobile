@@ -310,6 +310,30 @@ export function addFlatRoof(project: Project, storyId: string, polygon: Vec2[]):
   return next;
 }
 
+/**
+ * Nombre de marches d'une volée, déduit de la montée ET du reculement.
+ *
+ * Le compte ne dépendait que de la montée, alors que le reculement était donné
+ * par ailleurs : le giron tombait donc où il voulait. Sur un étage de 3,20 m
+ * avec 3,60 m de reculement, cela donnait 18 marches et un giron de 0,20 m —
+ * sous le minimum praticable, et sur chaque escalier généré. Contremarche et
+ * giron sont liés ; le compte doit satisfaire les deux.
+ *
+ * Contremarche ≤ 0,21 m impose un plancher au nombre de marches ; giron
+ * ≥ 0,22 m lui impose un plafond. Dans cette fenêtre on vise 0,175 m de
+ * contremarche, la valeur de confort. Si la fenêtre est vide — reculement trop
+ * court pour la hauteur — on privilégie la contremarche, et le contrôle de
+ * cohérence signalera l'escalier comme impraticable, ce qu'il est.
+ */
+export function nombreDeMarches(rise: number, run: number): number {
+  const mini = Math.ceil(rise / 0.21);
+  const maxi = Math.floor(run / 0.22);
+  const vise = Math.round(rise / 0.175);
+  const plancher = Math.max(2, mini);
+  if (maxi < plancher) return plancher;
+  return Math.min(maxi, Math.max(plancher, vise));
+}
+
 export function addStair(
   project: Project,
   storyId: string,
@@ -329,7 +353,7 @@ export function addStair(
     width,
     run,
     rise,
-    steps: Math.max(12, Math.round(rise / 0.18)),
+    steps: nombreDeMarches(rise, run),
   });
   return next;
 }
